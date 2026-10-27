@@ -61,9 +61,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dev/pulsit", tags=["dev-triggers"])
 
-# Returned when the trip's horse has no tracker the mock library knows about. Mirrors
-# dev_triggers._MOCK_REQUIRED_DETAIL's stance: a trigger that silently does nothing is
-# worse in a demo than one that fails loudly.
 _MOCK_REQUIRED_DETAIL = (
     "Moving the truck requires the Pulsit mock — check PULSE_USE_MOCK."
 )
@@ -164,8 +161,6 @@ async def _load_trip_context(
         select(Vehicle).where(Vehicle.id == trip.horse_id)
     )).scalar_one_or_none()
     if horse is None:
-        # Trip.horse_id is a NOT NULL FK, so this is a broken fleet record rather than
-        # an expected state — but a 500 mid-demo is worse than a readable refusal.
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Trip {trip_id} has no resolvable horse vehicle.",
@@ -207,22 +202,12 @@ async def _resolve_stage_target(
     """The position to stage: the legacy fixed waypoint, or a scenario computed relative to one of
     the trip's own stops (FP-197). 404 for a stop that is not the trip's, 409 for a stop whose
     precinct has no geometry to compute from."""
-    # ---- Resolve WHAT to stage: the legacy fixed waypoint, or a scenario computed
-    # relative to one of this trip's own stops. MoveTruckRequest's model validator
-    # guarantees exactly one of waypoint_id/scenario was supplied, so exactly one of
-    # these two branches runs. ----
     scenario_target: Optional[ScenarioTarget] = None
     if waypoint is not None:
-        # Unpacked into locals and tested for None directly rather than through
-        # `waypoint.is_no_signal`: the property says the same thing, but mypy cannot
-        # narrow Optional[Decimal] through a property call, and silencing that with a
-        # cast would discard the one check that stops a None coordinate reaching
-        # stage_position.
         latitude, longitude = waypoint.latitude, waypoint.longitude
         waypoint_id = waypoint.waypoint_id
         waypoint_label = waypoint.label
     else:
-        # The validator guarantees `scenario` is set whenever `waypoint_id` is not.
         assert body.scenario is not None
         scenario = body.scenario
 
@@ -246,8 +231,6 @@ async def _resolve_stage_target(
                 raise HTTPException(
                     status_code=http_status.HTTP_409_CONFLICT, detail=str(exc),
                 ) from exc
-        # else: scenario=no_signal naming no stop — scenario_target stays None, and
-        # the tracker simply goes dark with no target stop to report.
 
         latitude = scenario_target.latitude if scenario_target is not None else None
         longitude = scenario_target.longitude if scenario_target is not None else None
@@ -302,10 +285,6 @@ async def move_truck(
 
     client = get_pulsit_client(organization_id=current_user.organization_id)
     if not isinstance(client, MockPulsitClient):
-        # Unreachable while the router's guard holds — the router is not registered
-        # unless PULSE_USE_MOCK is true. Kept because the guard is enforced at import
-        # time and the flag is mutable at runtime (tests do exactly that), and a
-        # silently-live client is the one failure this file must never have.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         )
@@ -318,7 +297,6 @@ async def move_truck(
     latitude, longitude = target.latitude, target.longitude
     waypoint_id, waypoint_label, scenario_target = target.waypoint_id, target.label, target.scenario_target
 
-    # ---- The only write this endpoint performs, and it is to the mock. ----
     try:
         if latitude is None or longitude is None:
             await client.stage_no_fix(horse.pulsit_device_id)
@@ -331,24 +309,13 @@ async def move_truck(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         ) from exc
 
-    # ---- Everything below is a read, so the panel shows real state. ----
-    # Read the position back through get_positions rather than echoing the request:
-    # that exercises the same path a handshake uses, so a staging bug shows up on the
-    # panel instead of being masked by the panel restating its own request.
     fix = await client.get_position(horse.pulsit_device_id)
 
-    # `has_position` is the check callers should make, and it is the one that carries
-    # the meaning (status is OK *and* coordinates are present). The explicit None tests
-    # alongside it are not redundancy for its own sake — they are what lets mypy narrow
-    # Optional[Decimal] to Decimal, which a property cannot do.
     tracker_fix: Optional[TrackerFix] = (
         TrackerFix(lat=fix.lat, lng=fix.lng)
         if fix.has_position and fix.lat is not None and fix.lng is not None
         else None
     )
-    # Always evaluated against the EXPECTED stop (the phase ledger's current stop),
-    # never the scenario-mode TARGET — see MoveTruckResponse's EXPECTED vs TARGET
-    # docstring. This is unchanged from before FP-197.
     verdict = evaluate_geofence(tracker_fix, expected_precinct)
 
     logger.info(
@@ -373,9 +340,6 @@ async def move_truck(
         distance_metres=verdict.distance_metres,
         geofence_radius_metres=verdict.radius_metres,
         gps_tolerance_metres=verdict.tolerance_metres,
-        # Null rather than False when there is no fix: an unreachable tracker has not
-        # contradicted the driver, and rendering that as a failed verdict would be the
-        # panel accusing someone the pipeline deliberately does not accuse.
         geofence_confirmed=verdict.confirmed if fix.has_position else None,
         in_tolerance_band=verdict.in_tolerance_band,
         verdict_reason=verdict.reason.value,

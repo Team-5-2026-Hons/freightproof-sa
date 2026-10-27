@@ -14,14 +14,10 @@ vi.mock('@/lib/api/client', () => ({
   api: { get: vi.fn() },
 }))
 
-// The tab subscribes to the live channel; the provider is not mounted in these tests and its
-// absence must not be what the assertions are measuring.
 vi.mock('@/lib/realtime/useLiveResource', () => ({
   useLiveResource: vi.fn(),
 }))
 
-// Leaflet has no place in jsdom; the map's own pure parts are tested in IncidentMap.test.tsx.
-// The stand-in writes which pin the table chose, so a row click can be checked without a map.
 vi.mock('../map/IncidentMap', () => ({
   INCIDENT_MAP_HEIGHT: 360,
   IncidentMap: ({ pins, selection }: { pins: readonly unknown[]; selection?: { id: string } | null }) => (
@@ -290,7 +286,6 @@ describe('RoutesTab', () => {
     fireEvent.click(within(map).getByRole('radio', { name: 'Today' }))
 
     await waitFor(() => expect(incidentPaths()).toEqual([PERIOD_PATH, TODAY_PATH]))
-    // The sites and lanes charts keep the tab's period: asking them for today would empty them.
     expect(mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('/routes?')))
       .toEqual([ROUTES_PATH])
   })
@@ -309,7 +304,6 @@ describe('RoutesTab', () => {
     renderTab('today')
     const map = await waitFor(() => card('Incident map'))
 
-    // The basis lives in the "i", not on the card face (fleet spec D22).
     fireEvent.click(within(map).getByRole('button', { name: 'About this chart: Incident map' }))
 
     expect(await within(map).findByText(
@@ -326,7 +320,6 @@ describe('RoutesTab', () => {
     const [resource, id, , options] = mockedUseLiveResource.mock.calls.at(-1) ?? []
     expect(resource).toBe('trip')
     expect(id).toBe('any')
-    // Only exception_raised: ordinary phase traffic must not re-poll the map.
     expect(options).toEqual({ kinds: ['exception_raised'] })
   })
 

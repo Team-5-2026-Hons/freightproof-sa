@@ -33,8 +33,6 @@ def resolve_client_ip(request: Request) -> Optional[str]:
         header = settings.CLIENT_IP_HEADER.strip().lower() or FORWARDED_FOR_HEADER
         value = request.headers.get(header)
         if value:
-            # Split only the list-valued header; a dedicated edge header is one address,
-            # and splitting it would quietly truncate an IPv6 value.
             client = value.split(",")[0].strip() if header == FORWARDED_FOR_HEADER else value.strip()
             if client:
                 return client

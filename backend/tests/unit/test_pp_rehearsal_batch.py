@@ -41,7 +41,6 @@ EXPECTED_BATCH_SIZE = 30
 FIRST_NUMBER, LAST_NUMBER = 101, 130
 LOCAL_PER_ROUTE = 6
 MAX_WAYBILLS_PER_MANIFEST = 4
-# "Small enough to demonstrate with a few cartons on a table."
 SMALL_MANIFEST_PARCELS = 6
 MIN_SMALL_LOCAL_MANIFESTS = 8
 MAX_LOCAL_MANIFEST_PARCELS = 20
@@ -49,7 +48,6 @@ MAX_NATIONAL_MANIFEST_PARCELS = 20
 
 _DEPOTS_BY_HUB = {d.hub_code: d for d in (_CAVENDISH, _UCT_NORTH, _UCT_SOUTH, _CPT, _BFN, _JHB)}
 
-# The order the brief lists them in; the national manifests are 125-130.
 _EXPECTED_ROUTES: list[tuple[str, str, int]] = [
     ("CAV", "UCN", 6), ("UCN", "CAV", 6), ("UCS", "UCN", 6), ("UCN", "UCS", 6),
     ("CPT", "JNB", 1), ("JNB", "CPT", 1), ("CPT", "BFN", 1),
@@ -115,7 +113,6 @@ def test_manifest_numbers_collide_with_no_existing_header() -> None:
     others = set(MOCK_MANIFEST_HEADERS) - set(REHEARSAL_BATCH_MANIFESTS)
 
     assert not others & set(REHEARSAL_BATCH_MANIFESTS)
-    # Everything before 101 was taken or deliberately skipped; nothing sits inside the range.
     assert max(others) < FIRST_NUMBER
 
 
@@ -125,7 +122,6 @@ def test_waybill_references_are_unique_and_new() -> None:
 
     assert len(REHEARSAL_BATCH_WAYBILLS) == total_lines
     assert not others & set(REHEARSAL_BATCH_WAYBILLS)
-    # MOCK_WAYBILLS is a dict: a clash would have overwritten, so check identity survived.
     assert all(MOCK_WAYBILLS[ref] is w for ref, w in REHEARSAL_BATCH_WAYBILLS.items())
 
 
@@ -199,8 +195,6 @@ def test_hubs_are_never_the_same_and_local_hubs_stay_unlinked() -> None:
         hubs = {header.origin_hub, header.destination_hub}
 
         assert len(hubs) == 2
-        # Local hubs must never be mistaken for seeded national depots, and a route is
-        # wholly local or wholly national.
         assert hubs <= LOCAL_HUB_CODES or hubs <= DEMO_HUB_CODES
     assert not LOCAL_HUB_CODES & DEMO_HUB_CODES
 
@@ -230,8 +224,6 @@ async def test_local_manifests_run_the_same_morning_leg(store: FakeMockStateStor
         header = (await MockParcelPerfectClient().get_manifest(number)).header
         zone = pp_module.pp_timezone()
 
-        # Both are Optional on PPManifestHeader; a local leg is only meaningful once the
-        # fixture has set them, so a None here is a fixture fault, not a schedule mismatch.
         assert header.planned_departure_at is not None
         assert header.expected_arrival_at is not None
         assert header.planned_departure_at.astimezone(zone).strftime("%H:%M") == "09:00"
@@ -260,5 +252,4 @@ async def test_batch_is_reachable_through_the_waybill_and_staging_controls(
     staged = await client.get_single_waybill("MFTWB10101")
     assert waybill.details.pieces == 2 and staged.details.pieces == 3
     assert (await client.get_manifest(101)).header.closed_at is None
-    # Staging is per manifest: a neighbour is untouched.
     assert (await client.get_manifest(102)).header.closed_at is not None

@@ -54,7 +54,6 @@ function card(title: string): HTMLElement {
 async function tableRows(title: string): Promise<(string | null)[][]> {
   const element = await waitFor(() => card(title))
   fireEvent.click(await within(element).findByRole('button', { name: 'Show table' }))
-  // Body rows of every table on the card; header rows hold no cells.
   return within(element).getAllByRole('row')
     .map((row) => within(row).queryAllByRole('cell').map((cell) => cell.textContent))
     .filter((cells) => cells.length > 0)

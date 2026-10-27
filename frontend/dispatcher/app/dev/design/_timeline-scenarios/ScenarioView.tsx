@@ -16,7 +16,6 @@ import { frameWidthPx, type ViewportPreset } from './frame'
 
 interface Props {
   scenario: TimelineScenario
-  /** 1-based position in the page's list, for the heading. */
   position: number
   preset: ViewportPreset
 }
@@ -31,7 +30,6 @@ interface PanelSelection {
 const PANEL_TAB_ID = 'exceptions'
 const PREVIEW_RETURN_TO = '/dev/design'
 const NO_OP = (): void => undefined
-// Tall enough to read a record without the docked column growing with the timeline beside it.
 const DOCKED_PANEL_CLASS = 'sticky top-4 flex h-[720px] max-h-[calc(100vh-2rem)]'
 
 /**
@@ -48,7 +46,6 @@ export function ScenarioView({ scenario, position, preset }: Props) {
   const pendingReadingAnchor = useRef<string | null>(null)
   const rememberReadingPhase = useCallback((): void => {
     const root = timelineRef.current
-    // This preview uses the window reader; the real trip page uses its own scroller.
     pendingReadingAnchor.current = readingPhaseAnchor(root, Math.max(0, root?.getBoundingClientRect().top ?? 0) + timelineToolbarHeight(root))
   }, [])
   const [timelineView, setTimelineView] = useState<TimelineView>(TIMELINE_VIEWS.evidence)
@@ -69,7 +66,6 @@ export function ScenarioView({ scenario, position, preset }: Props) {
   const exceptions = uniqueExceptionsById(trip.exceptions)
   const needsReview = exceptions.filter(exception => exception.review_status === 'needs_review').length
   const tabs: readonly Tab[] = [{ id: PANEL_TAB_ID, label: 'Exceptions', badge: exceptions.length, badgeUrgent: needsReview > 0 }]
-  // A link to one record or phase is an evidence view, not a review queue, so it shows everything.
   const effectiveFilter: ExceptionFilter = selection?.exceptionId || selection?.phaseId ? 'all' : filter
   const headingId = `scenario-heading-${scenario.id}`
 
@@ -81,7 +77,6 @@ export function ScenarioView({ scenario, position, preset }: Props) {
   function showInTimeline(exceptionId: string, phaseId: string | null): void {
     pendingReadingAnchor.current = null
     setPendingReveal({ exceptionId, phaseId })
-    // The overlay's focus trap has to be gone before focus can move into the timeline.
     if (!docked) setSelection(null)
   }
 
@@ -133,7 +128,6 @@ export function ScenarioView({ scenario, position, preset }: Props) {
         artifactsById={artifactsById}
         selectedPhaseId={selection?.phaseId ?? null}
         selectedExceptionId={selection?.exceptionId ?? null}
-        // Picking a filter leaves the single-record view, so the selection goes; the phase stays.
         onFilter={value => { setFilter(value); setSelection(previous => ({ exceptionId: null, phaseId: previous?.phaseId ?? null })) }}
         onClearPhaseFilter={() => setSelection({ exceptionId: null, phaseId: null })}
         onClearExceptionSelection={() => setSelection(previous => ({ exceptionId: null, phaseId: previous?.phaseId ?? null }))}
@@ -171,8 +165,6 @@ export function ScenarioView({ scenario, position, preset }: Props) {
               onRevealHandled={targetId => document.getElementById(targetId)?.scrollIntoView({ block: 'center' })}
             />
           </div>
-          {/* Docked, DetailPanel is a permanent column and needs a height to scroll within; below the
-              dock width it renders the overlay (or nothing), which takes no room in this row. */}
           {docked ? <div className={DOCKED_PANEL_CLASS}>{panel}</div> : panel}
         </div>
       </div>

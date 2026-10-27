@@ -15,23 +15,17 @@ import {
 } from '@/lib/map/polygon'
 
 const OVERPASS_PUBLIC_URL = 'https://overpass-api.de/api/interpreter'
-// `||`, not `??`: .env.example ships the key blank, so unset arrives as '' (see lib/map/tiles.ts).
 export const OVERPASS_URL = process.env.NEXT_PUBLIC_OVERPASS_URL || OVERPASS_PUBLIC_URL
 
-// Buildings this close to the pin are offered even when the pin is in the yard beside them.
 const NEARBY_BUILDING_METRES = 60
-// Server-side budget; the public instance rejects long queries under load anyway.
 const QUERY_TIMEOUT_SECONDS = 20
 export const MAX_CANDIDATES = 6
 
-// Area tags that describe a site rather than a building. Admin boundaries, timezones and
-// the like are never asked for, so a "whole province" candidate cannot appear.
 const AREA_TAGS = ['landuse', 'amenity', 'man_made', 'industrial'] as const
 
 export interface OutlineCandidate {
   id: string
   label: string
-  /** e.g. "1.2 ha · contains the pin" */
   detail: string
   polygon: LatLngPair[]
   areaM2: number
@@ -85,7 +79,6 @@ export function parseOverpassOutlines(json: unknown, pin: LatLngPair): OutlineCa
     const ring = element.geometry
       .filter((p): p is { lat: number; lon: number } => Number.isFinite(p.lat) && Number.isFinite(p.lon))
       .map((p): LatLngPair => [p.lat, p.lon])
-    // OSM rings are closed (first corner repeated); ours are open.
     const first = ring[0]
     const last = ring[ring.length - 1]
     const polygon = first && last && first[0] === last[0] && first[1] === last[1] ? ring.slice(0, -1) : ring
@@ -111,8 +104,6 @@ export function parseOverpassOutlines(json: unknown, pin: LatLngPair): OutlineCa
     })
   }
 
-  // Shapes the pin is in come first, smallest first — the tightest site that holds the
-  // gate. Then nearby buildings, nearest first.
   return candidates
     .sort((a, b) => {
       if (a.containsPin !== b.containsPin) return a.containsPin ? -1 : 1

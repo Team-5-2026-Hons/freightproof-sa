@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils'
  */
 export function TripEndedByDispatchBanner({ className }: { className?: string }) {
   const router = useRouter()
-  // Optional, like DriverSubstitutionPanel's read: Home/Trips harnesses render without it.
   const ended = useContext(TripContext)?.endedByDispatch ?? null
   const dismiss = useContext(TripContext)?.dismissEndedByDispatch
   if (ended === null) return null

@@ -30,25 +30,14 @@ async def advance_activation(
 
     await _reject_if_not_due(db, trip)
 
-    # The crew gates (one trip at a time for the driver, horse and trailers; the driver's trips
-    # in order) sit AFTER _gate_and_load's idempotent-replay short-circuit, for the same reason
-    # _reject_if_not_due does: a queued offline activation resent later must not start failing
-    # on a rule it already satisfied when it was captured.
     await _claim_crew_for_activation(db, trip)
 
-    # Two sources, recorded together: the driver's phone says where the phone is,
-    # then Pulsit says where the vehicle is. The second is what makes the first
-    # corroborated rather than merely asserted. A feeder check — P1 is unanchored,
-    # and a Pulsit outage leaves the columns null ("could not check") rather than
-    # failing the handshake. See orchestration/evidence/corroboration.py.
     await _record_driver_position(event, payload)
     horse_fix = await corroboration.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
     event.status = PhaseStatus.COMPLETED
 
-    # First phase off CREATED. LEGACY per-handshake TripStatus values are gone —
-    # ACTIVE is the coarse "trip is underway" state until CLOSED.
     trip.status = TripStatus.ACTIVE
 
     _anchor_phase(db, event=event, canonical_payload=compute_activation_canonical_payload_v2(

@@ -71,8 +71,6 @@ describe('SubpageHeader', () => {
     const heading = screen.getByRole('heading', { name: 'FP-20260804-31F49BDE' })
     const caption = screen.getByText('Trip reference')
 
-    // The identifier reads character by character (mono + tabular digits); the caption
-    // gives screen readers context without stacking a visible label over the heading.
     expect(heading).toHaveClass('font-mono', 'tabular-nums')
     expect(caption).toHaveClass('sr-only')
   })
@@ -82,20 +80,16 @@ describe('SubpageHeader', () => {
 
     const heading = screen.getByRole('heading', { level: 1, name: 'In Transit' })
     expect(heading.parentElement).toHaveClass('text-center')
-    // Tabular figures, not monospace: the overhaul's identifiers keep the system face (design system 0).
     expect(screen.getByText('TRP-2026-0041')).toHaveClass('tabular-nums')
     expect(screen.getByText('TRP-2026-0041')).not.toHaveClass('font-mono')
   })
 
   it('registers its back action for the left-edge swipe while mounted', () => {
-    // Arrange
     const onBack = vi.fn()
     const { unmount } = render(<SubpageHeader title="Log Exception" onBack={onBack} />)
 
-    // Act
     getEdgeBackHandler()?.()
 
-    // Assert
     expect(onBack).toHaveBeenCalledTimes(1)
     unmount()
     expect(getEdgeBackHandler()).toBeNull()
@@ -106,8 +100,6 @@ describe('SubpageHeader', () => {
 
     const back = screen.getByRole('button', { name: 'Back to In Transit' })
 
-    // Ink, not the blue link tint; a light well, not the filled black pill that
-    // outranked the page content (audit H3); the destination is in the accessible name only.
     expect(back).toHaveClass('rounded-full', 'bg-surface-container-high', 'text-surface-on')
     expect(back).not.toHaveClass('text-secondary')
     expect(back).not.toHaveClass('bg-primary')

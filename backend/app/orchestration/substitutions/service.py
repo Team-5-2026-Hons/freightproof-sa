@@ -63,7 +63,6 @@ from app.schemas.driver_substitutions import (
 )
 from app.schemas.people import DriverRead, UserRead
 
-# Operation names; part of the idempotency key's scope, so they are stored verbatim.
 ACTION_ARRANGE = "arrange"
 ACTION_CANCEL = "cancel"
 ACTION_REPLACE = "replace"
@@ -71,8 +70,6 @@ ACTION_CONFIRM = "confirm"
 ACTION_COMPLETE = "complete"
 ACTION_CORRECT = "correct"
 
-# The contract's code for each way completion can be blocked, raised when a dispatcher's
-# explicit /complete is refused (a driver's blocked confirmation is a 200 instead; see below).
 _BLOCKER_ERRORS: dict[SubstitutionCompletionBlocker, type[SubstitutionError]] = {
     SubstitutionCompletionBlocker.INCOMING_DRIVER_INACTIVE: IncomingDriverInactiveError,
     SubstitutionCompletionBlocker.LICENCE_INVALID: LicenceInvalidError,
@@ -135,8 +132,6 @@ def _new_request(
         arranged_by_user_id=actor.id, version=1, state=SubstitutionState.PENDING.value,
     )
 
-
-# ── arrange / cancel / replace ───────────────────────────────────────────────
 
 
 async def arrange_substitution(
@@ -224,11 +219,9 @@ async def replace_substitution(
     require_pending_at(old, payload.expected_version)
     require_live(trip, action="replace a driver handover")
     now = operations.utcnow()
-    # Checked before anything is changed, so an ineligible replacement leaves the old one pending.
     await _checked_incoming(db, trip=trip, outgoing_driver_id=old.outgoing_driver_id, fields=payload, now=now)
 
     cancel_request(old, reason=payload.replacement_reason, now=now)
-    # The old row must stop being pending before the new one exists: one pending per trip.
     await db.flush()
     new = _new_request(trip=trip, outgoing_driver_id=old.outgoing_driver_id, actor=actor, fields=payload, now=now)
     db.add(new)
@@ -243,8 +236,6 @@ async def replace_substitution(
     await db.flush()
     return result
 
-
-# ── confirm / complete ───────────────────────────────────────────────────────
 
 
 async def _require_outgoing_still_holds(db: AsyncSession, *, trip: Trip, request: DriverSubstitutionRequest) -> int:
@@ -270,7 +261,6 @@ class CompletionFacts:
     completed_by_user_id: uuid.UUID | None = None
     missing_confirmation_reason: str | None = None
     declared_exchange_at: datetime | None = None
-    # Present only when an admin attested a PENDING identity; the attester is completed_by_user_id.
     identity_attestation_reason: str | None = None
 
 
@@ -306,12 +296,8 @@ async def _complete(
     request.state = SubstitutionState.COMPLETED.value
     request.terminal_at = facts.now
     await db.flush()
-    # C5: the commitment is frozen with the completion, atomically; its anchor is queued for
-    # after the outer commit. Anchoring never conditions the transfer itself.
     await anchors.freeze_substitution(db, row)
     await notify_parties(db, request=request, kind=SubstitutionNoticeKind.COMPLETED)
-    # A transfer with a problem (unverified identity, a missing confirmation, an uncomparable location)
-    # is surfaced for review. Fail-open: a finding is evidence and never conditions custody.
     await raise_transfer_review(db, trip=trip, row=row)
     return row
 
@@ -337,8 +323,6 @@ async def confirm_substitution(
     if named is None or actor.id not in (named.outgoing_driver_id, named.incoming_driver_id):
         raise ResourceNotFoundError("DriverSubstitutionRequest", str(request_id))
 
-    # Telemetry before any lock (capture_assessment's module docstring). An exact replay pays for
-    # one wasted read rather than the lookup moving ahead of the lock that makes it safe.
     horse_fix = await capture_assessment.read_horse_fix(db, trip_id=trip_id)
     trip = await lock_trip(db, trip_id=trip_id)
     request = await lock_crew_and_request(db, trip=trip, request_id=request_id)
@@ -361,7 +345,6 @@ async def confirm_substitution(
     if role not in required:
         raise SubstitutionInvalidError("Outgoing driver is notified only; no confirmation is requested.")
     if role.value in saved_roles:
-        # One immutable capture per role: the client's copy is behind, so it refetches.
         raise SubstitutionVersionChangedError(request_id=request.id, current_version=request.version)
     await _validate_capture(db, trip=trip, request=request, role=role, payload=payload)
 
@@ -494,7 +477,6 @@ async def complete_attested_substitution(
             raise IdentityAttestationForbiddenError(request_id=request.id)
         if IdvsStatus(incoming.idvs_status) is IdvsStatus.VERIFIED:
             raise SubstitutionInvalidError("The driver's identity is verified, so there is nothing to attest.")
-    # An attestation only ever helps a PENDING driver; for FAILED it is ignored by the check below.
     attested = identity_reason is not None and IdvsStatus(incoming.idvs_status) is IdvsStatus.PENDING
 
     now = operations.utcnow()
@@ -516,8 +498,6 @@ async def complete_attested_substitution(
     await db.flush()
     return result
 
-
-# ── correction ───────────────────────────────────────────────────────────────
 
 def _correction_commitment(
     *, correction_id: uuid.UUID, substitution: DriverSubstitution, actor_id: uuid.UUID, recorded_at: datetime,

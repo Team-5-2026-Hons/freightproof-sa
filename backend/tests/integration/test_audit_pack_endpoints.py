@@ -24,7 +24,6 @@ from app.storage.supabase_storage import EvidenceStorageUnavailableError, Upload
 from tests.conftest import auth_header, make_token
 from tests.integration.audit_pack_seed import AuditTrip, seed_audit_trip
 
-# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
 pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 PREVIEW = "/api/v1/trips/{trip_id}/audit-trail/preview"
@@ -50,10 +49,8 @@ def _admin(seed: AuditTrip) -> dict[str, str]:
 
 
 async def test_preview_audit_trail_returns_manifest_for_admin(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(PREVIEW.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     body = response.json()
     assert body["trip"]["trip_reference"] == "FP-AUDIT"
@@ -63,7 +60,6 @@ async def test_preview_audit_trail_returns_manifest_for_admin(client: AsyncClien
 
 
 async def test_preview_audit_trail_applies_query_options(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(
         PREVIEW.format(trip_id=audit_trip.trip.id),
         params={"scope_consignment_id": str(audit_trip.consignment_a.id), "include_location_trail": "false",
@@ -71,7 +67,6 @@ async def test_preview_audit_trail_applies_query_options(client: AsyncClient, au
         headers=_admin(audit_trip),
     )
 
-    # Assert
     assert response.status_code == 200
     body = response.json()
     assert [c["parcel_perfect_reference"] for c in body["consignments"]] == ["WAY-A"]
@@ -80,64 +75,50 @@ async def test_preview_audit_trail_applies_query_options(client: AsyncClient, au
 
 
 async def test_preview_audit_trail_rejects_non_admin_dispatcher(client: AsyncClient, audit_trip: AuditTrip):
-    # Arrange
     token = make_token(sub=str(audit_trip.dispatcher.id), role="dispatcher", org_id=str(audit_trip.org.id))
 
-    # Act
     response = await client.get(PREVIEW.format(trip_id=audit_trip.trip.id), headers=auth_header(token))
 
-    # Assert
     assert response.status_code == 403
 
 
 async def test_preview_audit_trail_rejects_expired_token(client: AsyncClient, audit_trip: AuditTrip):
-    # Arrange
     token = make_token(sub=str(audit_trip.dispatcher.id), role="admin_dispatcher",
                        org_id=str(audit_trip.org.id), expires_in=-1)
 
-    # Act
     response = await client.get(PREVIEW.format(trip_id=audit_trip.trip.id), headers=auth_header(token))
 
-    # Assert
     assert response.status_code == 401
 
 
 async def test_preview_audit_trail_unknown_trip_is_404(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(PREVIEW.format(trip_id=uuid.uuid4()), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_preview_audit_trail_consignment_not_on_trip_is_404(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(
         PREVIEW.format(trip_id=audit_trip.trip.id), params={"scope_consignment_id": str(uuid.uuid4())},
         headers=_admin(audit_trip),
     )
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_preview_audit_trail_malformed_trip_id_is_422(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(PREVIEW.format(trip_id="not-a-uuid"), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 422
 
 
 PREVIEW_PDF = "/api/v1/trips/{trip_id}/audit-trail/preview.pdf"
 
 
-@pytest.mark.real_pdf  # reads the rendered PDF itself
+@pytest.mark.real_pdf
 async def test_preview_pdf_returns_pdf_marked_preview(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(PREVIEW_PDF.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert "FP-AUDIT" in response.headers["content-disposition"]
@@ -147,25 +128,18 @@ async def test_preview_pdf_returns_pdf_marked_preview(client: AsyncClient, audit
 
 
 async def test_preview_pdf_unknown_trip_is_404(client: AsyncClient, audit_trip: AuditTrip):
-    # Act
     response = await client.get(PREVIEW_PDF.format(trip_id=uuid.uuid4()), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_preview_pdf_rejects_non_admin_dispatcher(client: AsyncClient, audit_trip: AuditTrip):
-    # Arrange
     token = make_token(sub=str(audit_trip.dispatcher.id), role="dispatcher", org_id=str(audit_trip.org.id))
 
-    # Act
     response = await client.get(PREVIEW_PDF.format(trip_id=audit_trip.trip.id), headers=auth_header(token))
 
-    # Assert
     assert response.status_code == 403
 
-
-# ── Issued packs ──────────────────────────────────────────────────────────────
 
 PACKS = "/api/v1/trips/{trip_id}/audit-packs"
 PACK = "/api/v1/audit-packs/{pack_id}"
@@ -202,10 +176,8 @@ async def _issue_via_api(client: AsyncClient, seed: AuditTrip, **overrides: obje
 
 
 async def test_issue_pack_returns_token_once_with_links(client, audit_trip, pdf_store):
-    # Act
     body = await _issue_via_api(client, audit_trip)
 
-    # Assert
     assert body["pack"]["pack_label"] == "FP-AUDIT-AP1"
     assert body["pack"]["status"] == "active"
     assert body["pack"]["anchor_status"] == "anchored"
@@ -214,102 +186,79 @@ async def test_issue_pack_returns_token_once_with_links(client, audit_trip, pdf_
 
 
 async def test_list_packs_never_returns_token(client, audit_trip, pdf_store):
-    # Arrange
     issued = await _issue_via_api(client, audit_trip)
 
-    # Act
     response = await client.get(PACKS.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     assert [p["id"] for p in response.json()] == [issued["pack"]["id"]]
     assert issued["share_token"] not in response.text
 
 
 async def test_issue_pack_rejects_unknown_purpose(client, audit_trip, pdf_store):
-    # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id),
                                  json={**ISSUE_BODY, "purpose": "marketing"}, headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 422
 
 
 async def test_issue_pack_requires_recipient_email(client, audit_trip, pdf_store):
     """FP-291: the emailed code is what stops a forwarded link opening the pack."""
-    # Arrange
     body = {k: v for k, v in ISSUE_BODY.items() if k != "recipient_email"}
 
-    # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id), json=body, headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 422
 
 
 @pytest.mark.parametrize("email", ["jane", "jane@santam", "jane smith@santam.example"])
 async def test_issue_pack_rejects_malformed_recipient_email(client, audit_trip, pdf_store, email):
-    # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id),
                                  json={**ISSUE_BODY, "recipient_email": email}, headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 422
 
 
 async def test_issue_pack_rejects_unoffered_expiry(client, audit_trip, pdf_store):
-    # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id),
                                  json={**ISSUE_BODY, "expires_in_days": 365}, headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 422
 
 
 async def test_issue_pack_unknown_trip_is_404(client, audit_trip, pdf_store):
-    # Act
     response = await client.post(PACKS.format(trip_id=uuid.uuid4()), json=ISSUE_BODY, headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_issue_pack_rejects_non_admin(client, audit_trip, pdf_store):
-    # Arrange
     token = make_token(sub=str(audit_trip.dispatcher.id), role="dispatcher", org_id=str(audit_trip.org.id))
 
-    # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id), json=ISSUE_BODY,
                                  headers=auth_header(token))
 
-    # Assert
     assert response.status_code == 403
 
 
 async def test_issue_pack_storage_outage_is_503_and_issues_nothing(client, audit_trip, monkeypatch, db_session):
-    # Arrange
     async def broken_upload(**_kwargs: object) -> UploadResult:
         raise EvidenceStorageUnavailableError("down")
 
     monkeypatch.setattr(lifecycle, "upload_audit_pack_pdf", broken_upload)
 
-    # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id), json=ISSUE_BODY,
                                  headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 503
     assert (await db_session.execute(select(AuditPack))).scalars().all() == []
 
 
 async def test_revoke_pack_marks_revoked(client, audit_trip, pdf_store, db_session):
-    # Arrange
     issued = await _issue_via_api(client, audit_trip)
 
-    # Act
     response = await client.post(f"{PACK.format(pack_id=issued['pack']['id'])}/revoke", headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     assert response.json()["status"] == "revoked"
     pack = (await db_session.execute(select(AuditPack))).scalar_one()
@@ -317,8 +266,6 @@ async def test_revoke_pack_marks_revoked(client, audit_trip, pdf_store, db_sessi
 
 
 async def test_revoke_pack_other_org_is_404(client, audit_trip, pdf_store, db_session):
-    # Arrange: an admin of a different operator. Org scoping comes from the user's DB row,
-    # never the token's org claim, so the outsider needs a real account elsewhere.
     issued = await _issue_via_api(client, audit_trip)
     other_org = Organization(id=uuid.uuid4(), name="Rival Haulage", org_type=OrganizationType.OPERATOR)
     db_session.add(other_org)
@@ -328,48 +275,37 @@ async def test_revoke_pack_other_org_is_404(client, audit_trip, pdf_store, db_se
     await db_session.flush()
     headers = auth_header(make_token(sub=str(outsider.id), role="admin_dispatcher", org_id=str(other_org.id)))
 
-    # Act
     response = await client.post(f"{PACK.format(pack_id=issued['pack']['id'])}/revoke", headers=headers)
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_download_issued_pdf_returns_stored_bytes(client, audit_trip, pdf_store):
-    # Arrange
     issued = await _issue_via_api(client, audit_trip)
 
-    # Act
     response = await client.get(f"{PACK.format(pack_id=issued['pack']['id'])}/pdf", headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert hashlib.sha256(response.content).hexdigest() == issued["pack"]["pdf_sha256"]
 
 
 async def test_download_issued_pdf_refuses_altered_file(client, audit_trip, pdf_store):
-    # Arrange: someone replaced the stored object after issue.
     issued = await _issue_via_api(client, audit_trip)
     key = next(iter(pdf_store))
     pdf_store[key] = pdf_store[key] + b"tampered"
 
-    # Act
     response = await client.get(f"{PACK.format(pack_id=issued['pack']['id'])}/pdf", headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 409
 
 
 async def test_access_events_start_empty(client, audit_trip, pdf_store):
-    # Arrange
     issued = await _issue_via_api(client, audit_trip)
 
-    # Act
     response = await client.get(f"{PACK.format(pack_id=issued['pack']['id'])}/access-events",
                                 headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     assert response.json() == []
 
@@ -377,12 +313,10 @@ async def test_access_events_start_empty(client, audit_trip, pdf_store):
 SHEET = "/api/v1/trips/{trip_id}/audit-trail/incident-sheet.pdf"
 
 
-@pytest.mark.real_pdf  # reads the rendered PDF itself
+@pytest.mark.real_pdf
 async def test_incident_sheet_pdf_for_trip_with_critical_incident(client, audit_trip):
-    # Act
     response = await client.get(SHEET.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     text = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(response.content)).pages)
@@ -391,14 +325,11 @@ async def test_incident_sheet_pdf_for_trip_with_critical_incident(client, audit_
 
 
 async def test_incident_sheet_pdf_without_critical_incident_is_409(client, audit_trip, db_session):
-    # Arrange
     audit_trip.panic.severity = "warning"
     await db_session.flush()
 
-    # Act
     response = await client.get(SHEET.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))
 
-    # Assert
     assert response.status_code == 409
 
 

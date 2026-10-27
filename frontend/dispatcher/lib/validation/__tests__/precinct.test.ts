@@ -101,7 +101,6 @@ describe('parseCoordinatePair', () => {
   })
 
   it('parses a DMS pair with straight quotes, south/east', () => {
-    // 26 + 9/60 + 53.9/3600 = 26.164972..., negated for S; 28 + 14/60 + 0.1/3600 = 28.233361... for E.
     expect(parseCoordinatePair(`26°09'53.9"S 28°14'00.1"E`)).toEqual({
       lat: '-26.16497',
       lng: '28.23336',
@@ -109,7 +108,6 @@ describe('parseCoordinatePair', () => {
   })
 
   it('parses a DMS pair with prime/double-prime marks, north/west', () => {
-    // 40 + 26/60 + 46/3600 = 40.446111... for N; 79 + 58/60 + 56/3600 = 79.982222..., negated for W.
     expect(parseCoordinatePair(`40°26′46″N 79°58′56″W`)).toEqual({
       lat: '40.44611',
       lng: '-79.98222',
@@ -131,7 +129,6 @@ describe('parseCoordinatePair', () => {
   })
 
   it('returns null when the DMS pair is not lat(N/S)-then-lng(E/W)', () => {
-    // Both tokens claim to be latitude — not a coordinate pair, however well-formed each token is.
     expect(parseCoordinatePair(`26°09'53.9"S 28°14'00.1"N`)).toBeNull()
   })
 

@@ -15,8 +15,6 @@ import {
 } from './__fixtures__/trace'
 
 describe('scope and relevance labels', () => {
-  // The backend sets scope trip_context when an exception has no consignment (projection.py:111), so it
-  // concerns the whole trip rather than another consignment's handling.
   it('labels a trip_context exception as the whole trip, never as other trip context', () => {
     expect(EXCEPTION_SCOPE_LABELS.trip_context).toBe('Whole trip')
     expect(EXCEPTION_SCOPE_LABELS.consignment).toBe('This consignment')
@@ -28,7 +26,6 @@ describe('scope and relevance labels', () => {
 })
 
 describe('parcel component type size', () => {
-  // Fixed-size arbitrary utilities below 12px are unreadable at dispatcher distance; guard the whole folder.
   it('uses no text size under 12px', () => {
     const dir = dirname(fileURLToPath(import.meta.url))
     const sources = readdirSync(dir).filter(name => /\.tsx?$/.test(name) && !/\.test\./.test(name))
@@ -65,7 +62,6 @@ describe('trace display semantics', () => {
   })
 })
 
-// Word-bounded so "unverified" (a seal label) is not mistaken for the claim "verified".
 const FORBIDDEN_SUMMARY_WORDS = /\b(lost|stolen|missing|delivered|in custody|left custody|safe|intact|verified)\b/i
 
 function emptyJourney(overrides: Partial<ParcelJourney> = {}): ParcelJourney {
@@ -177,8 +173,6 @@ describe('scanSummary', () => {
     expect(scanSummary([makeScan(1, { scan_out_at: null })])).toBe('No scan-out recorded')
   })
 })
-
-// --- Parcel-first timeline helpers ---------------------------------------------------------------------
 
 /** [title, subline] per step, so a test reads as the list the dispatcher would see. */
 function lines(steps: readonly ParcelStep[]): Array<[string, string]> {
@@ -338,7 +332,6 @@ describe('notRecordedItems', () => {
   it('lists the WAY0020001 gaps in ledger order, then the seal check and destination scan', () => {
     expect(notRecordedItems(makeWayJourney())).toEqual(['in transit', 'arrival', 'unloading', 'confirmation', 'seal check', 'destination scan'])
   })
-  // A cross-dock lists the same phase name at several stops; the place is the only thing that tells the occurrences apart.
   it('adds the place to every occurrence of a repeated phase name and leaves single occurrences bare', () => {
     const at = (kind: Parameters<typeof makePhase>[0], index: number, place: string | null) => ({ ...makePhase(kind, index), status: 'pending' as const, completed_at: null, precinct_name: place })
     const journey = makeJourney({
@@ -390,7 +383,6 @@ describe('notRecordedItems', () => {
     expect(notRecordedItems(withScanIn)).not.toContain('destination scan')
     expect(notRecordedItems(without)).toEqual(['destination scan'])
   })
-  // The backend writes no gap for a missing scan-out, so the page has to name it, and name it first: it is the earliest event.
   it('names the origin scan-out first when no parcel record has one, including when there are no records at all', () => {
     const none = notRecordedItems(makeDeliveredJourney({ scans: [] }))
     const noScanOut = notRecordedItems(makeDeliveredJourney({ scans: [makeScan(1, { scan_out_at: null, scan_in_at: '2026-10-08T05:00:00Z', status: 'scanned_in' })] }))
@@ -414,7 +406,6 @@ describe('statusBadge', () => {
   it('names the last recorded consignment phase for a cancelled trip', () => {
     expect(statusBadge(makeWayJourney())).toEqual({ label: 'Trip cancelled after departure', type: 'critical' })
   })
-  // Cancellation is red everywhere else (TRIP_STATUS_META.cancelled.chipType), so the badge takes that type whatever the wording.
   it('takes the shared cancelled chip type for a cancelled trip, by status or by position', () => {
     const byStatus = makeJourney({ trip_status: 'cancelled' })
     const byPosition = makeJourney({ phases: [], progress: { position: 'cancelled', phase_event_id: null, phase_type: null, phase_status: null, has_overrides: false } })
@@ -444,7 +435,6 @@ describe('statusLine', () => {
 
     expect(statusLine(journey)).toBe('Last recorded: scanned in at destination on 08 Oct, 07:00 SAST.')
   })
-  // What is missing is the not-recorded row's job (and the API's gaps); the line above it must not say it a second time.
   it('leaves everything that is missing to the not-recorded row', () => {
     const journeys = [makeWayJourney({ scans: [] }), makeDeliveredJourney({ scans: [makeScan(1)] }), makeJourney()]
 

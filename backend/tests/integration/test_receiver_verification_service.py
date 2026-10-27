@@ -220,9 +220,6 @@ async def test_extracted_identity_disagreeing_with_typed_identity_fails(db_sessi
 
 
 async def test_attach_confirmation_links_the_row_after_the_receiver_signs(db_session, seeded_phase_event):
-    # A synthetic UUID would violate the real FK on handover_confirmation_id in this test
-    # database (Postgres), so a genuine handover_confirmations row is created here via
-    # record_handover_confirmation — same as the end-to-end flow will produce.
     raw_token, token = await _fresh_token(db_session, seeded_phase_event)
     v = await record_consent(db_session, token=token, consent_text=_CONSENT)
     artifact = EvidenceArtifact(
@@ -246,8 +243,6 @@ async def test_attach_confirmation_links_the_row_after_the_receiver_signs(db_ses
     await db_session.refresh(v)
     assert v.handover_confirmation_id == confirmation.id
 
-
-# ── Declined consent, and a verification that must only ever start once ─────────
 
 
 class _CountingIdvsClient(MockIdvsClient):
@@ -275,7 +270,6 @@ async def test_a_decline_records_no_consent_and_says_why(db_session, seeded_phas
     assert v.consent_text_hash is None
     assert v.status is ReceiverVerificationStatus.UNVERIFIED
     assert v.unverified_reason is ReceiverVerificationUnverifiedReason.DECLINED_CONSENT
-    # No selfie or document was taken, so no tier that claims one may be recorded.
     assert v.tier is ReceiverVerificationTier.TYPED_ONLY
 
 
@@ -516,10 +510,6 @@ async def test_resolving_a_vendor_unavailable_verification_twice_files_one_excep
 
     assert await _exception_types(db_session, token.trip_id) == [ExceptionType.RECEIVER_ID_UNVERIFIED]
 
-
-# ── A final verdict is recorded once; a pending one is asked again (review, 22 Oct 2026) ──
-# identity_match is the cross-check RESULT, and None means "nothing to compare", so it cannot
-# also say "the receiver's resolve already finished". These pin the explicit marker instead.
 
 
 async def test_a_failed_verdict_with_no_extracted_identity_is_never_re_resolved(

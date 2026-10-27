@@ -41,8 +41,6 @@ FROZEN_FACADES: frozenset[str] = frozenset({
     "app.integrations.parcel_perfect",
 })
 
-# Retired in stage 7 of the structure plan (audit section 6.2). Old path -> new home is the
-# map in docs/design-notes/2026-10-09-backend-structure-migration-guide.md.
 RETIRED_MODULES: tuple[str, ...] = (
     "app.orchestration.action_location_service",
     "app.orchestration.analytics_service",
@@ -116,14 +114,10 @@ def test_no_test_patches_a_frozen_facade() -> None:
 
 
 def test_scan_actually_finds_patch_sites_in_the_real_test_tree() -> None:
-    # Guards against a scanner that has gone blind (a parse change, a wrong root) and so
-    # reports "no violations" for the wrong reason.
     sites = scan_tree(TESTS_DIR)
 
     assert len(sites) > 100
 
-
-# ── Scanner self-tests: each source below is parsed, never executed ────────────────────
 
 FACADE = frozenset({"app.example.legacy_service"})
 
@@ -271,8 +265,6 @@ def test_scan_reports_nothing_when_no_facade_is_frozen() -> None:
     assert _flagged(source, frozen=frozenset()) == []
 
 
-# ── Facades that are also packages (integrations.parcel_perfect) ──────────────────────
-
 PACKAGE_FACADE = frozenset({"app.integrations.parcel_perfect"})
 
 
@@ -315,8 +307,6 @@ def test_scan_allows_a_setattr_on_an_aliased_submodule_of_the_facade_package() -
 
     assert _flagged(source, PACKAGE_FACADE) == []
 
-
-# ── Patch targets held in a module-level string constant ─────────────────────────────
 
 def test_scan_catches_a_constant_held_target_through_a_frozen_facade() -> None:
     source = (
@@ -407,15 +397,10 @@ def test_scan_still_flags_plain_module_facades_by_prefix() -> None:
     assert len(_flagged(source)) == 1
 
 
-# ── Retired modules: no import, no reference ──────────────────────────────────────────
-
 SCANNED_DIRS: tuple[str, ...] = ("app", "tests", "scripts")
 ORCHESTRATION_DIR = BACKEND_DIR / "app" / "orchestration"
 THIS_FILE = Path(__file__).resolve()
 _RETIRED_STEMS: tuple[str, ...] = tuple(path.rsplit(".", 1)[1] for path in RETIRED_MODULES)
-# Dotted (`app.orchestration.x`) and slash (`app/orchestration/x.py`) spellings. The lookahead
-# stops `phase_service` matching `phase_service_extras`, and the literal `app.orchestration.`
-# prefix stops `app.orchestration.exceptions.review_identity` (the live module) matching.
 _RETIRED_PATH = re.compile(
     r"app[./]orchestration[./](" + "|".join(_RETIRED_STEMS) + r")(?![A-Za-z0-9_])"
 )
@@ -466,8 +451,6 @@ def _scanned_files() -> tuple[Path, ...]:
 
 
 def test_no_retired_module_can_be_imported() -> None:
-    # find_spec imports the parent package only, so this proves the module is gone from the
-    # import path without executing it.
     importable = [name for name in RETIRED_MODULES if importlib.util.find_spec(name) is not None]
     leftover_files = [name for name in RETIRED_MODULES if (BACKEND_DIR / (name.replace(".", "/") + ".py")).exists()]
 
@@ -490,8 +473,6 @@ def test_no_python_file_references_a_retired_module() -> None:
 
 
 def test_the_retired_scan_covers_the_real_tree() -> None:
-    # Guards against a scan that has gone blind (wrong root, empty glob) and so reports
-    # "no references" for the wrong reason.
     scanned = {str(path.relative_to(BACKEND_DIR)) for path in _scanned_files()}
 
     assert len(scanned) > 400

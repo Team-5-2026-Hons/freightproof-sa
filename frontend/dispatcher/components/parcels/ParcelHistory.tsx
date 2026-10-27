@@ -9,7 +9,6 @@ import type { HeadingLevel } from './trace-display'
 
 interface Props { trace: ParcelTraceResponse; returnTo: string; loadingMore: boolean; onLoadMore: () => void }
 
-// The section heading is the overview timeline's sibling h3, so each row reference is an h4 and its own timeline an h5.
 const ROW_TIMELINE_HEADING_LEVEL: HeadingLevel = 5
 const SUMMARY_CLASS = 'flex min-h-11 cursor-pointer list-none items-start gap-2 rounded py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec [&::-webkit-details-marker]:hidden'
 const WRAPPING_CHIP = '!whitespace-normal'
@@ -27,7 +26,6 @@ export function ParcelHistory({ trace, returnTo, loadingMore, onLoadMore }: Prop
   return <section className="mt-4 border-t border-outline-v/25 pt-4">
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
       <h3 className="text-sm font-bold text-on-surf">Earlier trips</h3>
-      {/* With a cursor the loaded count is only what has arrived, never a total. */}
       <span data-earlier-count className="text-xs text-on-surf-v">{`${earlier.length} loaded${hasMore ? ' · more available' : ''}`}</span>
     </div>
     <div className="mt-1 divide-y divide-outline-v/25">
@@ -36,7 +34,6 @@ export function ParcelHistory({ trace, returnTo, loadingMore, onLoadMore }: Prop
         return <details key={journey.trip_id} data-trip-id={journey.trip_id} className="group">
           <summary className={SUMMARY_CLASS}>
             <Ic n="chev" s={14} className="mt-1 shrink-0 text-on-surf-v transition-transform group-open:rotate-90 motion-reduce:transition-none" />
-            {/* One column beside the chevron, so a long route or the manifest label wraps under the reference, not back under the chevron. */}
             <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
               <h4 className="break-all font-bold tabular-nums text-on-surf">{journey.trip_reference}</h4>
               <Chip type={status.chipType} label={status.label} className={WRAPPING_CHIP} />
@@ -44,7 +41,6 @@ export function ParcelHistory({ trace, returnTo, loadingMore, onLoadMore }: Prop
               {journey.membership_source === 'creation_manifest' && <span className="text-xs text-on-surf-v">Planned manifest only</span>}
             </span>
           </summary>
-          {/* Indented to the summary's column: the chevron (14px) plus its gap. */}
           <div className="mt-2 pl-[22px]"><ParcelTimeline journey={journey} returnTo={returnTo} headingLevel={ROW_TIMELINE_HEADING_LEVEL} /></div>
         </details>
       })}

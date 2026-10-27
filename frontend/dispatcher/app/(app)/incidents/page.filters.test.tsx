@@ -7,8 +7,6 @@ import { listIncidents } from '@/lib/api/incidents'
 import { useRealtimeChannel } from '@/lib/realtime/RealtimeProvider'
 import type { IncidentListFilters, IncidentSummary } from '@/lib/types/incident'
 
-// Unlike page.test.tsx this one runs the real useIncidents hook: the defect was that choosing a tab
-// changed the filters but never refetched, which a mocked hook cannot show.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -37,7 +35,6 @@ function incident(id: string, tripReference: string, status: IncidentSummary['st
 const INVESTIGATING = incident('inv', 'FP-INVESTIGATING', 'investigating')
 const CLOSED = incident('clo', 'FP-CLOSED', 'closed')
 
-// Stands in for the server: it narrows by status the way GET /incidents does.
 async function fakeServer(filters?: IncidentListFilters): Promise<IncidentSummary[]> {
   const all = [INVESTIGATING, CLOSED]
   return filters?.status ? all.filter(i => i.status === filters.status) : all
@@ -65,7 +62,6 @@ describe('IncidentsPage status tabs', () => {
   })
 
   it('carries_the_filtered_list_into_each_row_link_as_returnTo', async () => {
-    // The incident page's own Back button reads returnTo; without it only browser Back kept the filter.
     render(<ForensicModeProvider><IncidentsPage /></ForensicModeProvider>)
     await flush()
     fireEvent.click(screen.getByRole('tab', { name: 'Closed' }))

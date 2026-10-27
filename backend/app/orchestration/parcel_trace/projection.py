@@ -19,8 +19,6 @@ def _cargo_stops(records: JourneyRecords) -> tuple[TripStop | None, TripStop | N
         pickup = next((s for s in records.stops if s.id == cargo.pickup_stop_id), None)
         delivery = next((s for s in records.stops if s.id == cargo.delivery_stop_id), None)
         return pickup, delivery
-    # FP-281 manifest creation is a two-stop contract. Do not infer boundaries for
-    # arbitrary historical multi-stop plans whose consignment links no longer exist.
     if records.trip.pp_manifest_number is not None and len(records.stops) == 2:
         return records.stops[0], records.stops[-1]
     return None, None
@@ -57,8 +55,6 @@ def _relevance(
     if not window[0] <= event.sequence_number <= window[1]:
         return "trip_context"
     pickup, delivery = _cargo_stops(records)
-    # Through-carried cargo inherits the leg evidence, not other consignments'
-    # loading/unloading observations at an intermediate stop.
     expected = pickup if event.phase_type == PhaseType.LOADING else delivery if event.phase_type == PhaseType.UNLOADING else None
     if expected is not None and event.trip_stop_id != expected.id:
         return "trip_context"

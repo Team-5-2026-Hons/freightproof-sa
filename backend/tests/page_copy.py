@@ -8,13 +8,10 @@ FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "dispatcher"
 FLEET_COPY_DIR = FRONTEND / "components" / "analytics" / "fleet"
 COPY_FILES = (FLEET_COPY_DIR / "copy.ts", FLEET_COPY_DIR / "costCopy.ts")
 
-# The copy keys whose plain-string values explain what a figure counts. Function values (counts filled in at run
-# time) aren't plain strings, so they aren't read here.
 EXPLAINING_KEYS = (
     "scopeNote", "dataNote", "tabNote", "source", "sub", "caption", "intro", "note", "caveat", "live",
     "fadedNote", "monthNeedsYear", "partialFootnote", "basis",
 )
-# The guide also carries each chart's question (its purpose) and where each cost rate came from.
 GUIDE_KEYS = (*EXPLAINING_KEYS, "question", "origin")
 
 _LITERAL = r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\""

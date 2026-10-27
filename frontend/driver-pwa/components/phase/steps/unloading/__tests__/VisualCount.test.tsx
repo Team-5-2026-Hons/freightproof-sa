@@ -19,16 +19,10 @@ import { VisualCount } from '../VisualCount'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
 
-// StepHeader (rendered by the step) calls useRouter — stub it so the component mounts
-// under jsdom, matching every other step-component suite.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
-// The blocked branch now renders WarehouseWaitCard, which reads useTrip() directly
-// (see components/phase/WarehouseWaitCard.tsx) — this suite renders VisualCount bare,
-// with no TripProvider ancestor, so the real hook (which throws outside one) has to be
-// stubbed the same way linehaul.test.tsx already stubs it.
 vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => ({ refreshQuietly: vi.fn(), isRefreshing: false, lastRefreshedAt: null }),
 }))
@@ -93,9 +87,6 @@ describe('VisualCount — scan gate (blocked_on)', () => {
   })
 
   it('treats a fixture with no blocked_on key at all as unblocked, not permanently blocked', () => {
-    // `blocked_on` is optional on PhaseDescriptor — `phase.blocked_on !== null` alone
-    // would read `undefined !== null` (true) and lock every driver out forever. The
-    // component must coalesce to null first.
     const phaseWithoutField = { ...makePhase('unloading') }
     delete phaseWithoutField.blocked_on
 
@@ -112,10 +103,10 @@ describe('VisualCount — optional count', () => {
 
   function completeSwipe() {
     const slider = screen.getByRole('slider', { name: 'Swipe to Confirm Count' })
-    fireEvent.keyDown(slider, { key: 'Enter' }) // arm
-    fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
+    fireEvent.keyDown(slider, { key: 'Enter' })
+    fireEvent.keyDown(slider, { key: 'Enter' })
     act(() => {
-      vi.advanceTimersByTime(CONFIRM_DISPATCH_MS) // SwipeToConfirm's delay before handing off
+      vi.advanceTimersByTime(CONFIRM_DISPATCH_MS)
     })
   }
 
@@ -172,7 +163,6 @@ describe('VisualCount — optional count', () => {
     const onComplete = vi.fn()
     renderStep({ onUpdate, onComplete })
 
-    // Field is left untouched — the empty string is its initial state.
     expect(screen.getByRole('slider', { name: 'Swipe to Confirm Count' })).toHaveAttribute('aria-disabled', 'false')
 
     completeSwipe()
@@ -208,10 +198,6 @@ describe('VisualCount — optional count', () => {
   })
 })
 
-// F1 fence, scoped to this component's own suite (the shared regression fence lives in
-// components/phase/steps/__tests__/visualCountBlindEntry.test.tsx). This is a BLIND
-// entry: no h2Count-style prop, no expected/reference count, no mismatch banner — the
-// server reconciles privately and returns only a verdict, elsewhere.
 describe('VisualCount — F1 blind-entry fence', () => {
   const ORIGIN_COUNT = 517
   const DESTINATION_COUNT = 519

@@ -7,8 +7,6 @@ import type { DriverMetrics } from '@shared/lib/types/analytics'
 import { ANALYTICS_COPY } from './copy'
 import { DriverAnalyticsSummary } from './DriverAnalyticsSummary'
 
-// The hook's fetching, range keying and stale-reply handling are covered by
-// useAnalytics.test.tsx. Here it is stubbed so each test sets the state it needs.
 vi.mock('@/lib/hooks/useAnalytics', () => ({
   useDriverAnalytics: vi.fn(),
 }))
@@ -111,7 +109,6 @@ describe('DriverAnalyticsSummary — loading and errors', () => {
   it('keeps the month range control on screen after a failure', () => {
     renderSummary({ rows: [], error: 'Request failed' })
 
-    // From month, From year, To month, To year.
     expect(screen.getAllByRole('combobox')).toHaveLength(4)
   })
 })
@@ -151,7 +148,6 @@ describe('DriverAnalyticsSummary — populated', () => {
     expect(valueOf('Info')).toBe('1')
     expect(valueOf('Warning')).toBe('2')
     expect(valueOf('Critical')).toBe('0')
-    // total_exceptions_count (3) is their sum and must not appear anywhere.
     expect(screen.queryByText('3')).not.toBeInTheDocument()
   })
 

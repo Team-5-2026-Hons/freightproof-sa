@@ -33,8 +33,6 @@ from app.db.models.organisations import Organization
 from app.db.models.people import Driver, User
 from app.db.models.sessions import DriverSession, UserSession
 
-# One page load fans out to more than two calls, and the failure only appears for the
-# racers that lose — three makes the loser side of the race plural, as it is in the app.
 _RACERS = 3
 
 
@@ -74,7 +72,6 @@ async def dispatcher(test_engine):
 async def test_parallel_first_requests_on_a_new_session_all_succeed(test_engine, dispatcher) -> None:
     sessionmaker = async_sessionmaker(test_engine, expire_on_commit=False)
     barrier = asyncio.Barrier(_RACERS)
-    # One session_id, as it would be: every request from the page carries the same token.
     payload = {
         "session_id": str(uuid.uuid4()),
         "iat": int(datetime.now(UTC).timestamp()),
@@ -82,7 +79,6 @@ async def test_parallel_first_requests_on_a_new_session_all_succeed(test_engine,
 
     async def racer() -> None:
         async with sessionmaker() as db:
-            # Released together, immediately before the SELECT that finds no row.
             await barrier.wait()
             await enforce_user_idle_timeout(db, user_id=dispatcher.id, payload=payload)
             await db.commit()
@@ -99,17 +95,8 @@ async def test_parallel_first_requests_on_a_new_session_all_succeed(test_engine,
     assert len(rows) == 1
 
 
-# How long the "slow endpoint" holds its request open. Comfortably longer than a stamp
-# (~0.05s locally) so the assertion below can tell blocking from ordinary latency without
-# being a stopwatch race, and short enough not to drag the suite out. 1.5s keeps the
-# blocked threshold below at 0.5s, ~10x a stamp; 3.0s cost 6s of suite time for no
-# extra discrimination.
 _SLOW_REQUEST_SECONDS = 1.5
 
-# The line between "made its own progress" and "waited for the slow request". Set at a
-# third of the slow request rather than at a stamp's real cost, so ordinary jitter or a
-# loaded CI box cannot fail it — a regression parks the fast requests at the full
-# _SLOW_REQUEST_SECONDS, which is nowhere near this.
 _BLOCKED_THRESHOLD_SECONDS = _SLOW_REQUEST_SECONDS / 3
 
 
@@ -138,7 +125,6 @@ async def test_a_slow_request_does_not_stall_its_siblings(test_engine, dispatche
             await enforce_user_idle_timeout(db, user_id=dispatcher.id, payload=payload)
             stamp_durations[name] = time.perf_counter() - started
             if slow:
-                # Stands in for an endpoint that works for a long time after authenticating.
                 await asyncio.sleep(_SLOW_REQUEST_SECONDS)
             await db.commit()
 
@@ -151,8 +137,6 @@ async def test_a_slow_request_does_not_stall_its_siblings(test_engine, dispatche
     stalled = {n: d for n, d in stamp_durations.items() if d > _BLOCKED_THRESHOLD_SECONDS}
     assert stalled == {}, f"requests blocked on the session row: {stalled}"
 
-
-# ── Driver ───────────────────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture
@@ -238,18 +222,10 @@ async def test_the_older_handset_still_loses_when_both_arrive_at_once(test_engin
         racer(new_handset), racer(old_handset), return_exceptions=True,
     )
 
-    # The newer handset must never be the one that loses — that is the rule, and it does
-    # not depend on which of the two reached Postgres first.
     assert outcomes[0] is None, f"the newer handset was refused: {outcomes[0]!r}"
-    # The old handset either arrives second and is refused, or arrives first, claims the
-    # row and is then superseded by the newer one. Both are correct, and which one happens
-    # depends on arrival order — so this pins the part that is invariant: if it was
-    # refused at all, it was refused as superseded, never with a database error.
     if outcomes[1] is not None:
         assert isinstance(outcomes[1], HTTPException), f"expected a refusal, got {outcomes[1]!r}"
         assert outcomes[1].detail == SESSION_SUPERSEDED_DETAIL
-
-    # The invariant that holds either way: the newer handset ends up owning the account.
 
     async with sessionmaker() as db:
         row = (await db.execute(

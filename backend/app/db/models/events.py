@@ -18,7 +18,6 @@ from app.db.models import Base
 
 class VehicleEvent(Base):
     __tablename__ = "vehicle_events"
-    # Declared so autogenerate stops proposing to drop an index that already exists.
     __table_args__ = (
         Index("ix_vehicle_events_vehicle_id", "vehicle_id"),
     )
@@ -49,7 +48,6 @@ class VehicleEvent(Base):
 
 class DriverEvent(Base):
     __tablename__ = "driver_events"
-    # Declared so autogenerate stops proposing to drop an index that already exists.
     __table_args__ = (
         Index("ix_driver_events_driver_id", "driver_id"),
     )
@@ -84,7 +82,6 @@ class PrecinctEvent(Base):
     before anchoring: it holds no personal data (see fleet.precincts.create_precinct)."""
 
     __tablename__ = "precinct_events"
-    # Declared so autogenerate stops proposing to drop an index that already exists.
     __table_args__ = (
         Index("ix_precinct_events_precinct_id", "precinct_id"),
     )

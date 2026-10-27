@@ -13,7 +13,6 @@ interface Props {
   role: string
   open: boolean
   onClose: () => void
-  /** This trip's own URL, so the vehicle page's Back returns here. */
   returnTo: string
 }
 

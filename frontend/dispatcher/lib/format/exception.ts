@@ -9,22 +9,13 @@ import { fmtSastDateParts, fmtSastDateTime } from '@shared/lib/utils/datetime'
 
 export const VEHICLE_NOT_RECORDED = 'Not recorded'
 
-// Types whose generic title-casing below reads wrong. The en dash is deliberate: it is
-// a relation between two parties ("driver–vehicle"), not a hyphenated word.
 const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
   gps_mismatch: 'GPS mismatch',
   driver_vehicle_separation: 'Driver–vehicle separation',
-  // The driver's phone, not the tracker, was outside the expected precinct, kept
-  // distinct in wording from driver_vehicle_separation (a tracker disagreement) so a
-  // dispatcher scanning the queue can't mistake one for the other.
   driver_location_mismatch: 'Driver outside precinct',
-  // The three road findings (road_check_service) read as one family, in the same
-  // sentence case as the labels above. "In transit" title-cased reads like a phase
-  // name; the dispatcher needs the place.
   trailer_separated_in_transit: 'Trailer separated on the road',
   moved_before_departure: 'Moved before departure',
   tracker_silent: 'Tracker silent',
-  // Raised only for a completed driver transfer that carries a problem; a clean transfer raises nothing.
   driver_substitution: 'Driver transfer needs review',
 }
 
@@ -36,9 +27,6 @@ export function fmtExceptionType(type: string): string {
     ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bId\b/g, 'ID')
 }
 
-// Mirrors the prefix the backend writes when a dispatcher cancels a trip (orchestration
-// trips/administration.py). The backend keeps the raw user id so the line stays machine-findable;
-// the dispatcher UI swaps it for the name. UUIDs are 36 characters: 32 hex plus four hyphens.
 const CANCEL_NOTE_PREFIX = /^Cancelled by user [0-9a-f-]{36}: /i
 const CANCEL_NOTE_PREFIX_LABEL = 'Cancelled by '
 const UNNAMED_DISPATCHER = 'a dispatcher'
@@ -97,8 +85,6 @@ export function fmtExceptionPhaseStop(phase: string | null, stop: number | null)
 }
 
 const EXCEPTION_REF_PREFIX = 'EX-'
-// Eight hex characters is 32 bits: enough that two exceptions on one screen never collide in
-// practice, short enough to scan in a list. Display only; every link and API call uses the full id.
 const EXCEPTION_REF_LENGTH = 8
 
 /** A short, stable label for telling identical-looking exceptions apart: "EX-3F9A21C4". Derived

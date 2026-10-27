@@ -2,10 +2,6 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
-// Contrast is computed from the real token values in app/globals.css, not from a copy of
-// them, so a palette edit that drops a text/ground pair below WCAG fails here instead of
-// on a phone in the sun. Pairs are the ones the overhaul renders actually put together.
-
 type Rgb = readonly [number, number, number]
 
 const CSS = readFileSync(join(process.cwd(), 'app/globals.css'), 'utf8')
@@ -35,8 +31,6 @@ function ratio(a: Rgb, b: Rgb): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-// [foreground, ground, minimum]. 4.5:1 for text; 3:1 for the progress segment, which is
-// a non-text indicator (WCAG 1.4.11).
 const PAIRS: readonly (readonly [string, string, number])[] = [
   ['surface-on', 'surface', 4.5],
   ['surface-on-variant', 'surface', 4.5],
@@ -45,15 +39,15 @@ const PAIRS: readonly (readonly [string, string, number])[] = [
   ['primary-on', 'primary', 4.5],
   ['success', 'surface', 4.5],
   ['success-ink', 'success-tint', 4.5],
-  ['success', 'success-tint', 4.5], // met RequirementChips
+  ['success', 'success-tint', 4.5],
 
   ['attention', 'surface', 4.5],
   ['attention', 'attention-tint', 4.5],
   ['attention-ink', 'attention-tint', 4.5],
   ['error', 'surface', 4.5],
   ['error', 'error-tint', 4.5],
-  ['error-on', 'error', 4.5], // the panic swipe's label on its red track (7.1)
-  ['chain', 'surface', 4.5], // the receipt's "Anchoring…" label on the white toast (5.4)
+  ['error-on', 'error', 4.5],
+  ['chain', 'surface', 4.5],
   ['chain', 'chain-tint', 4.5],
   ['secondary', 'surface', 3],
 ]
@@ -73,7 +67,6 @@ describe.each([':root', '.dark'] as const)('palette contrast in %s', (selector) 
 
 describe('light page ground', () => {
   it('test_light_surface_is_pure_white', () => {
-    // Tim, 14 Oct: full white backgrounds. The old ground was a pink-cast #fcf8f9.
     expect(tokens(':root').surface).toEqual([255, 255, 255])
   })
 })

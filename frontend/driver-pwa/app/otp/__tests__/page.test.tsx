@@ -15,7 +15,6 @@ const PHONE = '+27821234567'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
-  // The page only calls .get('phone'); a plain URLSearchParams satisfies that.
   useSearchParams: () => new URLSearchParams(`phone=${encodeURIComponent('+27821234567')}`),
 }))
 
@@ -37,10 +36,6 @@ function renderOtpPage() {
   )
 }
 
-// The OTP entry is now six separate one-digit boxes (OtpInput) rather than a single
-// text field. iOS's one-time-code autofill (and a manual paste) both deliver the
-// whole code as one change event on whichever box is focused — same as this fixture
-// simulates by firing a multi-character change on the first box.
 function getFirstOtpBox() {
   return screen.getByLabelText(/digit 1 of 6/i)
 }
@@ -49,7 +44,6 @@ describe('OtpPage resend cooldown', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRequestOtp.mockResolvedValue(undefined)
-    // Cooldown behaviour is driven by wall-clock timers — control them.
     vi.useFakeTimers()
   })
 
@@ -144,7 +138,6 @@ describe('OtpPage auto-submit and navigation', () => {
     await act(async () => {
       fireEvent.change(input, { target: { value: '123456' } })
     })
-    // A second 6-digit change while loading must be ignored by the guard.
     await act(async () => {
       fireEvent.change(input, { target: { value: '654321' } })
     })
@@ -205,8 +198,6 @@ describe('OtpPage return-path redirect', () => {
   })
 
   it('rejects an unsafe saved value and falls back to the default landing page', async () => {
-    // Same-origin check happens again on the way out — a stored value is not trusted
-    // just because it once passed validation on the way in.
     localStorage.setItem(RETURN_PATH_KEY, '//evil.com')
     renderOtpPage()
 

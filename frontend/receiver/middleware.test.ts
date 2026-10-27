@@ -9,7 +9,6 @@ describe('CSP middleware', () => {
     const policy = response.headers.get('Content-Security-Policy') ?? ''
     const nonce = /'nonce-([^']+)'/.exec(policy)?.[1]
     expect(nonce).toBeTruthy()
-    // NextResponse.next({ request: { headers } }) forwards overridden request headers this way.
     expect(response.headers.get('x-middleware-request-x-nonce')).toBe(nonce)
     expect(response.headers.get('x-middleware-request-content-security-policy')).toBe(policy)
   })

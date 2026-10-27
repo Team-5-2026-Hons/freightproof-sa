@@ -5,8 +5,6 @@ import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import { ROUTES } from '@/lib/constants/routes'
 import { currentStepRoute, nextStepRoute, phaseStepRoute } from '../routes'
 
-// Marks every phase up to and including `through` (by sequence_number) as completed.
-// Local to the test file — see the matching helper in derive.test.ts for why.
 function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
   return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
@@ -32,18 +30,12 @@ describe('currentStepRoute', () => {
   })
 
   it('walks past a PENDING in_transit to the arrival step (the mid-leg case)', () => {
-    // The exact ledger the driving screen renders against: departure resolved, in_transit
-    // still open. The backend keeps it open for the whole drive, so it is currentPhase()
-    // — and it has no recipe, so stopping here would leave the driver nowhere to go. The
-    // seal is inspected on the arrival phase before the doors open, ahead of unloading.
     const departureSeq = findByType(SINGLE_LEG_PHASE_PLAN, 'departure').sequence_number
     const plan = walk(SINGLE_LEG_PHASE_PLAN, departureSeq)
     expect(currentStepRoute(plan)).toBe(phaseStepRoute('arrival', STEP_SLUGS.arrival[0]))
   })
 
   it('lands on leg 2’s arrival, not leg 1’s, on a cross-dock plan', () => {
-    // Proves the skip is a sequence_number walk, not a phase_type lookup: leg 1's
-    // arrival is already resolved earlier in this same plan.
     const inTransits = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')
     expect(inTransits.length).toBeGreaterThan(1)
     const secondInTransit = inTransits[1]
@@ -63,8 +55,6 @@ describe('currentStepRoute', () => {
 
 describe('nextStepRoute', () => {
   it('advances to the next step within the same phase recipe', () => {
-    // unloading is now a single-step recipe (visual count only — the seal moved to
-    // arrival), so departure (two steps) is the multi-step recipe exercising this path.
     const departure = findByType(SINGLE_LEG_PHASE_PLAN, 'departure')
 
     const route = nextStepRoute(SINGLE_LEG_PHASE_PLAN, departure, STEP_SLUGS.departure[0])
@@ -73,7 +63,6 @@ describe('nextStepRoute', () => {
   })
 
   it('advances to the first step of the next unresolved phase at the end of a recipe', () => {
-    // Resolve everything through activation; loading (the next phase) is still pending.
     const activationSeq = findByType(SINGLE_LEG_PHASE_PLAN, 'activation').sequence_number
     const plan = walk(SINGLE_LEG_PHASE_PLAN, activationSeq)
     const activation = plan.find((p) => p.sequence_number === activationSeq)!
@@ -85,10 +74,6 @@ describe('nextStepRoute', () => {
   })
 
   it('skips a phase whose recipe is empty and lands on the following one that has steps', () => {
-    // The real plan generator never emits an empty-recipe phase (trip_creation)
-    // anywhere but position 0, so this hand-builds one mid-plan by cloning a real
-    // row — proving the walk is driven purely by recipe length, not by which phase
-    // type it happens to be skipping over.
     const activation = findByType(SINGLE_LEG_PHASE_PLAN, 'activation')
     const loadingTemplate = findByType(SINGLE_LEG_PHASE_PLAN, 'loading')
 
@@ -123,21 +108,12 @@ describe('nextStepRoute', () => {
     )!
     const lastDepartureSlug = STEP_SLUGS.departure[STEP_SLUGS.departure.length - 1]
 
-    // Leg 2's in_transit is still PENDING here, and is walked straight past: its recipe
-    // is empty since the GPS-capture step was removed, and firstStepAfter skips any
-    // phase with nothing for the driver to do rather than composing a step URL for it.
-    // The landing spot is leg 2's arrival — the SECOND one, not the first, which is
-    // already resolved earlier in this same plan. That is what proves the walk is a
-    // sequence_number walk and not a phase_type lookup.
     expect(STEP_SLUGS.in_transit).toHaveLength(0)
     const midPlan = walk(CROSS_DOCK_PHASE_PLAN, secondDeparture.sequence_number)
     const departureMid = midPlan.find((p) => p.sequence_number === secondDeparture.sequence_number)!
     expect(nextStepRoute(midPlan, departureMid, lastDepartureSlug))
       .toBe(phaseStepRoute('arrival', STEP_SLUGS.arrival[0]))
 
-    // And once leg 2's in_transit is RESOLVED as well, the same completion still lands
-    // there — the route must not depend on whether the driverless phase in between has
-    // been closed yet.
     const resolvedPlan = walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number)
     const departureResolved = resolvedPlan.find((p) => p.sequence_number === secondDeparture.sequence_number)!
     expect(nextStepRoute(resolvedPlan, departureResolved, lastDepartureSlug))
@@ -156,8 +132,6 @@ describe('nextStepRoute', () => {
   it('walks past an already-completed in_transit phase with no special-casing (fence 3)', () => {
     const departure = findByType(SINGLE_LEG_PHASE_PLAN, 'departure')
     const inTransit = findByType(SINGLE_LEG_PHASE_PLAN, 'in_transit')
-    // in_transit is auto-completed server-side — simulate that by resolving it even
-    // though nothing here walked its own recipe.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, inTransit.sequence_number)
     const departureResolved = plan.find((p) => p.sequence_number === departure.sequence_number)!
     const lastDepartureSlug = STEP_SLUGS.departure[STEP_SLUGS.departure.length - 1]

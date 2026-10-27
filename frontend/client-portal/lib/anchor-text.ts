@@ -4,7 +4,6 @@ import type { AnchorCheckState } from './verify'
 
 export interface StateText {
   text: string
-  /** A design-token text class: ok = confirmed, err = contradicted, warn = not confirmed. */
   tone: string
 }
 

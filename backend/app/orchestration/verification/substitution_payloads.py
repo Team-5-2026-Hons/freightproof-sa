@@ -50,7 +50,7 @@ class ReceiptBinding:
 
 def receipt_binding_findings(receipt: BlockchainReceipt | None, binding: ReceiptBinding) -> list[str]:
     if binding.receipt_id is None:
-        return []  # not anchored yet; the caller reports PENDING
+        return []
     if receipt is None:
         return ["Linked custody receipt is missing."]
     if (receipt.id != binding.receipt_id or receipt.subject_id != binding.subject_id or receipt.subject_type != binding.subject_type

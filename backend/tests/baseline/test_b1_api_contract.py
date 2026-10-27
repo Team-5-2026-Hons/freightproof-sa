@@ -45,8 +45,6 @@ def test_dev_tooling_only_adds_to_the_api_and_matches_committed_snapshot() -> No
 
     additions = _dev_additions(without_dev, with_dev)
 
-    # Dev tooling must be purely additive: switching it on may never change or remove a
-    # production route, otherwise the main snapshot would not describe production.
     for path, item in without_dev["paths"].items():
         for method, operation in item.items():
             assert with_dev["paths"][path][method] == operation, f"{method.upper()} {path} differs with dev tooling on"

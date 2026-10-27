@@ -5,11 +5,6 @@ import { Ic } from '@/components/ui/Ic'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
 
-// Minimal shape both this component and its predicate actually read. Narrower than the
-// full TripException so the exception-detail page's TripExceptionDetail record — which
-// carries these same three fields, all non-optionally — satisfies this structurally with
-// no cast, and without that page having to fabricate an artifactsById Map it has no use
-// for (it already has the one relevant artifact in hand).
 type ExceptionEvidenceSource = Pick<
   TripException,
   'gps_lat' | 'gps_lng' | 'supporting_artifact_id' | 'action_location_assessment' | 'supporting_artifacts'
@@ -17,24 +12,10 @@ type ExceptionEvidenceSource = Pick<
 
 interface Props {
   exception: ExceptionEvidenceSource
-  // Optional: the trip timeline and trip-detail page build this from useTripArtifacts
-  // (a trip-wide fetch); the exception-detail page has no such Map and passes `artifact`
-  // instead. Not required together — see the resolution order below.
   artifactsById?: Map<string, EvidenceArtifactWithUrl>
-  // Optional: a caller that already holds the one artifact this exception could
-  // reference (the exception-detail page, from its own GET's nested `supporting_artifact`)
-  // passes it directly rather than standing up a one-entry Map.
   artifact?: EvidenceArtifactWithUrl
 }
 
-/**
- * What the driver actually captured when they raised this exception.
- *
- * The backend has always sent `supporting_artifact_id` and the GPS fix, and the timeline
- * rendered the description text alone — so a `cargo_damage` raised with a photograph, or
- * a panic button carrying the coordinates it was pressed at, reached the dispatcher as a
- * sentence. Renders nothing when the exception carries neither.
- */
 /**
  * Whether this exception has anything for the panel below to render.
  *
@@ -71,14 +52,7 @@ function EvidencePhotoOrGap({ label, artifact }: { label: string; artifact: Evid
 
 export function ExceptionEvidence({ exception, artifactsById, artifact: artifactProp }: Props) {
   const artifactId = exception.supporting_artifact_id
-  // An explicitly-passed artifact always wins. There is no case where a caller passes
-  // `artifact` AND needs the Map fallback: TripExceptionDetail's supporting_artifact and
-  // supporting_artifact_id are always in lockstep (both null, or both set), so when
-  // `artifact` is undefined here it is because there genuinely is none — falling through
-  // to the id/Map lookup is exactly what the two Map-based callers still need.
   const artifact = artifactProp ?? (artifactId ? artifactsById?.get(artifactId) : undefined)
-  // A multi-photo report names every photo; each is resolved the same way as the single one,
-  // so a photo the trip fetch could not return reads "could not be retrieved", never vanishes.
   const photoIds = (exception.supporting_artifacts ?? []).map(photo => photo.id)
 
   const lat = exception.gps_lat
@@ -90,9 +64,6 @@ export function ExceptionEvidence({ exception, artifactsById, artifact: artifact
 
   return (
     <div className="mt-[8px] pt-[8px] border-t border-warn/20 flex flex-wrap items-start gap-5">
-      {/* Three states, kept apart. An id with no artifact behind it is NOT "nothing was
-          captured" — the record says a photo exists and we could not retrieve it, which
-          is a retrieval failure the dispatcher has to be able to see. */}
       {photoIds.length > 1 ? photoIds.map((id, index) => (
         <EvidencePhotoOrGap key={id} label={`Photo ${index + 1} of ${photoIds.length}`} artifact={artifactsById?.get(id)} />
       )) : artifactId !== null && (

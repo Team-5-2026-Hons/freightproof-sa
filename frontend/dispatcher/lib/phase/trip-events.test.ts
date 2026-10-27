@@ -79,7 +79,6 @@ describe('positionTripEvents', () => {
   describe('during an In Transit leg', () => {
     const LEG_TYPES = ['trip_creation', 'activation', 'loading', 'departure', 'in_transit', 'unloading'] as const
 
-    // Departure resolved at minute 30; In Transit is the live leg unless `arrivedAt` resolves it.
     function legPlan(arrivedAt: number | null = null): PhaseDescriptor[] {
       return mockTrips[0]!.phases.slice(0, LEG_TYPES.length).map((p, index): PhaseDescriptor => {
         const resolved = index < 4 || (index === 4 && arrivedAt !== null)

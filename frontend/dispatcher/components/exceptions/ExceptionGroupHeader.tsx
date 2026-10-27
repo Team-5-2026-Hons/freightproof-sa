@@ -6,7 +6,6 @@ import type { ExceptionTripGroup } from '@/lib/exceptions/queue'
 export interface ExceptionGroupHeaderProps {
   group: ExceptionTripGroup
   open: boolean
-  /** Id of the body this header controls, for `aria-controls`. */
   bodyId: string
   onToggle: () => void
 }

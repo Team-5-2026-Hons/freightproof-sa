@@ -112,12 +112,10 @@ TOOL_CAP_MESSAGE = (
     "That needs more figures than I can look up in one go. Try asking about one thing at a time."
 )
 CUT_OFF_MESSAGE = "That answer ran too long. Try asking a narrower question."
-# Sent back to the model, once, when it gave figures without calling a tool (eval run 4, q16).
 FIGURES_NEED_A_TOOL = (
     "Your last reply gave figures without calling a tool. Every figure must come from a tool result. "
     "Call the right tool and answer from it, or reply without any figures."
 )
-# Shown instead when it does it again: made-up figures never reach the dispatcher.
 NO_SOURCE_MESSAGE = (
     "I couldn't back that answer with figures from the page. Try naming the figure and the period, "
     "for example: on-time arrivals over the last 12 weeks."

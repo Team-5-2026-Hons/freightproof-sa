@@ -8,7 +8,6 @@ const TIMELINE_ROWS = 6
 
 interface Props {
   onBack: () => void
-  /** Real header, rendered from the list row that led here. Absent on a cold URL. */
   header?: ReactNode
 }
 
@@ -60,7 +59,6 @@ export function TripDetailSkeleton({ onBack, header }: Props) {
           </section>
         </div>
       </div>
-      {/* Matches DetailPanel's own dock threshold so the shell and the real panel agree. */}
       <aside className="hidden w-[400px] shrink-0 flex-col border-l border-outline-v/30 bg-surf-low xl:flex">
         <div className="shrink-0 border-b border-outline-v/30 p-4"><Skeleton className="h-9 w-full rounded-[10px]" /></div>
         <div className="space-y-3 p-5">

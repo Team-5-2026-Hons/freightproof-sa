@@ -20,8 +20,6 @@ from app.db.models.phases import PhaseEvent
 logger = logging.getLogger(__name__)
 
 
-# Every driver-completable phase has a receipt type. trip_creation is absent on purpose:
-# it is anchored by create_trip as the JOURNEY_LOCK, not through this path.
 _PHASE_RECEIPT_TYPES = {
     PhaseType.ACTIVATION: BlockchainReceiptType.ACTIVATION,
     PhaseType.LOADING: BlockchainReceiptType.LOADING,
@@ -57,16 +55,11 @@ async def anchor_phase_event(
     )
     event = result.scalar_one_or_none()
     if event is None:
-        # Nothing to anchor and nothing to retry — the row a receipt was owed against is
-        # gone. Loud, because it should be impossible: the dispatch only happens after
-        # the transaction that wrote this row has committed.
         logger.error("Anchor requested for unknown phase_event_id=%s", phase_event_id)
         return False
 
     event.updated_at = datetime.now(UTC)
 
-    # Celery delivery is at-least-once. Serialize duplicate workers on this row and
-    # never submit a second HCS message once the first worker linked its receipt.
     if event.blockchain_receipt_id is not None:
         event.anchor_status = AnchorStatus.ANCHORED
         return True
@@ -117,7 +110,6 @@ async def _anchor_or_fail_open(
             canonical_payload=canonical_payload, receipt_type=receipt_type, trip_id=event.trip_id,
         )
     except (HederaTimeoutError, HederaServiceError) as exc:
-        # Preserve the failure reason while the worker retries the durable debt.
         logger.exception(
             "Anchor failed for phase_event_id=%s (fail-open): retry owed — %s", event.id, exc,
         )

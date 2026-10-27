@@ -19,15 +19,11 @@ import { FLEET_COPY } from '../copy'
 import { fmtBucketName, sumOf } from '../format'
 
 const COPY = COST_COPY
-// Enough lanes to see the costly ones at a glance; the table twin lists them all.
 const TOP_LANES = 10
-// Lane names are long, as on Routes & sites.
 const LANE_AXIS_WIDTH = 280
 const LATE_HOURS_DECIMALS = 1
-// The headline card's placeholder while loading: about the height of three figures and their lines.
 const HEADLINE_HEIGHT = 120
 
-// One colour per cost part, in the order they stack (fuel at the bottom, the biggest share).
 const PART_COLORS = {
   fuel: SERIES_COLORS[0],
   running: SERIES_COLORS[1],
@@ -358,7 +354,6 @@ function LanesCard({ cost }: { cost: FleetQueryResult<FleetCost> }) {
     perTrip: fmtRand(lane.operating_per_trip),
     delay: fmtRand(lane.delay_cost),
     value: fmtRand(lane.value_exposed),
-    // A lane none of whose trips was costed measured no distance, so it has no source to name.
     distance: lane.operating_per_trip === null ? NO_DATA : l.distanceSource[lane.distance_source],
   }))
 

@@ -28,7 +28,6 @@ vi.mock('@/lib/hooks/useTrips', () => ({ useTrips: vi.fn() }))
 const mockedUseTrips = vi.mocked(useTrips)
 const mockedUsePrecincts = vi.mocked(usePrecincts)
 
-// The list only reads the name; the rest of a full Driver is irrelevant to these tests.
 const driverNamed = (name: string): TripSummary['driver'] => ({ full_name: name }) as TripSummary['driver']
 
 function makeTrip(id: string, overrides: Partial<TripSummary> = {}): TripSummary {
@@ -52,7 +51,6 @@ function makeTrip(id: string, overrides: Partial<TripSummary> = {}): TripSummary
   } as unknown as TripSummary
 }
 
-// Flagged: unreviewed exceptions, so it qualifies for the dashboard's Needs action panel.
 const flagged = (id: string, overrides: Partial<TripSummary> = {}): TripSummary =>
   makeTrip(id, { needs_review_count: 1, attention: { critical: 0, warning: 1, info: 0, claimed: 0 }, ...overrides })
 
@@ -60,7 +58,6 @@ function tripsState(overrides: Partial<UseTripsResult> = {}): UseTripsResult {
   return { trips: [], isLoading: false, error: null, refetch: vi.fn(), ...overrides }
 }
 
-// Row order as the dispatcher sees it: the trip references in the order the rows appear.
 const rowRefs = (): string[] =>
   screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link').getAttribute('aria-label')?.split(' · ')[1] ?? '')
 

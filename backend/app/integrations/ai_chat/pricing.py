@@ -34,8 +34,6 @@ class TokenPrices:
 @dataclass(frozen=True)
 class ModelPrice:
     standard: TokenPrices
-    # Haiku 5.5 charges more for the WHOLE request once its prompt (input + cache reads +
-    # cache writes) passes a size. None for models priced the same at any size.
     long_prompt: TokenPrices | None = None
     long_prompt_over_tokens: int | None = None
 
@@ -55,8 +53,6 @@ MODEL_PRICES: dict[str, ModelPrice] = {
     "gemini-2.5-flash": ModelPrice(
         standard=TokenPrices(Decimal("0.30"), Decimal("0"), Decimal("0.03"), Decimal("2.50")),
     ),
-    # Other free-tier models, so AI_CHAT_MODEL can be switched in .env alone when one model's
-    # free allowance is used up (each model has its own). 3.6 Flash also doubles on 1 Jan 2027.
     "gemini-3.6-flash": ModelPrice(
         standard=TokenPrices(Decimal("1.50"), Decimal("0"), Decimal("0.15"), Decimal("7.50")),
     ),

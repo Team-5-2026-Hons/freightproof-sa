@@ -46,7 +46,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dev", tags=["dev-triggers"])
 
-# A trigger that silently does nothing against a non-mock feed is worse than failing loudly.
 _MOCK_REQUIRED_DETAIL = (
     "This trigger requires the mock implementation — check PP_USE_MOCK and SCAN_FEED_USE_MOCK."
 )
@@ -248,9 +247,6 @@ async def trigger_pp_change(
             status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
         ) from exc
 
-    # PP waybills are mutable after creation, so this overwrites the reconciliation
-    # baseline without raising if it drifted; detecting that drift is a known gap,
-    # deliberately not built here.
     sync_result = await consignment_service.fetch_and_sync_consignment(
         db, body.parcel_perfect_reference, trip_id=body.trip_id,
     )
@@ -309,9 +305,6 @@ async def trigger_exception(
             status_code=http_status.HTTP_404_NOT_FOUND, detail=f"Trip {body.trip_id} not found.",
         )
 
-    # Acts as the CURRENT driver in the current custody period (FP-83), read from the trip, not
-    # the body, so the service's own driver and custody checks run for real instead of being
-    # bypassed. Trip.driver_id is only the original driver; after a handover it would be refused.
     custody = await get_current_custody(db, trip=trip)
     try:
         raised = await exception_creation.raise_exception(

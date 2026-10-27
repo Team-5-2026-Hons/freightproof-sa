@@ -31,9 +31,6 @@ from app.db.models.handover import (
 
 logger = logging.getLogger(__name__)
 
-# 256 bits: far beyond brute-force range for a token living at most
-# HANDOVER_TOKEN_EXPIRY_MINUTES. Never derived from trip/stop/timestamp data —
-# a derivable value would defeat the whole mechanism.
 _TOKEN_BYTES = 32
 
 
@@ -177,9 +174,6 @@ async def redeem_capability_token(
         )
         return HandoverRedemptionResult(success=True, reason=None, token_id=row.id)
 
-    # Lost the race, or expired between the SELECT and the UPDATE. Re-read to
-    # classify which for the attempt log — the caller-facing response won't
-    # distinguish the two, but the record kept here must.
     current = (
         await db.execute(select(HandoverCapabilityToken).where(HandoverCapabilityToken.id == row.id))
     ).scalar_one()
@@ -420,8 +414,6 @@ async def record_handover_confirmation(
         receiver_lng=receiver_lng,
         receiver_accuracy_m=receiver_accuracy_m,
         receiver_ip=receiver_ip,
-        # Truncated rather than rejected: an oversized user agent isn't a reason
-        # to refuse a delivery confirmation the receiver already performed.
         receiver_user_agent=(receiver_user_agent or "")[:512] or None,
         bearer_token_present=bearer_token_present,
     )

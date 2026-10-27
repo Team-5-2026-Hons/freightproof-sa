@@ -7,8 +7,6 @@ import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useTripAutoRefresh } from '../useTripAutoRefresh'
 
-// jsdom defaults navigator.onLine to true; each test that cares overrides the getter,
-// same pattern OfflineBanner.test.tsx already uses.
 function setOnline(online: boolean): void {
   vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(online)
 }
@@ -33,10 +31,6 @@ describe('useTripAutoRefresh', () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined)
     renderHook(() => useTripAutoRefresh({ pollingEnabled: true, intervalMs: 1000, onRefresh }))
 
-    // Leading edge, before any time passes: the gate can close before this hook ever
-    // mounts, so the plan on screen may already be stale on arrival. Waiting for the first
-    // tick to find that out is what made the blocked step look frozen to a driver standing
-    // at the gate.
     await act(async () => {
       await Promise.resolve()
     })
@@ -97,23 +91,17 @@ describe('useTripAutoRefresh', () => {
     const onRefresh = vi.fn(() => new Promise<void>((resolve) => { resolveRefresh = resolve }))
     renderHook(() => useTripAutoRefresh({ pollingEnabled: true, intervalMs: 1000, onRefresh }))
 
-    // The leading-edge check starts a refresh that deliberately never resolves on its own —
-    // simulates a slow request still in flight when the next trigger fires. The interval
-    // tick at 1000ms lands while it is still pending and must be collapsed into it, which
-    // is why the count stays at 1 rather than reaching 2 here.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000)
     })
     expect(onRefresh).toHaveBeenCalledTimes(1)
 
-    // A focus event lands while that refresh is still pending — must not start a second.
     await act(async () => {
       window.dispatchEvent(new Event('focus'))
       await Promise.resolve()
     })
     expect(onRefresh).toHaveBeenCalledTimes(1)
 
-    // Let it settle so the in-flight guard clears and doesn't leak into another test.
     await act(async () => {
       resolveRefresh()
       await Promise.resolve()
@@ -148,7 +136,6 @@ describe('useTripAutoRefresh', () => {
     expect(removeDocSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
     expect(removeWinSpy).toHaveBeenCalledWith('focus', expect.any(Function))
 
-    // The interval itself must be gone too — no further ticks after unmount.
     onRefresh.mockClear()
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000)
@@ -156,8 +143,6 @@ describe('useTripAutoRefresh', () => {
     expect(onRefresh).not.toHaveBeenCalled()
   })
 
-  // FP-83 T1: reconnect is when a driver who lost signal learns that a handover completed
-  // or was cancelled while they were offline — the interval may be far away or off entirely.
   it('test_reconnect_refreshes_even_with_polling_off', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined)
     renderHook(() => useTripAutoRefresh({ pollingEnabled: false, intervalMs: 1000, onRefresh }))

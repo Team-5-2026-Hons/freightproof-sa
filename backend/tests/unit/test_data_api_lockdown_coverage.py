@@ -15,29 +15,25 @@ from app.db.models import Base
 
 _VERSIONS = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
-# Tables 0003_tom_rls_policies enabled RLS on that still exist (its handshake_events
-# is today's phase_events, which kept RLS through the rename).
 _RLS_FROM_0003 = frozenset({
     "blockchain_receipts", "checkpoints", "consignments", "driver_substitutions", "drivers",
     "evidence_artifacts", "exceptions", "merkle_batch_leaves", "merkle_batches",
     "organizations", "parcels", "phase_events", "precincts", "sla_configs",
     "trailer_gps_snapshots", "trip_templates", "trip_trailers", "trips", "users", "vehicles",
 })
-# Tables created after the lockdown, each enabling RLS in its own migration.
 _RLS_FROM_OWN_MIGRATION = frozenset({
-    "audit_pack_access_events", "audit_packs", "incident_declarations",  # tim_add_audit_packs
-    "evidence_anchor_events", "exception_artifacts",  # ciaran_evidence_anchors
-    "cost_profiles",  # tom_add_cost_profiles
-    "audit_pack_grants",  # tim_audit_pack_viewer_password (replaces audit_pack_email_codes)
-    "driver_substitution_requests", "driver_substitution_confirmations",  # ciaran_driver_substitutions
+    "audit_pack_access_events", "audit_packs", "incident_declarations",
+    "evidence_anchor_events", "exception_artifacts",
+    "cost_profiles",
+    "audit_pack_grants",
+    "driver_substitution_requests", "driver_substitution_confirmations",
     "driver_substitution_confirmation_artifacts", "driver_substitution_notices",
     "late_driver_evidence", "late_driver_evidence_artifacts",
     "driver_substitution_corrections", "driver_substitution_operations",
-    "driver_substitution_uploads",  # tim_dsub_uploads
-    "incidents", "incident_updates", "incident_exceptions", "incident_parcels",  # tim_add_incidents
-    "driver_push_tokens",  # tim_add_driver_push_tokens
+    "driver_substitution_uploads",
+    "incidents", "incident_updates", "incident_exceptions", "incident_parcels",
+    "driver_push_tokens",
 })
-# Alembic's own bookkeeping table: not a model, but just as exposed.
 _NON_MODEL_TABLES = frozenset({"alembic_version"})
 
 

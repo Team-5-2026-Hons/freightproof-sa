@@ -1,11 +1,6 @@
 // frontend/driver-pwa/lib/api/__tests__/manifest.test.ts
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-// Fix 8: components/handshake/steps/H2Linehaul.tsx already calls fetchLinehaul directly
-// with its own loading/error/retry UI — the gap was that fetchLinehaul had no demo-mode
-// gate (unlike lib/api/handshakes.ts's submitHandshake), so it fired a real fetch at
-// localhost:8000 and always failed in demo mode (the default). These tests cover the
-// gate added to close that gap.
 describe('fetchLinehaul (Fix 8: demo-mode gate)', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -37,8 +32,6 @@ describe('fetchLinehaul (Fix 8: demo-mode gate)', () => {
   it('returns null on a 404 — a trip with no Linehaul document, not a failure', async () => {
     vi.doMock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
     const mockGet = vi.fn()
-    // Spread the real module so ApiError (needed for the 404 branch's instanceof
-    // check) survives the mock — only `api` is replaced.
     vi.doMock('@/lib/api/client', async (importOriginal) => ({
       ...(await importOriginal<typeof import('@/lib/api/client')>()),
       api: { get: (...args: unknown[]) => mockGet(...args), post: vi.fn(), postForm: vi.fn() },

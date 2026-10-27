@@ -20,7 +20,6 @@ from app.schemas.fleet_analytics import (
     TripsBucket,
 )
 
-# Both end states a trip can reach. A trip in either one has closed_at set.
 _ENDED_STATUSES: tuple[TripStatus, TripStatus] = (TripStatus.CLOSED, TripStatus.CANCELLED)
 
 
@@ -63,9 +62,6 @@ async def cancellations_by_bucket(
     db: AsyncSession, *, organization_id: uuid.UUID, period: Period,
 ) -> list[CancellationsBucket]:
     window = instant_range(period.start, period.end)
-    # Each trip's bucket is worked out in a subquery and grouped on that column. Grouping on
-    # the date_trunc expression itself would fail in Postgres: its bound parameters are
-    # numbered separately in SELECT and GROUP BY, so the two no longer count as the same.
     ended = (
         select(
             Trip.status.label("status"),
@@ -106,7 +102,6 @@ async def cancelled_trips(
     return [
         CancelledTrip(trip_id=trip_id, trip_reference=reference, cancelled_at=closed_at)
         for trip_id, reference, closed_at in result.tuples().all()
-        # The window filter already excludes NULL; this narrows the type for the model.
         if closed_at is not None
     ]
 
@@ -114,7 +109,6 @@ async def cancelled_trips(
 async def build_activity(
     db: AsyncSession, *, organization_id: uuid.UUID, period: Period,
 ) -> ActivityResponse:
-    # One statement at a time: an AsyncSession cannot run two concurrently.
     trips = await trips_by_bucket(db, organization_id=organization_id, period=period)
     cancellations = await cancellations_by_bucket(db, organization_id=organization_id, period=period)
     cancelled = await cancelled_trips(db, organization_id=organization_id, period=period)

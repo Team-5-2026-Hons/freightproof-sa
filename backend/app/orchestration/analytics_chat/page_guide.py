@@ -39,10 +39,7 @@ from app.analytics.fleet.constants import (
 from app.db.models.enums import ExceptionType
 from app.orchestration.analytics_chat.definitions import ABOUT_BY_TOOL
 
-# The page's "Based on only N trips, read with care" threshold. It lives in the frontend
-# (lib/format/period.ts LOW_SAMPLE_TRIPS); a test reads that file so the two can't differ.
 LOW_SAMPLE_TRIPS = 5
-# Receiver QR sign-off went live on this day (copy.ts evidence.signoff.live).
 SIGNOFF_LIVE = "13 Sep 2026"
 
 Topic = Literal["page", "tiles", "activity", "on_time", "problems", "review_desk", "evidence", "routes_and_sites", "cost"]
@@ -76,8 +73,6 @@ class GuideEntry:
         return out
 
 
-# ── Helpers that turn the code's numbers into words ─────────────────────────
-
 
 def _say(tool: str, title: str) -> tuple[str, ...]:
     """The page's own lines for a chart, as definitions.py holds them (drift-tested there)."""
@@ -106,7 +101,6 @@ _THEFT_TYPES = ", ".join(_plain(t) for t in THEFT_SIGNAL_TYPES)
 _DAY_BLOCKS = ", ".join(f"{block.value} {start:02d}:00 to {end:02d}:00" for block, start, end in DAY_BLOCKS)
 _RATES = DEFAULT_COST_RATES
 
-# Said once and reused: the rule every trend on the page follows (page spec D8, G3, G4).
 _CLOSED_TRIPS_RULE = (
     "Trend charts count closed trips only, each in the bucket of the South African day it first departed: the time "
     "of its first departure step the driver attested (not a field on the trip, which is overwritten on every leg of a "
@@ -118,8 +112,6 @@ _NO_RANKING = (
     "decision 06). Per-driver and per-vehicle figures are on each one's own page."
 )
 
-
-# ── Page level ────────────────────────────────────────────────────────────────
 
 _PAGE: tuple[GuideEntry, ...] = (
     GuideEntry(
@@ -233,8 +225,6 @@ _PAGE: tuple[GuideEntry, ...] = (
 )
 
 
-# ── Headline tiles (always right now, never a period) ─────────────────────────
-
 _TILES: tuple[GuideEntry, ...] = (
     GuideEntry(
         title="Headline tiles",
@@ -297,8 +287,6 @@ _TILES: tuple[GuideEntry, ...] = (
 )
 
 
-# ── Activity ──────────────────────────────────────────────────────────────────
-
 _ACTIVITY: tuple[GuideEntry, ...] = (
     GuideEntry(
         title="Trips over time",
@@ -347,8 +335,6 @@ _ACTIVITY: tuple[GuideEntry, ...] = (
     ),
 )
 
-
-# ── On time ───────────────────────────────────────────────────────────────────
 
 _LATE_BANDS = (
     f"early (more than {_EARLY} min ahead of plan), on time (up to {_EARLY} min ahead, or exactly on plan), 1 to {_L1} "
@@ -421,8 +407,6 @@ _ON_TIME: tuple[GuideEntry, ...] = (
     ),
 )
 
-
-# ── Problems ──────────────────────────────────────────────────────────────────
 
 _PROBLEMS: tuple[GuideEntry, ...] = (
     GuideEntry(
@@ -510,8 +494,6 @@ _PROBLEMS: tuple[GuideEntry, ...] = (
 )
 
 
-# ── Review desk ───────────────────────────────────────────────────────────────
-
 _REVIEW: tuple[GuideEntry, ...] = (
     GuideEntry(
         title="Review desk tab",
@@ -576,8 +558,6 @@ _REVIEW: tuple[GuideEntry, ...] = (
 )
 
 
-# ── Evidence ──────────────────────────────────────────────────────────────────
-
 _EVIDENCE: tuple[GuideEntry, ...] = (
     GuideEntry(
         title="Evidence tab",
@@ -628,8 +608,6 @@ _EVIDENCE: tuple[GuideEntry, ...] = (
     ),
 )
 
-
-# ── Routes & sites ────────────────────────────────────────────────────────────
 
 _ROUTES: tuple[GuideEntry, ...] = (
     GuideEntry(
@@ -691,8 +669,6 @@ _ROUTES: tuple[GuideEntry, ...] = (
     ),
 )
 
-
-# ── Cost ──────────────────────────────────────────────────────────────────────
 
 _COST_METHOD = (
     "Per closed trip: road distance × (fuel per km + other running per km) + driving hours × driver rate + the fixed "
@@ -801,7 +777,6 @@ _COST: tuple[GuideEntry, ...] = (
             "The organisation's current rates come with this explanation when they're asked about.",
         ),
         terms=(
-            # 22 Oct eval (e05): with no meaning here, the model expanded DMPR from memory and got the name wrong.
             "DMPR: the Department of Mineral and Petroleum Resources, which sets South Africa's regulated fuel prices "
             "each month (on the first Wednesday). 'Inland 50ppm' is the regulated price of 50ppm diesel inland.",
             "Bruce's figures: the costs Bruce gave in the project's meetings of 28 Jul and 1 Sep 2026, which the "

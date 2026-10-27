@@ -87,8 +87,6 @@ def _fake_hedera_receipt() -> HederaReceipt:
     )
 
 
-# --- POST /api/v1/vehicles ---------------------------------------------------
-
 
 async def test_create_vehicle_overlength_vin_returns_422(client: AsyncClient, seed_org) -> None:
     org, user = seed_org
@@ -96,7 +94,7 @@ async def test_create_vehicle_overlength_vin_returns_422(client: AsyncClient, se
         "registration": "CA 200-002",
         "vehicle_type": "horse",
         "pulsit_device_id": "PLT-VIN-LONG",
-        "vin_number": "1HGCM82633A0043521",  # 18 chars
+        "vin_number": "1HGCM82633A0043521",
     }
 
     resp = await client.post(
@@ -114,7 +112,7 @@ async def test_create_vehicle_nonalphanumeric_vin_returns_422(client: AsyncClien
         "registration": "CA 200-003",
         "vehicle_type": "horse",
         "pulsit_device_id": "PLT-VIN-BAD-CHAR",
-        "vin_number": "1HGCM82633A00435!",  # 17 chars but contains "!"
+        "vin_number": "1HGCM82633A00435!",
     }
 
     resp = await client.post(
@@ -132,7 +130,7 @@ async def test_create_vehicle_shortlength_vin_returns_422(client: AsyncClient, s
         "registration": "CA 200-004",
         "vehicle_type": "horse",
         "pulsit_device_id": "PLT-VIN-SHORT",
-        "vin_number": "1HGCM82633A0043",  # 16 chars
+        "vin_number": "1HGCM82633A0043",
     }
 
     resp = await client.post(
@@ -247,14 +245,12 @@ async def test_create_vehicle_invalid_vin_does_not_persist_row(
     assert rows == []
 
 
-# --- PATCH /api/v1/vehicles/{id} --------------------------------------------
-
 
 async def test_update_vehicle_overlength_vin_returns_422(client: AsyncClient, seed_vehicle) -> None:
     org, user, vehicle = seed_vehicle
     resp = await client.patch(
         f"/api/v1/vehicles/{vehicle.id}",
-        json={"vin_number": "1HGCM82633A0043521"},  # 18 chars
+        json={"vin_number": "1HGCM82633A0043521"},
         headers=auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id))),
     )
 
@@ -265,7 +261,7 @@ async def test_update_vehicle_nonalphanumeric_vin_returns_422(client: AsyncClien
     org, user, vehicle = seed_vehicle
     resp = await client.patch(
         f"/api/v1/vehicles/{vehicle.id}",
-        json={"vin_number": "1HGCM82633A00435!"},  # 17 chars, invalid char
+        json={"vin_number": "1HGCM82633A00435!"},
         headers=auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id))),
     )
 
@@ -276,7 +272,7 @@ async def test_update_vehicle_wronglength_vin_returns_422(client: AsyncClient, s
     org, user, vehicle = seed_vehicle
     resp = await client.patch(
         f"/api/v1/vehicles/{vehicle.id}",
-        json={"vin_number": "SHORTVIN123"},  # 11 chars
+        json={"vin_number": "SHORTVIN123"},
         headers=auth_header(make_token(sub=str(user.id), role="admin_dispatcher", org_id=str(org.id))),
     )
 
@@ -321,16 +317,6 @@ async def test_update_vehicle_invalid_vin_leaves_db_state_unchanged(
     )
     assert resp.status_code == 422
 
-    # Read the two columns rather than re-loading the entity. A column select always goes
-    # to the database and hands back plain values, so there is no identity-mapped copy to
-    # go stale and nothing to expire first.
-    #
-    # This previously did expire_all() and then re-queried the ORM object, which could not
-    # work: expire_all() expires EVERY loaded object including `vehicle` itself, so
-    # building the WHERE clause read `vehicle.id` off an expired instance — a lazy load,
-    # and a lazy load on an async session raises MissingGreenlet instead of querying. The
-    # test died before it could assert anything. test_phases.py and test_arrival_lifecycle
-    # dodge the same trap by capturing ids first; not needing the dodge is better.
     stored = (
         await db_session.execute(
             select(Vehicle.vin_number, Vehicle.registration).where(Vehicle.id == vehicle.id)

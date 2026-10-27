@@ -109,8 +109,6 @@ async def _seed_reports(db: AsyncSession, operator: Operator, stops: list[Precin
     return {"panic": panic, "breakdown": breakdown, "closed": closed, "open": open_trip}
 
 
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
-
 
 async def test_fleet_incidents_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_INCIDENTS, params=_params())
@@ -139,8 +137,6 @@ async def test_fleet_incidents_rejects_an_end_after_today(client: AsyncClient, o
 
     assert response.status_code == 422
 
-
-# ── 200 ──────────────────────────────────────────────────────────────────────
 
 
 async def test_fleet_incidents_for_an_org_without_reports_are_empty(client: AsyncClient, operator: Operator) -> None:
@@ -175,7 +171,6 @@ async def test_fleet_incidents_pin_every_located_report_in_the_period_newest_fir
 
     assert response.status_code == 200
     body = response.json()
-    # The dispatcher note, the pre-period report and the other operator's never appear.
     assert [(pin["exception_id"], pin["trip_reference"], pin["severity"]) for pin in body["pins"]] == [
         (str(seeded["breakdown"].id), seeded["open"].trip_reference, "warning"),
         (str(seeded["panic"].id), seeded["closed"].trip_reference, "critical"),

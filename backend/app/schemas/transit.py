@@ -34,9 +34,6 @@ class CheckpointBase(BaseModel):
     checkpoint_type: str
     driver_phone_lat: Optional[float] = None
     driver_phone_lng: Optional[float] = None
-    # Mirrors PhaseEventRead.driver_captured_at — the instant the driver's
-    # phone submitted, independent of the server's created_at clock. See
-    # DriverCheckpointCreateBody.driver_captured_at for the full rationale.
     driver_captured_at: Optional[datetime] = None
     horse_gps_lat: Optional[float] = None
     horse_gps_lng: Optional[float] = None
@@ -60,37 +57,17 @@ class DriverCheckpointCreateBody(BaseModel):
     is a 422, not a row that can never be plotted.
     """
 
-    # Keep assessment verdicts server-owned: this body carries the raw capture only.
     model_config = ConfigDict(extra="forbid")
 
     checkpoint_type: CheckpointTypeStr
-    # The custody period this capture belongs to (0 = the trip's original driver; each
-    # completed handover adds one), taken when the evidence was captured. Optional only so
-    # clients that predate substitutions keep working: the server accepts it omitted while the
-    # trip has never changed driver and refuses it afterwards (FP-83 contract).
     custody_sequence: Optional[int] = Field(default=None, ge=0)
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     horse_gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     horse_gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
-    # The instant the driver's own phone submitted this checkpoint. Mirrors
-    # schemas/phases.py's _PhaseCompleteBase.driver_captured_at exactly — a checkpoint
-    # is offline-queued the same way a phase handshake is, and record_checkpoint_
-    # corroboration needs this to tell a live check from a stale replay. Optional for
-    # the same replay-compatibility reason; new builds always send it
-    # (frontend/driver-pwa/lib/api/checkpoints.ts).
     driver_captured_at: Optional[datetime] = None
-    # Mirrors _PhaseCompleteBase.driver_accuracy_metres exactly — the
-    # phone's own claimed accuracy at driver_phone_lat/lng, feeding proximity_
-    # service.evaluate_proximity via evidence.location_assessment.build_checkpoint_
-    # assessment. Not a DB column; lives only inside the checkpoint's own
-    # action_location_assessment JSONB snapshot.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
-    # Stable across every retry of one queued checkpoint. Optional so installs that
-    # predate replay protection remain able to drain their local queue.
     client_report_id: Optional[UUID] = None
-    # The leg observed at capture time. It is verified against the URL trip before
-    # persistence; the server must never re-derive an offline replay from current state.
     phase_event_id: Optional[UUID] = None
     selfie_artifact_id: Optional[UUID] = None
     cargo_photo_artifact_id: Optional[UUID] = None
@@ -100,7 +77,6 @@ class DriverCheckpointCreateBody(BaseModel):
     @field_validator("driver_captured_at")
     @classmethod
     def validate_driver_captured_at_is_timezone_aware(cls, v: Optional[datetime]) -> Optional[datetime]:
-        # A naive value would silently compare as if it were UTC in evidence.corroboration.
         if v is not None and v.tzinfo is None:
             raise ValueError("driver_captured_at must be timezone-aware")
         return v
@@ -108,15 +84,12 @@ class DriverCheckpointCreateBody(BaseModel):
     @field_validator("driver_accuracy_metres")
     @classmethod
     def validate_driver_accuracy_metres_is_finite(cls, v: Optional[float]) -> Optional[float]:
-        # Matches _PhaseCompleteBase's identical rule: ge=0 alone lets inf through.
         if v is not None and not math.isfinite(v):
             raise ValueError("driver_accuracy_metres must be a finite number")
         return v
 
     @model_validator(mode="after")
     def validate_gps_pairs(self) -> "DriverCheckpointCreateBody":
-        # Same atomic-fix rule the exception bodies apply, applied to both pairs: half a
-        # coordinate is not a position.
         _validate_gps_pair(self.driver_phone_lat, self.driver_phone_lng, field_prefix="driver_phone")
         _validate_gps_pair(self.horse_gps_lat, self.horse_gps_lng, field_prefix="horse_gps")
         return self
@@ -132,10 +105,6 @@ class CheckpointUpdate(BaseModel):
 class CheckpointRead(CheckpointBase):
     id: UUID
     merkle_batch_id: Optional[UUID] = None
-    # The versioned proximity snapshot for this checkpoint's own handshake
-    # (evidence.location_assessment.build_checkpoint_assessment). Never a
-    # precinct check — a checkpoint happens on the road, so those fields are always
-    # None here. Validated through ActionLocationAssessment, never a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
     phase_event_id: Optional[UUID] = None
     created_at: datetime
@@ -173,9 +142,6 @@ class TripExceptionBase(BaseModel):
     consignment_id: Optional[UUID] = None
     trip_stop_id: Optional[UUID] = None
     supporting_artifact_id: Optional[UUID] = None
-    # Driver-phone GPS fix at the moment the exception was raised. Mirrors
-    # Checkpoint.driver_phone_lat/_lng's Numeric(10,7) precision (db/models/transit.py).
-    # POPIA: personal location data — stays in Postgres, never anchored to Hedera.
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
 
@@ -192,63 +158,20 @@ class TripExceptionCreate(TripExceptionBase):
 class DriverExceptionCreateBody(BaseModel):
     """Slim exception-creation body for the driver endpoint — trip_id comes from the URL path."""
 
-    # A report can supply its own raw location but never a backend assessment verdict.
     model_config = ConfigDict(extra="forbid")
 
     exception_type: ExceptionType
-    # The custody period this capture belongs to (0 = the trip's original driver; each
-    # completed handover adds one), taken when the evidence was captured. Optional only so
-    # clients that predate substitutions keep working: the server accepts it omitted while the
-    # trip has never changed driver and refuses it afterwards (FP-83 contract).
     custody_sequence: Optional[int] = Field(default=None, ge=0)
-    # RequiredFreeText, not str: this lands on a TEXT column with no width of its own, so
-    # without a ceiling one authenticated driver can write as much as they like. It is
-    # also the field most worth cleaning — an exception description is read back as
-    # evidence, and characters that make it render differently from what is stored are
-    # exactly the tampering this platform exists to make impossible.
     description: RequiredFreeText
-    # The report's photos. `supporting_artifact_id` is the legacy single-photo field and is
-    # kept so installed apps keep working; see photo_ids for how the two combine.
     supporting_artifact_id: Optional[UUID] = None
     supporting_artifact_ids: Optional[list[UUID]] = Field(default=None, max_length=MAX_EXCEPTION_PHOTOS)
-    # The phase the driver was ON when this happened, resolved client-side from the
-    # trip's plan at the moment of the event (driver-pwa lib/phase/derive.ts
-    # contextPhaseEventId). Client-supplied rather than server-derived because the app
-    # queues exceptions offline and flushes them hours later — deriving at request time
-    # would tag a panic raised in transit with whatever phase the trip had reached by
-    # the time signal returned. Optional: older installed clients omit it, and the
-    # service derives a server-side placement in that case rather than storing NULL.
     phase_event_id: Optional[UUID] = None
-    # Captured client-side by useLocation() on the panic page — see
-    # frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx. Optional because
-    # not every driver-raised exception type captures GPS (only panic today), and a
-    # capture failure must not block the alert itself from sending.
     gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     gps_lng: Optional[float] = Field(default=None, ge=-180, le=180)
-    # Mirrors _PhaseCompleteBase.driver_accuracy_metres — the phone's own claimed
-    # accuracy at gps_lat/lng, used by exceptions.creation to build the report's
-    # capture-time assessment.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
-    # The device timestamp belongs to this report's capture, not to its later queue
-    # flush. Optional for legacy reports, whose assessment remains unverified.
     driver_captured_at: Optional[datetime] = None
-    # Request-only idempotency key — not echoed back on TripExceptionRead. The driver
-    # app's offline queue reuses its own entry UUID as this value on every retry of the
-    # same queued submission (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), so a
-    # resend caused by a lost response, or by a retry after the photo uploaded but this
-    # POST itself failed, returns the ORIGINAL exception rather than inserting a second
-    # one for the same real-world report. Optional: an older installed/queued client
-    # omits it and gets no idempotency protection, exactly like phase_event_id above.
     client_report_id: Optional[UUID] = None
-    # The driver's answer to "Truck or Trailer?" on a vehicle breakdown: horse ("Truck")
-    # or trailer. The server works out the exact vehicle from the trip itself
-    # (exceptions.creation.pick_breakdown_vehicle), so the driver never has to identify a
-    # vehicle by id. Optional: older installed apps, and reports already sitting in a
-    # phone's offline queue, send neither field, and those breakdowns are stored with no
-    # vehicle rather than rejected.
     vehicle_type: Optional[VehicleType] = None
-    # Sent only when the trip has two or more trailers and the driver picked one by its
-    # registration plate. With a single trailer, "Trailer" already says which one.
     trailer_id: Optional[UUID] = None
 
     @field_validator("driver_accuracy_metres")
@@ -337,8 +260,6 @@ class TripExceptionBatchReviewRequest(BaseModel):
     @field_validator("exception_ids")
     @classmethod
     def _ids_are_unique(cls, ids: list[UUID]) -> list[UUID]:
-        # A duplicate is a client bug, not a harmless repeat — reject it rather than
-        # quietly reviewing fewer rows than the dispatcher was shown.
         if len(set(ids)) != len(ids):
             raise ValueError("exception_ids must not repeat")
         return ids
@@ -373,35 +294,19 @@ class TripExceptionListItem(BaseModel):
     trip_id: UUID
     trip_reference: str
     trip_status: TripStatus
-    # Trip crew and route, so a dispatcher can tell which truck/driver/lane an exception
-    # belongs to without opening the trip. Names and registrations only, no contact details.
-    # Origin/destination are None for a trip whose precinct was never derived; trailers
-    # is empty for a trip with none attached.
     origin_name: Optional[str] = None
     destination_name: Optional[str] = None
     driver_name: Optional[str] = None
     horse_registration: Optional[str] = None
     trailer_registrations: list[str] = Field(default_factory=list)
 
-    # PhaseEvent.phase_type / TripStop.sequence for the phase this exception is scoped
-    # to — None for a trip-level exception with no phase context. Mirrors the existing
-    # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
-    # The phase event itself, so a client can link to that exact phase: phase_label alone
-    # cannot, a multi-stop trip runs the same phase type more than once.
     phase_event_id: Optional[UUID] = None
-    # A driver exception report's own capture assessment, when one was built. This is
-    # projected by exceptions.queries._to_list_item, then inherited by detail below.
-    # Validated through ActionLocationAssessment, never served as a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None
 
-    # Claim (FP-280): who is working this exception, and since when. None = unclaimed.
     claimed_by_user_id: Optional[UUID] = None
     claimed_at: Optional[datetime] = None
-    # Display names for claimer and reviewer, resolved server-side from users.full_name
-    # within the caller's own organisation. Always None on driver-facing responses: a
-    # driver has no review action and no need for dispatcher identities.
     claimed_by_name: Optional[str] = None
     reviewed_by_name: Optional[str] = None
 
@@ -437,9 +342,6 @@ class EvidenceAnchorSummary(BaseModel):
     receipt_type: BlockchainReceiptType
     anchor_status: AnchorStatus
     receipt_id: Optional[UUID] = None
-    # Where the receipt landed on Hedera, so the dispatcher can link to HashScan. Both are
-    # None until the event is anchored. Deliberately no hash: the dispatcher screen shows a
-    # pointer to the public record, not the evidence commitment itself.
     hedera_topic_id: Optional[str] = None
     hedera_sequence_number: Optional[int] = None
     occurred_at: datetime
@@ -460,26 +362,12 @@ class TripExceptionDetail(TripExceptionListItem):
 
     trip_closed_at: Optional[datetime] = None
 
-    # The vehicle a breakdown was recorded against, so the dispatcher can see which one
-    # it was. All three are None when no vehicle was recorded: every non-mechanical
-    # exception, and breakdowns from before the driver was asked "truck or trailer".
-    # Registration and type are looked up from the vehicle row, not stored on the
-    # exception.
     vehicle_id: Optional[UUID] = None
     vehicle_registration: Optional[str] = None
     vehicle_type: Optional[VehicleType] = None
 
-    # Kept even when signing fails or the artifact cannot be verified as belonging to
-    # this trip — see `supporting_artifact`.
     supporting_artifact_id: Optional[UUID] = None
-    # None means no photo was ever attached (or the id could not be verified as this
-    # trip's own — the ownership invariant). Present with signed_url=None means
-    # the opposite: real evidence, but Storage declined to sign a URL right now. The UI
-    # must be able to tell "no photo" apart from "recorded, image unavailable".
     supporting_artifact: Optional["EvidenceArtifactWithUrl"] = None
-    # Every photo of the report in submitted order (supporting_artifact above is only the
-    # first), and where each action on this exception stands in anchoring. Empty
-    # anchor_events means nothing is owed (a historical row), not that anchoring is pending.
     supporting_artifacts: list[ExceptionPhotoWithUrl] = Field(default_factory=list)
     anchor_events: list[EvidenceAnchorSummary] = Field(default_factory=list)
 
@@ -492,33 +380,15 @@ class TripExceptionRead(TripExceptionBase):
     reviewed_at: Optional[datetime] = None
     review_note: Optional[str] = None
     contact_method: Optional[ExceptionContactMethod] = None
-    # Claim (FP-280): who is working this exception, and since when. None = unclaimed.
     claimed_by_user_id: Optional[UUID] = None
     claimed_at: Optional[datetime] = None
-    # Display names for claimer and reviewer, resolved server-side from users.full_name
-    # within the caller's own organisation. Always None on driver-facing responses: a
-    # driver has no review action and no need for dispatcher identities.
     claimed_by_name: Optional[str] = None
     reviewed_by_name: Optional[str] = None
     merkle_batch_id: Optional[UUID] = None
-    # The read-only, server-built snapshot carried by a driver report when a later
-    # capture flow supplies one. Kept off TripExceptionBase so POST bodies cannot
-    # submit a backend verdict as evidence.
     action_location_assessment: Optional[ActionLocationAssessment] = None
-    # The vehicle a mechanical exception was recorded against — see
-    # TripException.vehicle_id. None for every other type and for unattributed breakdowns.
     vehicle_id: Optional[UUID] = None
-    # The report's photos in order, and the anchor events its actions have produced. Both are
-    # filled by the services that build the response (orchestration/evidence_anchors/reads.py);
-    # a bare ORM object validates with neither.
     supporting_artifacts: list[ExceptionArtifactSummary] = []
     anchor_events: list[EvidenceAnchorSummary] = []
-    # Denormalised off the Trip the exception belongs to. The dispatcher's queue spans
-    # every trip in the organisation and each row has to say WHICH trip, so without this
-    # both exception screens would have to fetch the trip list purely to resolve
-    # references. The service's org-scoping join already has the row in hand, so
-    # carrying it costs nothing. Optional because a row built outside that join
-    # (TripExceptionRead.model_validate on a bare ORM object) has no trip loaded.
     trip_reference: Optional[str] = None
     created_at: datetime
     updated_at: datetime

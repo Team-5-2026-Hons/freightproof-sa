@@ -3,8 +3,6 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { WarehouseWaitCard } from '../WarehouseWaitCard'
 
-// WarehouseWaitCard reads useTrip() directly (no TripProvider ancestor in this suite) —
-// same stub pattern the three call sites' own tests use (see linehaul.test.tsx).
 const mockRefreshQuietly = vi.fn().mockResolvedValue(undefined)
 let mockIsRefreshing = false
 let mockLastRefreshedAt: string | null = null

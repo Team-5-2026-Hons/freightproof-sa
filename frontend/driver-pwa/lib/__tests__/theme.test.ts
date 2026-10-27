@@ -12,8 +12,6 @@ import {
   subscribeThemePref,
 } from '../theme'
 
-// jsdom ships no matchMedia — every test that touches 'system' has to say what the
-// device is claiming, so the OS half of the resolution is never left to chance.
 function mockPrefersDark(matches: boolean) {
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
     matches,
@@ -146,7 +144,6 @@ describe('THEME_INIT_SCRIPT', () => {
   it('applies the stored theme before React runs', () => {
     window.localStorage.setItem(PREF_THEME, 'dark')
 
-    // Runs the pre-paint script exactly as the browser would from app/layout.tsx.
     new Function(THEME_INIT_SCRIPT)()
 
     expect(document.documentElement).toHaveClass(DARK_CLASS)

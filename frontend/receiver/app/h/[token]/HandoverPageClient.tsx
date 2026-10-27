@@ -39,27 +39,14 @@ import { ATTESTATION_SUBTITLE, renderAttestation } from '@shared/lib/utils/rende
 import { hasRecipientIdentity, looksLikeSaIdNumber } from '@shared/lib/utils/sa-id'
 import type { PositionFix } from '@shared/lib/types/position'
 
-// Ceiling on the browser geolocation prompt. A receiver who ignores the permission dialog
-// must not leave the delivery unconfirmable, so the swipe proceeds without a fix rather
-// than hanging on one.
 const GEO_TIMEOUT_MS = 8_000
 
-// The browser's own `timeout` option above only starts counting once permission has been
-// granted, so on its own it never fires for a receiver who leaves the prompt unanswered.
-// This is how long we wait for them to answer it before giving up on a fix.
 const GEO_PERMISSION_GRACE_MS = 7_000
 
-// The server decides whether a code is still good (it may have extended the expiry), so
-// the client only ever warns. The grace absorbs a phone clock that runs a little fast.
 const EXPIRY_SKEW_GRACE_MS = 60_000
 
-// How often the expiry check re-reads the clock. Bounded so a backgrounded tab, whose
-// timers are throttled, notices soon after it returns, and so a far-future expiry never
-// overflows setTimeout's 32-bit delay limit.
 const EXPIRY_RECHECK_MS = 30_000
 
-// Enough waybills to recognise the delivery by; a trip with dozens would otherwise push
-// the identity fields and the swipe off the screen.
 const MAX_WAYBILLS_COLLAPSED = 5
 
 const MS_PER_SECOND = 1_000
@@ -82,8 +69,6 @@ const MAY_HAVE_CONFIRMED_NOTE =
 const NOTICE_CLASS = 'rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-700'
 const TEXT_INPUT_CLASS = 'rounded-lg border border-neutral-300 px-3 py-3 text-base'
 
-// 'consent' / 'verifying' / 'resolving' sit between 'loading' and 'ready'. None may become
-// a dead end — every path out of them lands back on 'ready'.
 type Status =
   | 'loading'
   | 'unreachable'
@@ -114,7 +99,6 @@ function capturePosition(): Promise<PositionFix | null> {
         lng: pos.coords.longitude,
         accuracyM: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
       }),
-      // A denied permission and a failed fix are the same outcome here: no position.
       () => settle(null),
       { enableHighAccuracy: true, timeout: GEO_TIMEOUT_MS, maximumAge: 0 },
     )
@@ -135,19 +119,15 @@ function resolveSafeRedirect(rawUrl: string | null): string | null {
     console.warn('[handover] vendor session_url could not be parsed')
     return null
   }
-  // The http check matters because an opaque origin ("null") compares equal to another
-  // opaque origin, which would otherwise let a javascript: or data: URL through.
   const isSameOriginWebUrl =
     parsed.origin === window.location.origin &&
     (parsed.protocol === 'http:' || parsed.protocol === 'https:')
   if (parsed.protocol === 'https:' || isSameOriginWebUrl) return rawUrl
-  // The protocol only: the rest of the URL is a live vendor session.
   console.warn('[handover] refusing a vendor redirect with protocol', parsed.protocol)
   return null
 }
 
 function formatClockTime(date: Date): string {
-  // Device zone on purpose: the receiver reads this against their own wall clock.
   return date.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
 }
 
@@ -158,12 +138,8 @@ function describeConfirmFailure(err: unknown): string {
     const seconds = Math.max(1, Math.ceil(err.retryAfterMs / MS_PER_SECOND))
     return `Please wait ${seconds} ${seconds === 1 ? 'second' : 'seconds'} and try again.`
   }
-  // A 429 without a readable Retry-After (a cross-origin browser may not be shown the
-  // header) is still not a connection problem.
   if (err.status === 429) return RATE_LIMITED_MESSAGE
   if (isTransientFailure(err)) return CONNECTION_RETRY_MESSAGE
-  // Any other 4xx (a 422, say): the server's own words. api.ts has already reduced them to
-  // the validation messages, with nothing the receiver typed echoed back.
   return err.message
 }
 
@@ -176,8 +152,6 @@ interface IdentityFieldsProps {
   showIdShapeHint: boolean
 }
 
-// One definition for the consent and ready screens, which previously carried two copies
-// that had to be kept in step by hand.
 function IdentityFields({
   name,
   idNumber,
@@ -204,8 +178,6 @@ function IdentityFields({
           enterKeyHint="next"
           disabled={disabled}
           onChange={(e) => onNameChange(e.target.value)}
-          // The keyboard's "Next" key does nothing by itself outside a form. Not while an
-          // input-method composition is open: there Enter commits the text being composed.
           onKeyDown={(e) => {
             if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
             e.preventDefault()
@@ -216,8 +188,6 @@ function IdentityFields({
       <div className="flex flex-col gap-1.5">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-neutral-900">Your ID number</span>
-          {/* Not inputMode="numeric": passports and company registrations contain letters,
-              and the API accepts them. */}
           <input
             ref={idInputRef}
             className={`${TEXT_INPUT_CLASS} tabular-nums`}
@@ -255,7 +225,6 @@ function ScreenHeader({ scan, codeMayHaveExpired }: ScreenHeaderProps) {
   return (
     <header className="flex flex-col gap-1">
       <h1 className="text-xl font-medium text-neutral-900">Confirm this delivery</h1>
-      {/* min-w-0 + break-words: a destination name with no spaces must wrap, not widen the page. */}
       <p className="min-w-0 break-words text-sm tabular-nums text-neutral-600">
         {scan?.destination_name} · {scan?.trip_reference}
       </p>
@@ -299,33 +268,19 @@ export function HandoverPageClient({ token }: { token: string }) {
   const [scan, setScan] = useState<HandoverScan | null>(null)
   const [name, setName] = useState('')
   const [idNumber, setIdNumber] = useState('')
-  // Red, role="alert": something the receiver must act on.
   const [message, setMessage] = useState('')
-  // Neutral, role="status": something we couldn't do that does NOT stop them confirming.
   const [notice, setNotice] = useState('')
-  // A confirm left this device and no verdict came back, so the "link is invalid" screen
-  // must not rule out that it already worked.
   const [mayHaveConfirmed, setMayHaveConfirmed] = useState(false)
   const [codeMayHaveExpired, setCodeMayHaveExpired] = useState(false)
-  // Bumped by "Try again" to re-run the scan effect.
   const [scanAttempt, setScanAttempt] = useState(0)
-  // Consent-record call in flight; ConsentGate stays on screen.
   const [consentBusy, setConsentBusy] = useState(false)
 
-  // The vendor round trip's stash is read and cleared exactly once per mount, then kept
-  // here. Reading it on every effect run would lose it: React StrictMode runs the effect
-  // twice in development and "Try again" runs it again, and by then it has been cleared.
   const hasReadStashRef = useRef(false)
   const stashedIdentityRef = useRef<StashedIdentity | null>(null)
 
-  // Read by the pageshow listener below, which is registered once.
   const statusRef = useRef(status)
   useEffect(() => { statusRef.current = status }, [status])
 
-  // Back from the vendor's page restores this one from the back/forward cache exactly as it
-  // was left: on "Taking you to the identity check", with no navigation coming, stuck. The
-  // receiver backed out of the check, so put them back at the choice they made, and drop
-  // the identity stashed for a vendor return that will now never happen.
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent): void => {
       if (!event.persisted || statusRef.current !== 'verifying') return
@@ -339,14 +294,11 @@ export function HandoverPageClient({ token }: { token: string }) {
   useEffect(() => {
     let cancelled = false
 
-    // Read FIRST, before anything can fail, and cleared unconditionally: a retained ID
-    // number on someone else's phone is a liability, whether or not it is used.
     if (!hasReadStashRef.current) {
       hasReadStashRef.current = true
       stashedIdentityRef.current = readStashedIdentity()
       clearStashedIdentity()
     }
-    // A stash left by a different delivery is ignored — it must never be applied here.
     const stashed = stashedIdentityRef.current
     const returning = stashed !== null && stashed.token === token ? stashed : null
 
@@ -364,11 +316,6 @@ export function HandoverPageClient({ token }: { token: string }) {
         return
       }
 
-      // Back from the vendor, the decision may ALREADY be final — the webhook can beat the
-      // receiver's return. The typed-identity cross-check only happens inside resolve, so
-      // skipping it for a non-pending verification would let a different person's
-      // approved document stand unchecked. Without a stash we cannot know it was a
-      // return, so only a pending verification is resolved, with nothing typed to compare.
       if (returning === null && res.verification.status !== 'pending') {
         setStatus('ready')
         return
@@ -378,7 +325,6 @@ export function HandoverPageClient({ token }: { token: string }) {
       try {
         await resolveVerification(token, returning?.name ?? '', returning?.idNumber ?? '')
       } catch (err: unknown) {
-        // A failed resolve must never strand the receiver mid-check.
         console.warn('[handover] verification resolve failed:', err)
         if (!cancelled) setNotice(IDENTITY_RESULT_UNAVAILABLE_NOTICE)
       }
@@ -389,16 +335,11 @@ export function HandoverPageClient({ token }: { token: string }) {
       if (cancelled) return
       console.warn('[handover] scan lookup failed:', err)
 
-      // Only a 404 is the generic "this link is finished" answer; anything else is the
-      // network or the server, and a retry may well work.
       if (!isTokenRejected(err)) {
         setStatus('unreachable')
         return
       }
 
-      // A redeemed token reads exactly like a dead one, so a receiver who already
-      // confirmed and then reloaded would be told their link is invalid. This device
-      // remembers what it did.
       const outcome = readConfirmOutcome(token)
       if (outcome === 'confirmed') {
         setStatus('done')
@@ -422,7 +363,6 @@ export function HandoverPageClient({ token }: { token: string }) {
     return Number.isNaN(parsed) ? null : parsed
   }, [scan])
 
-  // Warn only — never blocks the swipe. The server may have extended the expiry.
   useEffect(() => {
     if (expiresAtMs === null) return
     const deadline = expiresAtMs + EXPIRY_SKEW_GRACE_MS
@@ -433,7 +373,6 @@ export function HandoverPageClient({ token }: { token: string }) {
       setCodeMayHaveExpired(remaining <= 0)
       if (remaining > 0) timer = window.setTimeout(check, Math.min(remaining, EXPIRY_RECHECK_MS))
     }
-    // Deferred rather than called here, so the first read isn't a synchronous setState in an effect.
     timer = window.setTimeout(check, 0)
 
     return () => window.clearTimeout(timer)
@@ -444,20 +383,14 @@ export function HandoverPageClient({ token }: { token: string }) {
     setStatus('signing')
     setMessage('')
 
-    // Whatever happens below, 'signing' must not outlive this call: the swipe is busy for
-    // exactly as long as it holds, and a stuck 'signing' leaves a stranger with a screen
-    // that can never be confirmed.
     let nextStatus: Status = 'ready'
     try {
-      // Fix taken at the swipe, never on mount: a position captured on page-open could be
-      // minutes and a building away from where the receiver actually signed.
       const fix = await capturePosition()
       const signedAt = new Date().toISOString()
 
       const dataUrl = renderAttestation({
         signedAt,
         position: fix,
-        // The trip REFERENCE, not its uuid — this app is never given the internal id.
         tripId: scan.trip_reference,
         recipientName: name.trim(),
         recipientIdNumber: idNumber.trim(),
@@ -465,13 +398,10 @@ export function HandoverPageClient({ token }: { token: string }) {
       })
 
       if (dataUrl === null) {
-        // No 2D context — fail here rather than confirm with an empty signature slot.
         setMessage(SIGNATURE_FAILED_MESSAGE)
         return
       }
 
-      // Recorded BEFORE the request leaves: if the response is lost the server may still
-      // have redeemed the token, and a later reload needs to know an attempt was made.
       rememberConfirmOutcome(token, 'attempted')
       try {
         await confirmHandover(token, {
@@ -487,17 +417,13 @@ export function HandoverPageClient({ token }: { token: string }) {
       } catch (err: unknown) {
         console.warn('[handover] confirm failed:', err)
         if (isTokenRejected(err)) {
-          // The token is finished, and we did send an attempt, so it may be the one that landed.
           setMayHaveConfirmed(true)
           nextStatus = 'invalid'
         } else {
-          // No verdict on the token: keep what they typed and let them swipe again.
           setMessage(describeConfirmFailure(err))
         }
       }
     } catch (err: unknown) {
-      // Reached by a throw before the request (renderAttestation, an odd geolocation
-      // implementation), not by a failed confirm.
       console.warn('[handover] signing failed before the request was sent:', err)
       setMessage(SIGNATURE_FAILED_MESSAGE)
     } finally {
@@ -506,7 +432,6 @@ export function HandoverPageClient({ token }: { token: string }) {
   }, [scan, name, idNumber, token])
 
   const handleConsentProceed = useCallback(async (hasDocument: boolean) => {
-    // Defensive guard — ConsentGate is only rendered once identity already holds.
     if (!hasRecipientIdentity(name, idNumber)) return
 
     if (hasDocument) {
@@ -516,18 +441,13 @@ export function HandoverPageClient({ token }: { token: string }) {
         const started = await startVerification(token)
         const sessionUrl = resolveSafeRedirect(started.session_url)
         if (sessionUrl !== null) {
-          // Stashed before leaving — window.location.assign destroys this component.
           stashIdentity({ name, idNumber, token })
           window.location.assign(sessionUrl)
           return
         }
-        // Null session_url is a degraded tier (quota spent, vendor down), never an error;
-        // an unusable one is treated the same. Either way the receiver is told, not left
-        // to wonder where the identity check went.
         setNotice(IDENTITY_CHECK_UNAVAILABLE_NOTICE)
         setStatus('ready')
       } catch (err: unknown) {
-        // A vendor outage must never leave a receiver unable to confirm a real delivery.
         console.warn('[handover] verification start failed:', err)
         setNotice(IDENTITY_CHECK_UNAVAILABLE_NOTICE)
         setStatus('ready')
@@ -538,7 +458,6 @@ export function HandoverPageClient({ token }: { token: string }) {
     setConsentBusy(true)
     try {
       await recordConsent(token, consentPayloadText(), false)
-      // No document: confirm as typed-only. There is no selfie step: one that was never stored proved nothing.
       setStatus('ready')
     } catch (err: unknown) {
       console.warn('[handover] consent record failed:', err)
@@ -551,11 +470,8 @@ export function HandoverPageClient({ token }: { token: string }) {
   const handleConsentDecline = useCallback(async () => {
     setConsentBusy(true)
     try {
-      // A decline, not a consent with no document: agreeing without an ID is a different
-      // decision from refusing the check, and the record must not blur them.
       await recordConsentDecline(token, consentPayloadText())
     } catch (err: unknown) {
-      // Declining must still leave the receiver able to confirm the delivery.
       console.warn('[handover] consent decline record failed:', err)
     } finally {
       setConsentBusy(false)

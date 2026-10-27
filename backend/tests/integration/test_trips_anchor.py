@@ -25,8 +25,6 @@ from app.main import app
 from tests.conftest import auth_header, make_token
 
 
-# ── DB override ───────────────────────────────────────────────────────────────
-
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Wire every endpoint in this module to the rolled-back test session."""
@@ -37,8 +35,6 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
     yield
     app.dependency_overrides.pop(get_db, None)
 
-
-# ── Seed fixtures ─────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def seed_org(db_session: AsyncSession) -> dict:
@@ -76,8 +72,6 @@ async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
     db_session.add(client_org)
     await db_session.flush()
 
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
         is_shared=True,
         id=uuid.uuid4(),
@@ -144,11 +138,7 @@ def _make_trip_payload(seed: dict) -> dict:
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
-        # Required: a trip with no schedule (neither this nor a stop slot_time)
-        # can never pass phases.scheduling._reject_if_not_due (see TripCreateRequest
-        # .validate_request).
         "planned_departure_at": datetime.now(UTC).isoformat(),
-        # Arrival is required at creation (FP-139).
         "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
@@ -159,8 +149,6 @@ def _auth_headers(seed: dict) -> dict:
         make_token(sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id))
     )
 
-
-# ── Test ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_create_trip_writes_blockchain_receipt(
@@ -188,17 +176,12 @@ async def test_create_trip_writes_blockchain_receipt(
     assert resp.status_code == 201
     body = resp.json()
 
-    # A receipt must have been persisted and returned in the response body.
     assert len(body["blockchain_receipts"]) == 1
     receipt = body["blockchain_receipts"][0]
 
-    # The receipt must be typed as a trip-level anchor.
     assert receipt["subject_type"] == "trip"
     assert receipt["receipt_type"] == "journey_lock"
 
-    # The Hedera sequence number from the fake receipt must pass through.
     assert receipt["hedera_sequence_number"] == 42
 
-    # The anchored hash must match the journey_lock_hash in the response —
-    # the blockchain and the DB must record identical values.
     assert receipt["data_hash"] == body["journey_lock_hash"]

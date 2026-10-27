@@ -33,9 +33,7 @@ from tests.integration._fleet_seed import (
 
 _ON_TIME = "/api/v1/analytics/fleet/on-time"
 _LAST_12_WEEKS_BY_WEEK = {"preset": "last_12_weeks", "start": None, "end": None, "grain": "week"}
-# Inside "last 12 weeks" whatever weekday the suite runs on (the preset reaches back at least 77 days).
 _RECENT_DAYS = (7, 14, 21)
-# Well before it.
 _OLD_DAYS = 200
 
 
@@ -102,11 +100,9 @@ async def test_on_time_tool_returns_what_the_on_time_tab_shows(
     )
 
     assert response.status_code == 200
-    # The tab's figures exactly, plus the page's own lines (B43) and the server's totals (B37) in front.
     assert outcome.result is not None
     assert {key: value for key, value in outcome.result.items() if key not in {"about", "totals"}} == response.json()
     assert outcome.result["about"] == about("on_time")
-    # Not an empty-equals-empty pass: the three recent trips are in it, nobody else's.
     punctuality = response.json()["punctuality"]
     assert sum(bucket["arrivals_with_plan"] for bucket in punctuality) == len(_RECENT_DAYS)
 
@@ -124,8 +120,6 @@ async def test_failed_tool_has_no_basis(db_session: AsyncSession, operator: Oper
 
     assert await basis_for(db_session, organization_id=operator.org.id, outcome=outcome) is None
 
-
-# ── Totals equal the rows they sum (B37), on real data ──────────────────────
 
 
 async def _seed_problem_weeks(db: AsyncSession, operator: Operator, stops: list[Precinct]) -> None:
@@ -181,7 +175,6 @@ async def test_every_tools_totals_equal_the_sum_of_its_rows(
     assert routes["totals"]["trips_on_lanes"] == _sum(routes["lanes"], "trip_count") == 2
     assert routes["totals"]["problems_on_lanes"] == _sum(routes["lanes"], "problem_count") == 5
 
-    # Leaders (A2) equal the true maximum of the rows beside them, ties included.
     _assert_leader(problems["totals"]["step_with_most_problems"], [(r["step"], r["count"]) for r in problems["by_step"]])
     _assert_leader(problems["totals"]["riskiest_time_of_day"], [(r["block"], r["road_problem_count"]) for r in problems["risky_times"]])
     _assert_leader(problems["totals"]["most_problems_in"], [
@@ -215,9 +208,7 @@ async def test_explain_cost_reads_the_organisations_rates_and_gives_no_basis(
     assert outcome.error is None
     assert outcome.result is not None
     rates = outcome.result["current_rates"]
-    # No row saved for this organisation: the starting rates, said to be the starting ones (cost spec D2).
     assert rates["is_default"] is True  # type: ignore[index]
     assert round(rates["fuel_per_km"], 2) == 17.64  # type: ignore[index]  # 33.29 × 53 ÷ 100, as the rates card rounds it
     assert "updated_by_name" not in rates  # type: ignore[operator]
-    # The page guide states no fleet figures, so nothing to base an answer on.
     assert basis is None

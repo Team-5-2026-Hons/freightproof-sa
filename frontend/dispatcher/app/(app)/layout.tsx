@@ -11,7 +11,6 @@ import { ROUTES } from '@/lib/constants/routes'
 import { SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
 import { saveReturnPath } from '@shared/lib/session/return-path'
 
-// Kept in step with AuthContext's own list.
 const AUTH_ROUTE_PREFIXES = [ROUTES.login]
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -21,16 +20,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      // Covers a session that disappears without the dispatcher choosing to leave — a
-      // silently expired token, or landing on a guarded route with no session at all.
-      // AuthContext's own signOut() already handled the deliberate case and marked it via
-      // SUPPRESS_RETURN_SAVE_KEY, so this doesn't undo that clear.
       let suppressed = false
       try {
         suppressed = sessionStorage.getItem(SUPPRESS_RETURN_SAVE_KEY) === '1'
         sessionStorage.removeItem(SUPPRESS_RETURN_SAVE_KEY)
       } catch {
-        // Can't tell either way — default to saving; a stray extra save is harmless.
       }
       if (!suppressed) {
         saveReturnPath(
@@ -39,8 +33,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           AUTH_ROUTE_PREFIXES,
         )
       }
-      // ToastProvider lives above this gate, so toasts raised while signed in (error toasts
-      // are sticky) would otherwise still be on screen over the login page.
       clearToasts()
       router.replace(ROUTES.login)
     }
@@ -48,12 +40,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isLoading || !user) return null
 
-  // Mounted here (inside the auth gate) so the single SSE connection exists only for a
-  // signed-in dispatcher, and tears down on sign-out when this layout unmounts.
   return (
     <RealtimeProvider>
       <DispatcherShell>{children}</DispatcherShell>
-      {/* The helper bubble: mounted here, once, so its conversation follows the dispatcher across pages. */}
       <AssistantBubble />
     </RealtimeProvider>
   )

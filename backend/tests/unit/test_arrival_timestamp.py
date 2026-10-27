@@ -35,13 +35,8 @@ def arrival_context(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, Trip, P
     db = AsyncMock(spec=AsyncSession)
     db.execute.return_value = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
-    # Each advance_* looks _gate_and_load up in its own module, so the shared fixture
-    # patches both modules these tests drive.
     monkeypatch.setattr(advance_in_transit, "_gate_and_load", AsyncMock(return_value=(trip, event)))
     monkeypatch.setattr(advance_confirmation, "_gate_and_load", AsyncMock(return_value=(trip, event)))
-    # Corroboration now returns the tracker fix for proximity assessment. This fixture
-    # models an unavailable tracker explicitly rather than letting AsyncMock return a
-    # truthy mock object whose fake timestamp reaches the evaluator.
     monkeypatch.setattr(
         evidence_corroboration,
         "record_phase_corroboration",
@@ -52,14 +47,6 @@ def arrival_context(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, Trip, P
     monkeypatch.setattr(completion, "enqueue_event", MagicMock())
     monkeypatch.setattr(advance_confirmation, "enqueue_event", MagicMock())
     monkeypatch.setattr(completion, "get_trip_detail", AsyncMock())
-    # Every phase anchors on completion now, including
-    # in_transit — _dispatch_anchor registers a real SQLAlchemy after_commit listener
-    # on db.sync_session, which this mock AsyncSession has no genuine event target for.
-    # These tests are about timestamp orchestration, not anchoring, so the dispatch
-    # itself is stubbed out — same pattern test_confirmation_preserves_arrival_or_its_
-    # absence already uses below for advance_confirmation.
-    # advance_in_transit reaches _dispatch_anchor through anchor_dispatch._anchor_phase;
-    # advance_confirmation calls it directly.
     monkeypatch.setattr(anchor_dispatch, "_dispatch_anchor", MagicMock())
     monkeypatch.setattr(advance_confirmation, "_dispatch_anchor", MagicMock())
     return db, trip, event

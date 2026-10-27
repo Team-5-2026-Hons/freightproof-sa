@@ -73,7 +73,6 @@ async def test_receiver_finding_propagates_database_availability_error(
 ) -> None:
     failure = DatabaseUnavailableError("command_timeout", "command")
     db = AsyncMock(spec=AsyncSession)
-    # The idempotence lookup runs first: report "nothing filed yet" so the write is attempted.
     db.execute.return_value = MagicMock(first=MagicMock(return_value=None))
     monkeypatch.setattr(verdict_module, "register_exception", AsyncMock(side_effect=failure))
     verdict = verdict_module.resolve_verdict(status=IdvsDecisionStatus.DECLINED, identity_match=False)
@@ -105,7 +104,6 @@ async def test_phase_assessment_propagates_database_outage_but_keeps_optional_fa
         assert caught.value is failure
         followup.assert_not_awaited()
     else:
-        # Stop at the next operation: the optional assessment should let completion continue.
         followup.side_effect = LookupError("completion continued")
         with pytest.raises(LookupError, match="completion continued"):
             await completion._finish_phase(db, trip=trip, event=phase, idempotency_key=uuid4().hex)
@@ -131,7 +129,6 @@ async def test_cargo_failure_keeps_its_error_mapping_when_rollback_fails(primary
     if isinstance(primary, ValueError):
         assert caught.value.__cause__ is primary
     elif isinstance(primary, ConsignmentAlreadyAssignedError):
-        # The holder can't be checked without a working session, so it is withheld.
         assert caught.value.__cause__ is primary
         assert isinstance(caught.value, ConsignmentAlreadyAssignedError)
         assert caught.value.trip_reference is None

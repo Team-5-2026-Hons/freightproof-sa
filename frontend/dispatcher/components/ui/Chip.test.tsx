@@ -9,8 +9,6 @@ describe('Chip', () => {
     render(<Chip type={type} label="Status" />)
 
     const chip = screen.getByText('Status')
-    // No dot: colour already carries the signal via the fill itself, so a second
-    // coloured shape beside the label would just repeat the same fact.
     expect(chip.querySelector('span')).not.toBeInTheDocument()
   })
 

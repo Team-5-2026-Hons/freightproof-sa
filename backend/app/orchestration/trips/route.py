@@ -31,7 +31,6 @@ from app.schemas.trip_routes import TripRouteLegResponse, TripRouteResponse
 
 logger = logging.getLogger(__name__)
 
-# Versioned so a change to TripRouteResponse's shape can't serve old JSON that no longer validates.
 _CACHE_KEY_PREFIX = "trip_route:v1"
 
 
@@ -43,7 +42,6 @@ async def _read_cached(trip_id: uuid.UUID) -> TripRouteResponse | None:
     try:
         raw = await get_redis().get(_cache_key(trip_id))
     except RedisError as exc:
-        # Fails open, like the rate limiter on the same client: a cold cache only costs one ORS call.
         logger.warning("Trip route cache read failed for %s: %r", trip_id, exc)
         return None
     if raw is None:
@@ -119,7 +117,6 @@ async def get_trip_route_for_driver(
         logger.info("ORS_API_KEY not set; trip %s gets no planned route.", trip_id)
         return None
     except RoutingError as exc:
-        # Not cached: the next screen open retries, so a provider blip isn't sticky.
         logger.warning("Could not plan a route for trip %s: %s", trip_id, exc)
         return None
 

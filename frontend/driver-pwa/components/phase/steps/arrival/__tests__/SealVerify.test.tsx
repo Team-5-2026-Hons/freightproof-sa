@@ -16,17 +16,10 @@ import type { ArrivalEvidence } from '@/lib/types/evidence-draft'
 import type { SealReading } from '@/lib/ocr/readSeal'
 import type { PhaseEventId } from '@shared/lib/types/phase'
 
-// StepHeader (rendered by the step) calls useRouter — stub it so the component mounts
-// under jsdom.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
-// CameraCapture drives real native/browser camera APIs and needs a ToastProvider it has
-// no business requiring of this suite — stubbed exactly as departure/CaptureSeal.test.tsx
-// does, so these tests exercise SealVerify's own gating logic. CameraCapture has its own
-// coverage in components/phase/__tests__/CameraCapture.test.tsx.
-// Counts its renders so the keystroke test below can show the photo tile is left alone.
 const { cameraRenders } = vi.hoisted(() => ({ cameraRenders: { count: 0 } }))
 vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => {
@@ -35,8 +28,6 @@ vi.mock('@/components/phase/CameraCapture', () => ({
   },
 }))
 
-// The hook is the seam under test here: what matters is the phase id and role each step
-// hands it, not the upload itself (lib/hooks/__tests__/useArtifactUpload.test.ts).
 const { mockUseArtifactUpload, mockUploadNow } = vi.hoisted(() => ({
   mockUseArtifactUpload: vi.fn(),
   mockUploadNow: vi.fn().mockResolvedValue(null),
@@ -48,9 +39,6 @@ vi.mock('@/lib/hooks/useArtifactUpload', () => ({
   },
 }))
 
-// OCR is stubbed at the engine boundary (lib/ocr/readSeal), same as departure/CaptureSeal.
-// Defaulted to unavailable so the older tests keep exercising typing exactly as before.
-// canReadSeals defaults to true (a native phone); the browser case sets it false.
 const { mockReadSeal, mockCanReadSeals } = vi.hoisted(() => ({
   mockReadSeal: vi.fn(),
   mockCanReadSeals: vi.fn(),
@@ -61,22 +49,18 @@ vi.mock('@/lib/ocr/readSeal', () => ({
 }))
 
 beforeEach(() => {
-  // Reset, not just default: the "missing seal never reads" test asserts zero calls.
   mockReadSeal.mockReset()
   mockReadSeal.mockResolvedValue({ kind: 'unavailable' })
   mockCanReadSeals.mockReset()
   mockCanReadSeals.mockReturnValue(true)
 })
 
-// A read the test finishes by hand, to act while OCR is still running.
 function deferredRead() {
   let resolve: (r: SealReading) => void = () => {}
   const promise = new Promise<SealReading>((r) => { resolve = r })
   return { promise, resolve }
 }
 
-// The step reads the seal (mocked) on every photo, and that read resolves after the
-// click. Tests that stop at the click flush it so its state update lands inside act.
 async function flushSealRead() {
   await act(async () => {})
 }
@@ -86,8 +70,6 @@ function makeDraft(overrides: Partial<ArrivalEvidence> = {}): ArrivalEvidence {
     sealCondition: null,
     sealNumberAtArrival: null,
     sealNumberAtArrivalOcr: null,
-    // Defaulted to captured: most cases here exercise the condition/number logic, and an
-    // absent photo would disable the swipe for reasons unrelated to what they assert.
     sealPhotoDataUrl: 'data:image/jpeg;base64,SEAL',
     sealPhotoArtifactId: null,
     capturedAt: null,
@@ -122,10 +104,6 @@ function renderStep(overrides: {
   )
 }
 
-// The OCR answer is judged against the draft as it is when the answer ARRIVES, so these
-// tests need the draft to actually change: the harness holds it in state and applies
-// every patch, as the step page does, while still reporting each one to the spy.
-// renderStep above stays for the tests that only look at a single render.
 function renderStateful(overrides: {
   draft?: ArrivalEvidence
   onUpdate?: (patch: Partial<ArrivalEvidence>) => void
@@ -166,8 +144,6 @@ describe('arrival SealVerify — blind entry', () => {
     chooseCondition('Intact')
     typeSeal('AB-1234')
 
-    // Neither direction: telling the driver they matched is as leaky as telling them
-    // they did not, and "no seal on record" would leak that a reference exists at all.
     expect(screen.queryByText(/Seal matches/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Mismatch/)).not.toBeInTheDocument()
     expect(screen.queryByText(/No seal is on record/)).not.toBeInTheDocument()
@@ -194,7 +170,6 @@ describe('arrival SealVerify — blind entry', () => {
 
     typeSeal('ab-1234')
 
-    // Uppercased on the way in (the backend's format check accepts only uppercase).
     expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberAtArrival: 'AB-1234' })
   })
 
@@ -298,9 +273,6 @@ describe('arrival SealVerify — missing seal', () => {
   })
 })
 
-// The photo satisfies ArrivalCompleteRequest.seal_photo_artifact_id, which is a required
-// UUID in every condition — a missing seal is photographed as a missing seal, not skipped.
-// Letting the driver past this step without it means a guaranteed 422.
 describe('arrival SealVerify seal photo gate', () => {
   it('blocks the swipe when the seal number is valid but no photo has been taken', () => {
     renderStep({
@@ -339,10 +311,8 @@ describe('arrival SealVerify seal photo gate', () => {
 
 describe('arrival SealVerify — what is still needed', () => {
   it('lists condition, number and photo as needed on a fresh step', () => {
-    // Arrange / Act
     renderStep()
 
-    // Assert
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(list).toHaveTextContent('Seal condition')
     expect(list).toHaveTextContent('Seal number')
@@ -350,10 +320,8 @@ describe('arrival SealVerify — what is still needed', () => {
   })
 
   it('drops the seal number from the list once the seal is recorded as missing', () => {
-    // Arrange / Act
     renderStep({ draft: makeDraft({ sealCondition: 'missing' }) })
 
-    // Assert — there is no number to read off a seal that is not there.
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(list).not.toHaveTextContent('Seal number')
     expect(list).toHaveTextContent('Seal photo')
@@ -397,7 +365,6 @@ describe('arrival SealVerify evidence attribution', () => {
       />,
     )
 
-    // By role: the redesign also names "Seal photo" in the Needed-to-continue list.
     fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
     expect(mockUseArtifactUpload).toHaveBeenCalledWith('t1', 'phase-event-88')
@@ -437,7 +404,6 @@ describe('SealVerify — reading the seal number from the photo', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
-    // No OCR value recorded: the number that stands is the driver's own, so it is "typed".
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ sealNumberAtArrivalOcr: null }))
     expect(screen.getByLabelText('Seal number you see')).toHaveValue('CD-5678')
   })
@@ -517,8 +483,6 @@ describe('SealVerify — reading the seal number from the photo', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
-    // Condition, number and photo all present, yet the swipe waits: a submit now would
-    // carry a capture tag worked out from the previous photo's read.
     const slider = screen.getByRole('slider', { name: 'Swipe to Record Seal' })
     expect(slider).toHaveAttribute('aria-disabled', 'true')
     expect(slider).toHaveTextContent('Reading the seal…')

@@ -26,13 +26,9 @@ export const EMPTY_ACCESS_REQUEST: AccessRequest = {
   message: '',
 }
 
-// Mail clients truncate or refuse very long mailto: URLs (roughly 2,000 characters is the
-// safe ceiling across clients), so free text is capped well below it.
 export const MESSAGE_MAX_LENGTH = 600
 export const SHORT_FIELD_MAX_LENGTH = 120
 
-// Deliberately loose: the address only has to be something a person can reply to. The
-// visitor's own mail client is the real validator, since they send the message themselves.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function validateAccessRequest(request: AccessRequest): AccessRequestErrors {
@@ -79,7 +75,5 @@ export function buildAccessRequestMailto(request: AccessRequest, to: string): st
   const note = request.message.trim()
   if (note) lines.push('', note)
 
-  // encodeURIComponent, not URLSearchParams: the latter encodes spaces as '+', which
-  // several mail clients then show literally in the subject line.
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
 }

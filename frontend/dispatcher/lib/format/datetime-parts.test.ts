@@ -4,13 +4,11 @@ import {
   fmtCalendarDate, fmtDateTime, fmtFull, fmtSastDateParts, fmtSastDateTime, fmtTime, sastCalendarDay, sastToday,
 } from '@shared/lib/utils/datetime'
 
-// Lives beside the dispatcher's other format tests: the shared package has no test runner of its own.
 describe('fmtSastDateParts', () => {
   it('returns the day and the time as separate strings, with no date/time separator in either', () => {
     const parts = fmtSastDateParts('2026-10-01T10:50:00Z')
 
     expect(parts).toEqual({ day: '01 Oct 2026', time: '12:50 SAST' })
-    // Chrome's en-GB emits " at " between date and time; neither half may carry it.
     expect(parts?.day).not.toMatch(/,| at /)
     expect(parts?.time).not.toMatch(/,| at /)
   })
@@ -65,7 +63,6 @@ describe('fmtSastDateTime', () => {
   })
 })
 
-// 14:30Z is 16:30 SAST. Every formatter below is a shape over the same SAST core.
 describe('the shared formatters agree', () => {
   const ISO = '2026-09-05T14:30:00Z'
 

@@ -13,14 +13,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-// client.ts imports the Supabase client at module scope, which throws without real env
-// vars — mocked the same way the exception and trip detail page tests do.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// AdminOnly reads the signed-in user. Nothing asserted here depends on who that is.
 vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: null }),
 }))
@@ -33,8 +30,6 @@ vi.mock('@/lib/hooks/useVehicleDetail', () => ({
   useVehicleDetail: vi.fn(),
 }))
 
-// The summary fetches and has its own tests. Here only whether it mounts, and for which
-// vehicle and kind, matters.
 vi.mock('@/components/analytics/VehicleAnalyticsSummary', () => ({
   VehicleAnalyticsSummary: ({ vehicleId, vehicleType }: { vehicleId: string; vehicleType: string }) => (
     <p>Analytics for {vehicleId} ({vehicleType})</p>
@@ -43,7 +38,6 @@ vi.mock('@/components/analytics/VehicleAnalyticsSummary', () => ({
 
 const mockedUseVehicleDetail = vi.mocked(useVehicleDetail)
 
-// Title EventTimeline gives a 'created' event, used to tell that the timeline rendered.
 const TIMELINE_ENTRY = 'Created'
 
 function makeVehicle(overrides: Partial<VehicleDetail> = {}): VehicleDetail {
@@ -105,8 +99,6 @@ describe('Vehicle detail — right panel for a horse', () => {
   })
 })
 
-// Flipped by the trailer analytics work. This used to pin the horses-only rule (a trailer
-// had no analytics data at all); trailers now have figures, so they get the same toggle.
 describe('Vehicle detail — right panel for a trailer', () => {
   it('offers history and analytics, opening on history', () => {
     renderPage(makeVehicle({ vehicle_type: 'trailer' }))

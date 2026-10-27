@@ -7,16 +7,12 @@ import { cn } from '@shared/lib/utils/cn'
 export interface RadioOption<T extends string> {
   value: T
   label: string
-  /** Shown but not selectable. */
   disabled?: boolean
-  /** Why it can't be chosen, shown as the option's tooltip. */
   disabledReason?: string
 }
 
 interface RadioToggleProps<T extends string> {
-  /** The group's name. Shown as a caption only when showLabel is on; always the accessible name. */
   label: string
-  /** Off inside a card header, where a caption would crowd the title row. */
   showLabel?: boolean
   value: T
   options: readonly RadioOption<T>[]

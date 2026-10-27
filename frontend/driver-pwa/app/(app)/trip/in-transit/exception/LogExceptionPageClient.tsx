@@ -25,8 +25,6 @@ import { useBack } from '@/lib/navigation/useBack'
 import { captureCustody } from '@/lib/session/custody-context'
 import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 
-// Options are derived from the shared DRIVER_EXCEPTION_TYPES so the picker can never
-// drift to an invalid / non-driver type (e.g. system-detected gps_mismatch).
 const EXCEPTION_LABELS: Partial<Record<ExceptionType, string>> = {
   delivery_refused:       'Delivery refused',
   cargo_damage:           'Cargo damage',
@@ -35,22 +33,18 @@ const EXCEPTION_LABELS: Partial<Record<ExceptionType, string>> = {
   document_review:        'Document issue',
 }
 
-// panic_button has its own dedicated flow — exclude it from this picker.
 const EXCEPTION_OPTIONS = DRIVER_EXCEPTION_TYPES
   .filter((value) => value !== 'panic_button')
   .map((value) => ({ value, label: EXCEPTION_LABELS[value] ?? value }))
 
-// The one category that records WHICH vehicle it happened to (trailer analytics spec).
 const BREAKDOWN_TYPE: ExceptionType = 'mechanical'
 
-// Drivers call the horse "the truck", so the button says Truck while the code/API say horse.
 const VEHICLE_LABELS: Record<VehicleType, string> = {
   horse: 'Truck',
   trailer: 'Trailer',
 }
 const VEHICLE_OPTIONS: readonly VehicleType[] = ['horse', 'trailer']
 
-// The breakdown fields a report sends, in the wire's own names (RaiseExceptionBody).
 interface BreakdownVehicleFields {
   vehicle_type?: VehicleType
   trailer_id?: string
@@ -104,8 +98,6 @@ interface ChoiceProps {
   className?: string
 }
 
-// Every choice on this screen is a radio: one answer per question, and a screen reader
-// hears "radio, checked" rather than a toggle that could be pressed alongside others.
 function Choice({ checked, onClick, children, className }: ChoiceProps) {
   return (
     <button type="button" role="radio" aria-checked={checked} onClick={onClick} className={className}>
@@ -114,7 +106,6 @@ function Choice({ checked, onClick, children, className }: ChoiceProps) {
   )
 }
 
-// The photo upload gets its own label since it's the slow step on a bad signal.
 type SubmitStage = 'idle' | 'uploading-photo' | 'saving'
 
 interface DraftPhoto {
@@ -136,34 +127,25 @@ function pluralPhotos(count: number): string {
 export default function LogExceptionPageClient() {
   const router = useRouter()
   const goBack = useBack(ROUTES.inTransit)
-  // At accessibility text sizes the footer flows instead of pinning (see StepLayout).
   const largeText = useAccessibilityTextSize()
   const { trip, logException } = useTrip()
   const { notify } = useToast()
   const { submitExceptionReport } = useOfflineQueue()
   const { capture } = useLocation()
   const [type, setType] = useState<ExceptionType | null>(null)
-  // The category list collapses to the one chosen row; Change reopens it.
   const [choosingType, setChoosingType] = useState(true)
   const [description, setDescription] = useState('')
-  // One id per report draft, reused by every submit press: if the first POST's response
-  // was lost, the server recognises the retry and returns the original report.
   const [clientReportId] = useState(() => crypto.randomUUID())
   const [photos, setPhotos] = useState<DraftPhoto[]>([])
   const [vehicleType, setVehicleType] = useState<VehicleType | null>(null)
   const [trailerId, setTrailerId] = useState<VehicleId | null>(null)
 
   const [stage, setStage] = useState<SubmitStage>('idle')
-  // See handleSubmit: a synchronous claim, because `stage` lags the tap by the GPS wait.
   const submitGuard = useRef(false)
-  // Different failures that must not share one message: the server refused the report,
-  // it refused one photo, or it never got saved anywhere at all.
   const [submitError, setSubmitError] = useState<SubmitError>(null)
   const submitting = stage !== 'idle'
 
   function addPhoto(dataUrl: string) {
-    // No eager upload: this photo is for an optional form the driver can abandon freely.
-    // Stamped at capture, not submit, since that's when the driver stood in front of it.
     const capturedAt = new Date().toISOString()
     setPhotos((current) => (
       current.length >= MAX_EXCEPTION_PHOTOS ? current : [...current, { id: crypto.randomUUID(), dataUrl, capturedAt }]
@@ -172,8 +154,6 @@ export default function LogExceptionPageClient() {
   }
 
   function retakePhoto(photoId: string, dataUrl: string) {
-    // A NEW id, not the old one: the old id may already map to an uploaded artifact, and
-    // a retake must not reuse the bytes the server has for the previous picture.
     const capturedAt = new Date().toISOString()
     setPhotos((current) => current.map((p) => (p.id === photoId ? { id: crypto.randomUUID(), dataUrl, capturedAt } : p)))
     setSubmitError(null)
@@ -187,13 +167,11 @@ export default function LogExceptionPageClient() {
   function chooseType(next: ExceptionType) {
     setType(next)
     setChoosingType(false)
-    // A new category resets the vehicle question so an old answer can't ride along.
     setVehicleType(null)
     setTrailerId(null)
   }
 
   function chooseVehicleType(next: VehicleType) {
-    // A plate chosen under "Trailer" means nothing once the answer changes.
     if (next !== vehicleType) setTrailerId(null)
     setVehicleType(next)
   }
@@ -202,8 +180,6 @@ export default function LogExceptionPageClient() {
     if (!type || !trip || !description.trim()) return
     const vehicle = breakdownVehicle(type, trip.trailers, vehicleType, trailerId)
     if (!vehicle.complete) return
-    // Claimed synchronously: `stage` only flips after the GPS wait below, so a second tap
-    // in that window would otherwise start a second submission of the same report.
     if (submitGuard.current) return
     submitGuard.current = true
     try {
@@ -221,16 +197,8 @@ export default function LogExceptionPageClient() {
     setSubmitError(null)
 
     const tripId = String(trip.id)
-    // Captured now, not at flush time: the exception belongs to the leg being driven,
-    // and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
-    // The custody period at the tap, before the GPS wait. Stored in the report body,
-    // so every resend of this report states the period it was captured in.
     const { custodySequence } = captureCustody(tripId)
-    // Optional enrichment, bounded: the report's own phone fix feeds the backend's
-    // capture-time comparison, but a broken-seal report must not sit behind
-    // useLocation's full 10 s geolocation timeout. Past REPORT_CAPTURE_BUDGET_MS the
-    // report goes without a fix and its comparison simply reads "unverified".
     const location = await captureWithinBudget(capture, REPORT_CAPTURE_BUDGET_MS)
     const captureFields = location === null
       ? {}
@@ -263,13 +231,10 @@ export default function LogExceptionPageClient() {
       photos,
     }
 
-    // Photos upload before the report is posted, so the label is the slow step's name;
-    // once the last one is up only the report POST remains.
     setStage(photos.length > 0 ? 'uploading-photo' : 'saving')
     try {
       const outcome = await submitExceptionReport(
         draft,
-        // The report is only ever posted with the COMPLETE id list (never a reduced set).
         (artifactIds) => logException(type, {
           description,
           clientReportId,
@@ -290,7 +255,6 @@ export default function LogExceptionPageClient() {
   function handleOutcome(outcome: ExceptionSubmitOutcome, category: ExceptionType, photoCount: number): void {
     switch (outcome.kind) {
       case 'acknowledged':
-        // Names the chosen category as explicit proof the report registered.
         notify({
           kind: 'success',
           title: 'Exception recorded',
@@ -299,8 +263,6 @@ export default function LogExceptionPageClient() {
         router.push(ROUTES.inTransit)
         return
       case 'saved-for-later':
-        // States exactly what is stored: "will sync later" alone would not say the
-        // photos are covered too.
         notify({
           kind: 'success',
           title: 'Report saved',
@@ -311,7 +273,6 @@ export default function LogExceptionPageClient() {
         router.push(ROUTES.inTransit)
         return
       case 'not-saved':
-        // Send failed AND storage refused it — nothing is holding this report.
         setSubmitError({ kind: 'not-saved', photoCount: outcome.photoCount })
         return
       case 'rejected':
@@ -338,8 +299,6 @@ export default function LogExceptionPageClient() {
         <Button
           type="button"
           variant="secondary"
-          // Explicit replace, not router.back(): reachable via cold load/deep link, so
-          // there may be no meaningful back-history.
           onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
         >
           Back to In Transit
@@ -350,9 +309,7 @@ export default function LogExceptionPageClient() {
 
   const trailers = trip.trailers
   const vehicleAnswer = breakdownVehicle(type, trailers, vehicleType, trailerId)
-  // Asked only when there is a choice: a rigid truck has no trailer that could break down.
   const asksVehicle = type === BREAKDOWN_TYPE && trailers.length > 0
-  // On an interlink, "Trailer" alone can't say which one.
   const asksPlate = asksVehicle && vehicleType === 'trailer' && trailers.length > 1
   const ready = type !== null && description.trim() !== '' && vehicleAnswer.complete && !submitting
 
@@ -365,15 +322,12 @@ export default function LogExceptionPageClient() {
         onBack={goBack}
       />
       <div className="flex flex-1 flex-col pb-6 pt-4">
-        {/* h2: the header above already carries the screen's h1. */}
         <div className="flex flex-col gap-1.5 px-5">
           <h2 className="text-title-1 tracking-tight text-surface-on">What happened?</h2>
           {choosingType && <p className="text-body text-surface-on-variant">Your dispatcher sees this straight away.</p>}
         </div>
 
         {choosingType || type === null ? (
-          // Named exactly as the footer chip names it, so the requirement points at
-          // something on screen.
           <div role="radiogroup" aria-label="What happened" className="mt-3.5">
             {EXCEPTION_OPTIONS.map((opt, i) => {
               const checked = type === opt.value
@@ -417,7 +371,6 @@ export default function LogExceptionPageClient() {
         {asksVehicle && (
           <section className="mt-6 px-4">
             <h3 id="breakdown-vehicle-question" className="px-1 text-title-3 text-surface-on">Which vehicle broke down?</h3>
-            {/* A segmented control: two answers, side by side, the chosen one raised. */}
             <div role="radiogroup" aria-labelledby="breakdown-vehicle-question" className="mt-2.5 grid grid-cols-2 gap-1 rounded-2xl bg-fill p-1">
               {VEHICLE_OPTIONS.map((option) => (
                 <Choice
@@ -440,8 +393,6 @@ export default function LogExceptionPageClient() {
           <section className="mt-6 px-4">
             <h3 id="breakdown-trailer-question" className="px-1 text-title-3 text-surface-on">Which trailer?</h3>
             <p className="mb-3 px-1 text-subhead text-surface-on-variant">Check the registration plate on the trailer.</p>
-            {/* Each trailer drawn as its number plate — the thing the driver walks back
-                and reads off the trailer itself. */}
             <div role="radiogroup" aria-labelledby="breakdown-trailer-question" className="grid grid-cols-2 gap-2.5">
               {trailers.map((trailer) => {
                 const checked = trailerId === trailer.id
@@ -479,8 +430,6 @@ export default function LogExceptionPageClient() {
             onChange={(e) => setDescription(e.target.value)}
             required
           />
-          {/* The description is required evidence; the photographs stay optional, so each is
-              one compact row rather than a tile that would bury the submit. */}
           <div className="flex min-w-0 flex-col gap-3">
             <div className="flex items-baseline justify-between gap-3 px-1">
               <h3 className="text-title-3 text-surface-on">Photos (optional)</h3>
@@ -516,8 +465,6 @@ export default function LogExceptionPageClient() {
               </ol>
             )}
             {photos.length < MAX_EXCEPTION_PHOTOS && (
-              // CameraCapture's own empty row is the add control, not a Button: it owns the
-              // native-camera/file-picker fallback logic, which must not be duplicated here.
               <CameraCapture
                 variant="row"
                 label={photos.length === 0 ? 'Add a photo' : 'Add another photo'}
@@ -531,19 +478,16 @@ export default function LogExceptionPageClient() {
         </div>
 
         {submitError?.kind === 'rejected' && (
-          // Terminal 4xx: retrying with the same input cannot succeed.
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
             Could not submit. The report was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
         {submitError?.kind === 'rejected-photo' && (
-          // The report is never sent without the photo the driver chose to attach.
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
             Photo {submitError.photoNumber} was not accepted by the server. Remove or retake it, then submit again.
           </p>
         )}
         {submitError?.kind === 'not-saved' && (
-          // Send failed AND storage refused it — nothing is holding this report.
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
             Could not send this report and this device has no room to store it. Not saved: the
             description{submitError.photoCount > 0 ? ` and ${pluralPhotos(submitError.photoCount)}` : ''}.
@@ -560,9 +504,6 @@ export default function LogExceptionPageClient() {
             { label: 'Description', met: description.trim() !== '' },
           ]}
         />
-        {/* A button, not a swipe: a report is not a ledger phase, and in a breakdown or a
-            refusal speed matters more than the guard against a stray tap. The label stays
-            "Submit Exception" while waiting — the chips above say what is missing. */}
         <Button size="pill" disabled={!ready} onClick={handleSubmit}>
           {stage === 'uploading-photo'
             ? 'Uploading Photos…'

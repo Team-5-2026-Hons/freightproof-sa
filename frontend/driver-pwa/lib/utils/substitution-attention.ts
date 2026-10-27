@@ -33,8 +33,6 @@ function readSeen(): Set<string> {
     const parsed: unknown = JSON.parse(raw)
     return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [])
   } catch (err: unknown) {
-    // Private mode or a corrupt entry: treat everything as unseen, which only means the
-    // sheet opens once more than it had to.
     console.warn('substitution-attention: could not read seen items', err)
     return new Set()
   }

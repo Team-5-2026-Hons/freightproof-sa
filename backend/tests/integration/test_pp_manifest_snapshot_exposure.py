@@ -69,7 +69,7 @@ async def test_driver_trip_views_carry_no_manifest_key(client: AsyncClient, db_s
     world = await build_manifest_world(db_session)
     trip_id = await _manifest_trip(client, world)
 
-    driver_headers = world.driver_headers()  # one session: a second login signs the first out
+    driver_headers = world.driver_headers()
 
     dispatcher = await client.get(f"/api/v1/trips/{trip_id}", headers=world.headers())
     active = await client.get("/api/v1/trips/me/active", headers=driver_headers)
@@ -95,14 +95,12 @@ async def test_dispatcher_manifest_view_shows_the_snapshot_as_previewed(
 
     assert resp.status_code == 200, resp.text
     snapshot = resp.json()["pp_manifest_snapshot"]
-    # A display summary only: the stored JSON's receiver names and numbers stay in Postgres.
     assert set(snapshot) == {
         "manifest_number", "issuer_account", "issuer_name", "origin_hub", "destination_hub",
         "client_reference", "waybills", "totals",
     }
     assert snapshot["manifest_number"] == MANIFEST_HAPPY_PATH
     assert snapshot["client_reference"] == previewed["client_reference"]
-    # One reading of a manifest: the panel shows the lines and totals the dispatcher reviewed.
     assert snapshot["waybills"] == previewed["waybills"]
     assert snapshot["totals"] == previewed["totals"]
 

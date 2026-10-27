@@ -26,7 +26,7 @@ from tests.conftest import FakeMockStateStore
 _ORIGIN = (Decimal("-33.9249000"), Decimal("18.4241000"))
 _DEST = (Decimal("-33.7342000"), Decimal("18.9621000"))
 _MID = (Decimal("-33.8295500"), Decimal("18.6931000"))
-_FAR_FROM_MID = (Decimal("-33.8795500"), Decimal("18.6931000"))  # ~5.6 km south of _MID
+_FAR_FROM_MID = (Decimal("-33.8795500"), Decimal("18.6931000"))
 _PLAN = [
     (PhaseType.TRIP_CREATION, None), (PhaseType.ACTIVATION, 0), (PhaseType.LOADING, 0),
     (PhaseType.DEPARTURE, 0), (PhaseType.IN_TRANSIT, 0), (PhaseType.ARRIVAL, 1),

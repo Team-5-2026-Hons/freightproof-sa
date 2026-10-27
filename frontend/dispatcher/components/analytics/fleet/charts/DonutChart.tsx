@@ -7,10 +7,8 @@ import { SURFACE_COLOR } from '@/lib/tokens'
 import { useChartHeight } from '../ChartZoom'
 import { CHART_HEIGHT, GAP_WIDTH } from './chartStyle'
 
-// A ring rather than a full pie, so the total can sit in the middle.
 const INNER_RADIUS = '58%'
 const OUTER_RADIUS = '82%'
-// Start at twelve o'clock and run clockwise, the way people read a clock face.
 const START_ANGLE = 90
 const END_ANGLE = -270
 
@@ -26,7 +24,6 @@ interface DonutChartProps<Row> {
   value: (row: Row) => number
   /** Per row, and fixed per category: colour follows the category, never its size or rank. */
   color: (row: Row) => string
-  /** Written in the hole, e.g. "5 reviews". */
   centre: string
   renderTooltip: (row: Row) => ReactNode
   height?: number
@@ -37,7 +34,6 @@ interface DonutChartProps<Row> {
 export function DonutChart<Row>({
   rows, rowKey, value, color, centre, renderTooltip, height: normalHeight = CHART_HEIGHT,
 }: DonutChartProps<Row>) {
-  // Taller inside the zoom modal; the ring's radii are percentages, so it grows with it.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const data: DonutDatum[] = rows
@@ -50,7 +46,6 @@ export function DonutChart<Row>({
         <PieChart>
           <Tooltip
             content={({ active, payload }) => {
-              // The hovered slice's own datum: its key finds the typed row.
               const datum = payload?.[0]?.payload as Partial<DonutDatum> | undefined
               const row = active && typeof datum?.key === 'string' ? byKey.get(datum.key) : undefined
               return row === undefined ? null : renderTooltip(row)

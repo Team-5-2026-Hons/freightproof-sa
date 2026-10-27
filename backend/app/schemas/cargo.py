@@ -15,7 +15,7 @@ class ConsignmentBase(BaseModel):
 
     trip_id: Optional[UUID] = None
     parcel_perfect_reference: str
-    client_organization_id: Optional[UUID] = None  # resolved from the PP accnum; may be NULL
+    client_organization_id: Optional[UUID] = None
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
     declared_value: Optional[Decimal] = None
@@ -34,8 +34,6 @@ class ConsignmentRead(ConsignmentBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
-    # Live scan progress, recomputed per request. Distinct from the phase rows'
-    # parcel_count_origin/_destination, which are stamped once and never revised.
     scanned_out_count: int = 0
     scanned_in_count: int = 0
 
@@ -56,5 +54,4 @@ class ParcelRead(ParcelBase):
     pp_scan_in_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-
 

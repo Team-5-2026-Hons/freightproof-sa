@@ -25,10 +25,6 @@ branch_labels = None
 depends_on = None
 
 
-# (table, old_constraint_name, new_constraint_name). Guarded by an existence check
-# because 0001 let PostgreSQL auto-name the pkey and the plain FKs — those names are
-# conventional, not asserted anywhere, and a hard rename would fail the whole
-# migration over a cosmetic mismatch.
 _CONSTRAINT_RENAMES = [
     ("phase_events", "handshake_events_pkey", "phase_events_pkey"),
     ("phase_events", "handshake_events_trip_id_fkey", "phase_events_trip_id_fkey"),
@@ -80,14 +76,12 @@ def _rename_policies(triples) -> None:
 
 
 def upgrade() -> None:
-    # ── 1. The rename itself ────────────────────────────────────────────────
     op.rename_table("handshake_events", "phase_events")
     op.alter_column("phase_events", "handshake_type", new_column_name="phase_type")
     op.execute("ALTER INDEX IF EXISTS ix_handshake_events_trip_sequence "
                "RENAME TO ix_phase_events_trip_sequence")
     _rename_constraints(_CONSTRAINT_RENAMES)
 
-    # ── 2. New columns ──────────────────────────────────────────────────────
     op.add_column(
         "phase_events",
         sa.Column("trip_stop_id", postgresql.UUID(as_uuid=True), nullable=True),
@@ -105,16 +99,11 @@ def upgrade() -> None:
         sa.Column("idempotency_key", sa.String(length=100), nullable=True),
     )
 
-    # ── 3. Per-stop uniqueness ──────────────────────────────────────────────
-    # The old constraint allowed exactly one row per (trip, type) — which is the
-    # wall this refactor exists to remove: a cross-dock trip loads twice.
     op.drop_constraint("uq_handshake_events_trip_type", "phase_events", type_="unique")
     op.create_unique_constraint(
         "uq_phase_events_trip_stop_type", "phase_events",
         ["trip_id", "trip_stop_id", "phase_type"],
     )
-    # PostgreSQL treats NULLs as distinct in a UNIQUE constraint, so the constraint
-    # above cannot stop two trip_creation rows (both NULL-stop). This closes it.
     op.execute("""
         CREATE UNIQUE INDEX uq_phase_events_trip_creation
         ON phase_events (trip_id) WHERE phase_type = 'trip_creation';
@@ -124,30 +113,18 @@ def upgrade() -> None:
         ON phase_events (idempotency_key) WHERE idempotency_key IS NOT NULL;
     """)
 
-    # ── 4. Inbound references ───────────────────────────────────────────────
     op.alter_column("trailer_gps_snapshots", "handshake_event_id",
                     new_column_name="phase_event_id")
     op.alter_column("exceptions", "handshake_event_id", new_column_name="phase_event_id")
 
-    # ── 5. Trip denormalisation — caches, never sources of truth ────────────
     op.add_column("trips", sa.Column("current_phase", sa.String(length=30), nullable=True))
     op.add_column("trips", sa.Column("current_stop", sa.Integer(), nullable=True))
 
-    # ── 6. Stored subject-type discriminator ────────────────────────────────
     op.execute("UPDATE blockchain_receipts SET subject_type = 'phase_event' "
                "WHERE subject_type = 'handshake_event';")
 
-    # ── 7. 🔴 RLS ───────────────────────────────────────────────────────────
-    # relrowsecurity is a table property and follows the rename, so RLS stays
-    # ENABLED without action here — the gate asserts it rather than assuming it.
-    # The three SELECT policies also follow the table, but keep stale names.
     _rename_policies(_POLICY_RENAMES)
 
-    # trailer_gps_snapshots_dispatcher_select JOINs through this table
-    # (0003_tom_rls_policies.py:456-462). PostgreSQL stores policy expressions
-    # parsed, so the reference would in fact survive the rename — but "would in
-    # fact" is not a security posture. Dropped and recreated so the policy body
-    # visibly names phase_events / phase_event_id.
     op.execute("DROP POLICY IF EXISTS trailer_gps_snapshots_dispatcher_select "
                "ON trailer_gps_snapshots;")
     op.execute("""
@@ -167,16 +144,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # ⚠️ Only reversible while no multi-stop plan exists. Restoring
-    # uq_handshake_events_trip_type below fails on any trip carrying two `loading`
-    # rows — which is the whole point of the forward migration. The Stage-1 gate
-    # runs this against a trip-free database deliberately; do not run it blindly
-    # against a seeded one.
-    # Dropped FIRST but recreated LAST. The policy body names handshake_events and
-    # handshake_event_id, neither of which exists until the renames at the bottom of
-    # this function have run — recreating it here fails with UndefinedTableError and
-    # takes the whole downgrade with it. Dropping early also frees the column rename
-    # below from a policy dependency.
     op.execute("DROP POLICY IF EXISTS trailer_gps_snapshots_dispatcher_select "
                "ON trailer_gps_snapshots;")
     _rename_policies([(t, new, old) for t, old, new in _POLICY_RENAMES])
@@ -209,8 +176,6 @@ def downgrade() -> None:
     op.alter_column("phase_events", "phase_type", new_column_name="handshake_type")
     op.rename_table("phase_events", "handshake_events")
 
-    # Only now do handshake_events / handshake_event_id exist again, so the 0003
-    # policy body can be restored verbatim.
     op.execute("""
         CREATE POLICY trailer_gps_snapshots_dispatcher_select ON trailer_gps_snapshots
         FOR SELECT TO authenticated

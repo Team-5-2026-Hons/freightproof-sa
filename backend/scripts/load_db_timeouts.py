@@ -66,9 +66,6 @@ def parser() -> argparse.ArgumentParser:
 
 
 def source_digest() -> str:
-    # Hash LF-normalised content, so the digest matches a clean checkout of the same commit
-    # whatever its line endings (Windows autocrlf or the Linux image). The NUL after each
-    # path and file keeps one file's end from running into the next one's name.
     digest = hashlib.sha256()
     root = Path(__file__).resolve().parents[1]
     for directory in SOURCE_DIRECTORIES:
@@ -103,8 +100,6 @@ def metadata(args: argparse.Namespace) -> dict[str, object]:
 
 
 def save(path: Path, report: dict[str, object]) -> None:
-    # Write a sibling file, then rename it over the target, so an interrupted run never
-    # leaves a truncated report behind.
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(path.name + ".partial")
     partial.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -112,8 +107,6 @@ def save(path: Path, report: dict[str, object]) -> None:
 
 
 async def execute(args: argparse.Namespace, report: dict[str, object]) -> bool:
-    # Imported only now, after configure_environment: the runner imports the app, whose
-    # Settings must only ever see the validated local targets.
     from scripts.db_timeout_load.runner import execute as run_scenarios
 
     return await run_scenarios(args, report, lambda: save(args.output, report))

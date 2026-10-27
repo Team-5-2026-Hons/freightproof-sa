@@ -5,17 +5,13 @@
 // assets or new dependency required.
 
 export interface CountryCode {
-  /** ISO 3166-1 alpha-2 code, used as the React key. */
   iso: string
   name: string
   flag: string
   dialCode: string
-  /** Example local-number placeholder, sized and grouped for this country. */
   placeholder: string
 }
 
-// Generic ascending digits, never a real number — only used to size/group the
-// placeholder hint to roughly match each country's typical local-number length.
 const DIGIT_CYCLE = '1234567890'
 
 function placeholderFor(localLength: number): string {
@@ -34,7 +30,6 @@ function placeholderFor(localLength: number): string {
   return groups.join(' ')
 }
 
-// [iso, name, flag, dialCode, typical local-number length (as the driver types it)]
 const COUNTRY_DATA: [string, string, string, string, number][] = [
   ['ZA', 'South Africa', '🇿🇦', '+27', 10],
   ['AO', 'Angola', '🇦🇴', '+244', 9],

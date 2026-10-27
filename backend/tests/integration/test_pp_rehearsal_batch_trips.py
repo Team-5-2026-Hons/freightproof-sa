@@ -31,7 +31,6 @@ from tests.integration._pp_manifest_world import (
 
 _CREATE = "/api/v1/trips/from-pp-manifest"
 
-# One manifest per local direction, and one per national route.
 _LOCAL_SAMPLE = (101, 107, 113, 119)
 _NATIONAL = tuple(range(125, 131))
 _UNLINKED = {"ORIGIN_HUB_UNLINKED", "DESTINATION_HUB_UNLINKED"}
@@ -134,7 +133,6 @@ async def test_local_manifest_creates_a_clean_trip_on_the_picked_precincts(
         select(Consignment.parcel_perfect_reference).where(Consignment.trip_id == trip.id)
     )).scalars().all()
     assert sorted(refs) == [f"MFTWB{number}{p:02d}" for p in range(1, len(fixture.lines) + 1)]
-    # Clean start: nothing scanned and no exception raised by creating the trip.
     statuses = (await db_session.execute(
         select(Parcel.status).join(Consignment, Parcel.consignment_id == Consignment.id)
         .where(Consignment.trip_id == trip.id)

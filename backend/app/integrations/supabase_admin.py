@@ -84,8 +84,6 @@ async def create_dispatcher_auth_user(
     payload = {
         "email": email,
         "password": password,
-        # Auto-confirm: dispatcher accounts are provisioned by staff, not self-registered,
-        # so there is no email-verification step to wait on.
         "email_confirm": True,
         "app_metadata": {"role": role.value},
         "user_metadata": {"full_name": full_name},

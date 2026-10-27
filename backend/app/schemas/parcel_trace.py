@@ -11,7 +11,6 @@ from app.db.models.enums import AnchorStatus, ParcelStatus, PhaseStatus, PhaseTy
 from app.schemas.text import REFERENCE_MAX_LENGTH, clean_text
 
 def _visible_identifier(value: str) -> str:
-    # Cleaning an identifier into another valid barcode would search the wrong parcel.
     if not value.isprintable() or clean_text(value) != value:
         raise ValueError("Identifiers must contain visible characters only")
     return value
@@ -61,7 +60,6 @@ class ParcelScanObservation(BaseModel):
     status: ParcelStatus
     scan_out_at: datetime | None
     scan_in_at: datetime | None
-    # Legacy scan columns do not record their producer or whether it was simulated.
     source: Literal["parcel_record_source_unknown"] = "parcel_record_source_unknown"
 
 

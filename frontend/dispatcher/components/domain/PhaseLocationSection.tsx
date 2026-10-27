@@ -7,7 +7,6 @@ import type { Precinct } from '@shared/lib/types/precinct'
 
 interface Props {
   phase: PhaseDescriptor
-  // Undefined when the stop or precinct cannot be resolved — distances are then omitted.
   precinct: Precinct | undefined
   title?: string
   showCoordinates?: boolean

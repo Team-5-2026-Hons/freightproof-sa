@@ -10,7 +10,6 @@ import { cn } from '@shared/lib/utils/cn'
 import { CtaLink } from './CtaLink'
 import { Logo } from './Logo'
 
-// Section links are anchors on the landing page; from a legal page they go home first.
 const NAV_LINKS = [
   { label: 'How it works', hash: SECTIONS.journey },
   { label: 'Why it matters', hash: SECTIONS.why },
@@ -18,7 +17,6 @@ const NAV_LINKS = [
 ] as const
 
 interface LandingNavProps {
-  /** True on the landing page itself, where section links can stay in-page. */
   onLanding?: boolean
 }
 
@@ -26,7 +24,6 @@ export function LandingNav({ onLanding = false }: LandingNavProps) {
   const { user } = useAuth()
   const menuId = useId()
   const headerRef = useRef<HTMLElement>(null)
-  // The edge under the bar only appears once content is actually scrolling beneath it.
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -37,7 +34,6 @@ export function LandingNav({ onLanding = false }: LandingNavProps) {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Escape or a tap anywhere outside closes the menu: never trap the visitor in it.
   useEffect(() => {
     if (!menuOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
@@ -61,8 +57,6 @@ export function LandingNav({ onLanding = false }: LandingNavProps) {
     <header
       ref={headerRef}
       className={cn(
-        // Opaque paper, not glass: the ink road passing beneath blurs into a grey stain
-        // through any translucency. The hairline and shadow mark the edge instead.
         'sticky top-0 z-sticky border-b bg-surf transition-[border-color,box-shadow] duration-300',
         scrolled || menuOpen ? 'border-outline-v/40 shadow-level-1' : 'border-transparent',
       )}
@@ -106,7 +100,6 @@ export function LandingNav({ onLanding = false }: LandingNavProps) {
         </div>
       </nav>
 
-      {/* Drops from the bar it belongs to and retracts the same way. */}
       <div
         id={menuId}
         inert={!menuOpen}

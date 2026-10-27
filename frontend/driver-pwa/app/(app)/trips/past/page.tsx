@@ -73,7 +73,6 @@ export default function PastTripsPage() {
       ) : (
         groups.map((group) => (
           <section key={group.label} aria-labelledby={`month-${group.label}`}>
-            {/* Sticky month heading, like the iOS Photos/Wallet lists. */}
             <h2
               id={`month-${group.label}`}
               className="glass-nav sticky top-[calc(env(safe-area-inset-top)+3.5rem)] z-raised px-5 pb-1.5 pt-4 text-subhead font-semibold text-surface-on-variant"

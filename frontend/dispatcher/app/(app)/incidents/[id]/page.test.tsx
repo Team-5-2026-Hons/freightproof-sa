@@ -20,24 +20,18 @@ beforeEach(() => {
 
 describe('incident detail page Back target', () => {
   it('returns to the trip it was opened from', () => {
-    // Arrange
     search = new URLSearchParams({ returnTo: '/trips/t1?panel=information' })
 
-    // Act
     render(<IncidentDetailPage />)
 
-    // Assert
     expect(view).toHaveBeenCalledWith('/trips/t1?panel=information')
   })
 
   it('falls back to the incidents list, and never follows an outside URL', () => {
-    // Arrange
     search = new URLSearchParams({ returnTo: 'https://evil.example/phish' })
 
-    // Act
     render(<IncidentDetailPage />)
 
-    // Assert
     expect(view).toHaveBeenCalledWith('/incidents')
   })
 })

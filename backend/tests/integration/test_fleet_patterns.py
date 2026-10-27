@@ -80,8 +80,6 @@ def stops(seed: dict[str, Any]) -> list[Precinct]:
     return [seed["origin"], seed["dest"]]
 
 
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
-
 
 async def test_fleet_patterns_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_PATTERNS, params=_period_params())
@@ -131,8 +129,6 @@ async def test_fleet_patterns_have_no_bar_limit(client: AsyncClient, operator: O
     assert response.status_code == 200
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_patterns_for_an_org_without_trips_return_complete_empty_sets(
     client: AsyncClient, operator: Operator,
@@ -154,21 +150,15 @@ async def test_fleet_patterns_for_an_org_without_trips_return_complete_empty_set
 async def test_fleet_patterns_count_attested_steps_in_sast_per_occurrence(
     client: AsyncClient, db_session: AsyncSession, operator: Operator, stops: list[Precinct],
 ) -> None:
-    # SINGLE_LEG arrives 300 minutes (5 h) after it departs.
     departed_only = replace_step(SINGLE_LEG, PhaseType.IN_TRANSIT, status=PhaseStatus.PENDING)
     departed_only = replace_step(departed_only, PhaseType.UNLOADING, status=PhaseStatus.PENDING)
     departed_only = replace_step(departed_only, PhaseType.CONFIRMATION, status=PhaseStatus.PENDING)
     overridden = replace_step(SINGLE_LEG, PhaseType.DEPARTURE, status=PhaseStatus.OVERRIDDEN)
     cases = (
-        # Monday 07:10 -> arrives 12:10.
         (at_sast(_day(0), 7, 10), TripStatus.CLOSED, SINGLE_LEG),
-        # Wednesday 07:40, cancelled before arriving: a departure, no arrival.
         (at_sast(_day(2), 7, 40), TripStatus.CANCELLED, departed_only),
-        # Thursday 09:00, departure overridden (not counted); arrival 14:00 attested (counted).
         (at_sast(_day(3), 9, 0), TripStatus.CLOSED, overridden),
-        # Saturday 01:30 SAST is Friday 23:30 UTC: it must count as Saturday, hour 1.
         (at_sast(_day(5), 1, 30), TripStatus.CLOSED, SINGLE_LEG),
-        # Two days before the period: neither step counts.
         (at_sast(_day(-2), 10, 0), TripStatus.CLOSED, SINGLE_LEG),
     )
     for departed_at, trip_status, steps in cases:
@@ -210,7 +200,6 @@ async def test_fleet_patterns_divide_each_date_and_month_by_its_own_occurrences(
     assert {bar["key"]: bar["day_count"] for bar in departures["month_of_year"]} == {
         key: expected_months[key] for key in range(1, 13)
     }
-    # A date the period never reaches has nothing to divide by: no average, not zero.
     for bar in departures["day_of_month"]:
         if bar["day_count"] == 0:
             assert bar["average_per_day"] is None

@@ -124,8 +124,6 @@ async def test_waybill_on_a_trip_that_is_not_cancelled_is_refused(db_session: As
     assert type(exc.value) is ConsignmentAlreadyAssignedError
 
 
-# These tests catch missing shared row locks, stale identity-map ownership, and
-# recreation retaining a cancelled load's expected parcel set or unit count.
 @pytest.mark.parametrize("new_units", [None, 2])
 async def test_recreation_rebuilds_parcels_and_expected_counts(db_session: AsyncSession, new_units: int | None) -> None:
     world = await build_manifest_world(db_session)
@@ -211,7 +209,6 @@ class RaceScanFeed:
 
 
 async def _wait_for_lock(sessions: async_sessionmaker[AsyncSession], waiter: int, holder: int) -> None:
-    # Observe the real DB wait, not an arbitrary delay that could pass without a lock.
     async with sessions() as observer:
         async with asyncio.timeout(3):
             while True:
@@ -229,7 +226,6 @@ async def test_committed_scan_wins_against_recreation(scan_race_world: ScanRaceW
     async with race.sessions() as scanner, race.sessions() as mover:
         scanner_pid = (await scanner.execute(text("SELECT pg_backend_pid()"))).scalar_one()
         mover_pid = (await mover.execute(text("SELECT pg_backend_pid()"))).scalar_one()
-        # Ownership is cached before the other session stamps: locking reads must refresh it.
         cached = await mover.get(Consignment, race.consignment_id)
         assert cached is not None
         assert cached.trip_id == race.old_id
@@ -307,8 +303,6 @@ async def test_multi_waybill_recreation_and_scan_share_one_lock_order(
 ) -> None:
     race = scan_race_world
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", False)
-    # UUID order B/A deliberately opposes waybill order A/B. Derive from the
-    # fixture UUID so the inversion is guaranteed without a timing assumption.
     second_id = uuid.UUID(int=race.consignment_id.int // 2)
     second_ref = "MFTWB8102"
     async with race.sessions() as setup:
@@ -366,7 +360,6 @@ async def test_multi_waybill_recreation_and_scan_share_one_lock_order(
         scan_task = None
         try:
             async with asyncio.timeout(5):
-                # Propagate a failed mover instead of waiting forever for its event.
                 event_task = asyncio.create_task(first_moved.wait())
                 done, _ = await asyncio.wait([move_task, event_task], return_when=asyncio.FIRST_COMPLETED)
                 if move_task in done:

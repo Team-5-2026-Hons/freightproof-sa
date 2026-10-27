@@ -57,11 +57,8 @@ def make_loaded_payload(**kwargs) -> TripCreateRequest:
         origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(),
         consignments=[{"pp_reference": "WAY123", "unit_count_expected": 2}],
-        # Required by validate_request — a resolvable schedule at creation
-        # (see TripCreateRequest.validate_request); orthogonal to the
-        # consignment-loop behaviour this file exercises.
         planned_departure_at=_NOW,
-        planned_arrival_at=_NOW + timedelta(hours=10),  # required (FP-139)
+        planned_arrival_at=_NOW + timedelta(hours=10),
     )
     base.update(kwargs)
     return TripCreateRequest(**base)
@@ -76,9 +73,8 @@ def make_empty_leg_payload(**kwargs) -> TripCreateRequest:
         origin_precinct_id=uuid.uuid4(),
         destination_precinct_id=uuid.uuid4(),
         trip_type=TripType.EMPTY_LEG,
-        # See make_loaded_payload above.
         planned_departure_at=_NOW,
-        planned_arrival_at=_NOW + timedelta(hours=10),  # required (FP-139)
+        planned_arrival_at=_NOW + timedelta(hours=10),
     )
     base.update(kwargs)
     return TripCreateRequest(**base)
@@ -127,16 +123,11 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
-        # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
-        # A real dict, not a placeholder — compute_payload_hash (called for real
-        # on h0's inline completion) needs a JSON-serialisable payload, matching
-        # compute_trip_canonical_payload's actual dict return type.
         patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
@@ -150,7 +141,6 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
         try:
             await create_trip(db, payload, user)
         except Exception:
-            # We only care that sync was not called; other mock gaps are acceptable.
             pass
 
         mock_sync.assert_not_called()
@@ -170,16 +160,11 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
-        # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
-        # A real dict, not a placeholder — compute_payload_hash (called for real
-        # on h0's inline completion) needs a JSON-serialisable payload, matching
-        # compute_trip_canonical_payload's actual dict return type.
         patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
@@ -193,8 +178,6 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
         try:
             await create_trip(db, payload, user)
         except Exception:
-            # We only care that sync was called correctly; other mock gaps are acceptable
-            # (e.g. ConsignmentRead.model_validate() on the MagicMock sync result below).
             pass
 
         mock_sync.assert_called_once()
@@ -219,8 +202,6 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
-        # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
@@ -260,10 +241,6 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         added.append(obj)
 
     async def _flush() -> None:
-        # Mimic the ORM's INSERT-time id generation for objects whose PK is
-        # still unset. create_trip reads trip_stops[i].id right after the
-        # first flush to stamp consignment pickup/delivery links, so those
-        # ids must exist by then, same as against a real session.
         for obj in added:
             if getattr(obj, "id", None) is None and hasattr(obj, "id"):
                 obj.id = uuid.uuid4()
@@ -280,16 +257,11 @@ async def test_create_trip_writes_full_pending_plan() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
-        # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
-        # A real dict, not a placeholder — compute_payload_hash (called for real
-        # on h0's inline completion) needs a JSON-serialisable payload, matching
-        # compute_trip_canonical_payload's actual dict return type.
         patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
@@ -304,10 +276,6 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         try:
             await create_trip(db, payload, user)
         except Exception:
-            # Response assembly calls ConsignmentRead.model_validate() on the
-            # MagicMock sync result, which is expected to fail (same gap noted
-            # in the other tests in this file) — the phase plan is flushed to
-            # the session well before response assembly runs.
             pass
 
     phase_events = sorted(
@@ -317,12 +285,6 @@ async def test_create_trip_writes_full_pending_plan() -> None:
 
     assert len(phase_events) == 8
     assert [e.sequence_number for e in phase_events] == list(range(8))
-    # h0 (trip_creation) is the one row create_trip completes inline, right
-    # after its Hedera anchor succeeds — every other row stays PENDING until a
-    # later advance_* call resolves it. Regression coverage for the h0-never-
-    # completes bug: h0 used to stay PENDING forever,
-    # which _gate_and_load's "all lower sequence_numbers resolved" check turned
-    # into a permanent block on every later phase.
     assert phase_events[0].status == PhaseStatus.COMPLETED
     assert all(e.status == PhaseStatus.PENDING for e in phase_events[1:])
     assert [e.phase_type for e in phase_events] == [
@@ -335,15 +297,8 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         PhaseType.UNLOADING,
         PhaseType.CONFIRMATION,
     ]
-    # trip_creation is the only NULL-stop row; every other row anchors to
-    # a real stop.
     assert phase_events[0].trip_stop_id is None
     assert all(e.trip_stop_id is not None for e in phase_events[1:])
-    # Every phase carries a Hedera receipt now (ANCHORED_PHASES =
-    # frozenset(PhaseType)). h0's anchor is ANCHORED (not just
-    # PENDING) because create_trip completes it inline in the same step that
-    # succeeds the anchor; every other row stays PENDING until its own advance_*
-    # call anchors it on completion.
     assert phase_events[0].anchor_status == AnchorStatus.ANCHORED
     assert all(e.anchor_status == AnchorStatus.PENDING for e in phase_events[1:])
     assert phase_events[0].completed_at is not None
@@ -365,9 +320,6 @@ def test_build_phase_events_single_leg_matches_plan() -> None:
     stop_1 = TripStop(id=uuid.uuid4(), trip_id=trip_id, precinct_id=uuid.uuid4(), sequence=1)
     trip_stops = [stop_0, stop_1]
 
-    # SimpleNamespace stand-ins for ConsignmentSyncResult/Consignment — the
-    # function only reads .consignment.pickup_stop_id/.delivery_stop_id, so a
-    # full ORM object (or a DB session) is not needed to exercise it.
     consignment = SimpleNamespace(pickup_stop_id=stop_0.id, delivery_stop_id=stop_1.id)
     consignment_results = [SimpleNamespace(consignment=consignment, warning=None)]
 
@@ -386,21 +338,13 @@ def test_build_phase_events_single_leg_matches_plan() -> None:
     assert [e.sequence_number for e in phase_events] == list(range(8))
     assert all(e.trip_id == trip_id for e in phase_events)
     assert all(e.status == PhaseStatus.PENDING for e in phase_events)
-    # trip_creation is the only NULL-stop row; activation/loading anchor
-    # to stop 0, arrival/unloading/confirmation to stop 1.
     assert phase_events[0].trip_stop_id is None
     assert phase_events[1].trip_stop_id == stop_0.id
     assert phase_events[2].trip_stop_id == stop_0.id
     assert phase_events[5].trip_stop_id == stop_1.id
     assert phase_events[7].trip_stop_id == stop_1.id
-    # Every phase carries a Hedera receipt now (ANCHORED_PHASES =
-    # frozenset(PhaseType)) — every row this pure builder emits
-    # is PENDING (create_trip's own inline completion of trip_creation to ANCHORED
-    # happens later, outside this function; see test_create_trip_writes_full_pending_plan).
     assert all(e.anchor_status == AnchorStatus.PENDING for e in phase_events)
 
-
-# ── P0 fail-closed contrast ──────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def create_trip_seed(db_session):
@@ -430,8 +374,6 @@ async def create_trip_seed(db_session):
         id=uuid.uuid4(), organization_id=operator_org.id, vehicle_type=VehicleType.HORSE,
         registration="ABC123GP", pulsit_device_id="PUL-1",
     )
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
         is_shared=True,
         id=uuid.uuid4(), name="Origin", principal_organization_id=client_org.id,
@@ -478,8 +420,6 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
         with pytest.raises(HederaTimeoutError):
             await create_trip(db_session, payload, user)
 
-    # Mirrors get_db()'s exception-path rollback (app/db/session.py) — create_trip
-    # itself has no try/except around P0's anchor call, by design (this task's fence).
     await db_session.rollback()
 
     trips = (await db_session.execute(select(Trip).where(Trip.driver_id == driver.id))).scalars().all()
@@ -489,12 +429,6 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     assert trips == []
     assert events == []
 
-
-# ── Driver trip reads (which trip is "current", and the driver's own list) ─────
-#
-# These use the real (rolled-back) db_session for the same reason as the P0 test above:
-# the behaviour under test is an ORDER BY and a WHERE clause. A mocked session would only
-# replay whatever order the mock was handed, proving nothing about the query itself.
 
 def _driver_trip(
     *, org, client_org, user, driver, horse, origin, dest, reference, status, created_at=None,
@@ -742,7 +676,6 @@ async def test_list_trips_for_driver_returns_all_statuses_newest_first(
     assert [r.trip_reference for r in rows] == [
         "FP-UNIT-L-CREATED", "FP-UNIT-L-ACTIVE", "FP-UNIT-L-CLOSED",
     ]
-    # Precinct names are resolved server-side so the PWA card need not guess from a UUID.
     assert rows[0].origin_precinct_name == "Origin"
     assert rows[0].destination_precinct_name == "Dest"
 

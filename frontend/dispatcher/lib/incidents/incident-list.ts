@@ -5,17 +5,14 @@
 import { compareText, sortRows, type Sort, type SortDir, type SortValue } from '@/lib/sort/sort-rows'
 import type { IncidentStatus, IncidentSummary } from '@/lib/types/incident'
 
-/** Ids match the incidents table's sortable column ids, so a header click maps straight to a key. */
 export const INCIDENT_SORT_KEYS = ['reference', 'type', 'status', 'cargo', 'owner', 'received'] as const
 export type IncidentSortKey = typeof INCIDENT_SORT_KEYS[number]
 export type IncidentSort = Sort<IncidentSortKey>
 
-/** What the list opens on: the newest report first. */
 export const DEFAULT_INCIDENT_SORT: IncidentSort = { key: 'received', dir: 'desc' }
 
 export type OwnerFilter = 'anyone' | 'mine' | 'unassigned'
 
-// Work that still needs a dispatcher sorts ahead of work that is done.
 const STATUS_RANK: Record<IncidentStatus, number> = { open: 0, investigating: 1, closed: 2 }
 
 /** Time and unresolved counts read best biggest/newest first; text and status A to Z / most urgent first. */
@@ -49,15 +46,12 @@ function sortValue(incident: IncidentSummary, key: IncidentSortKey): SortValue {
     case 'reference': return [incident.trip_reference, incident.reference]
     case 'type': return incident.incident_type
     case 'status': return STATUS_RANK[incident.status]
-    // A report with no parcels has no unresolved count, so it sorts last rather than as zero.
     case 'cargo': return incident.parcels_total === 0 ? null : incident.parcels_unresolved
-    // Unassigned is "no data": last in both directions.
     case 'owner': return incident.assigned_to_name
     case 'received': return Date.parse(incident.received_at)
   }
 }
 
-// Equal rows keep a stable order across live refreshes: newest report, then id.
 const newestThenId = (a: IncidentSummary, b: IncidentSummary): number =>
   Date.parse(b.received_at) - Date.parse(a.received_at) || compareText(a.incident_id, b.incident_id)
 
@@ -67,8 +61,6 @@ export function sortIncidents(incidents: readonly IncidentSummary[], sort: Incid
 
 export interface PageSlice<T> {
   rows: T[]
-  /** The page actually shown: the request clamped into range, so a list that shrinks under a
-   *  live refresh lands on its last page instead of an empty one. */
   page: number
   totalItems: number
   hasPrevious: boolean

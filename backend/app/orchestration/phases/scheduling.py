@@ -19,9 +19,6 @@ from app.orchestration.trips.availability import (
 )
 
 
-# Display format for the date a driver is told to come back on. Day-month-year with a
-# full month name: unambiguous to a South African reader, and never confusable with the
-# US month-first ordering the way a numeric date would be.
 _SCHEDULED_DATE_FORMAT = "%d %B %Y"
 
 
@@ -83,9 +80,6 @@ async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
     """
     scheduled = await _scheduled_departure(db, trip)
     if scheduled is None:
-        # No schedule at all is treated as not-yet-due rather than always-allowed: an
-        # unscheduled trip is a dispatcher data gap, and letting it activate would mean
-        # the rule silently does nothing on exactly the records least under control.
         raise PhaseTooEarlyError(None, "Activation")
 
     if is_before_scheduled_day(datetime.now(UTC), scheduled):
@@ -124,8 +118,6 @@ async def _claim_crew_for_activation(db: AsyncSession, trip: Trip) -> None:
     )
     others = await occupying_trips(db, organization_id=trip.operator_organization_id, crew=crew)
     await _reject_if_another_trip_underway(db, trip, crew, others)
-    # Start-in-order is about one driver's day (spec D10): a horse shared with another driver
-    # must not let that driver's unstarted trip block this one.
     await _reject_if_an_earlier_trip_is_due(
         db, trip, [other.trip for other in others if other.current_driver_id == driver_id],
     )

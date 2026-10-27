@@ -63,21 +63,12 @@ from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_toke
 _MOVE_URL = "/api/v1/dev/pulsit/move-truck"
 _WAYPOINTS_URL = "/api/v1/dev/pulsit/waypoints"
 
-# The seeded demo depot, which the waypoint coordinates are anchored to. The fixture
-# precinct below uses it so measured distances are the real advertised ones.
 _DEPOT_LAT = "-33.9249"
 _DEPOT_LNG = "18.4241"
 _SEEDED_RADIUS_METRES = 200
 
-# The tracker on the fixture trip's horse. Any string works — MockPulsitClient keys
-# staged state by device id and only falls back to its fixture library when nothing
-# is staged, which is exactly the path these tests drive.
 _DEVICE_ID = "PLT-HORSE-001"
 
-# FP-197: a real, non-Cape-Town precinct pair, so the scenario-mode tests below
-# do not accidentally pass just because everything in this codebase's fixtures
-# happens to sit near the seeded demo depot. Johannesburg CBD and Durban Point —
-# genuinely far apart, on real South African coordinates.
 _JHB_LAT = "-26.2041"
 _JHB_LNG = "28.0473"
 _JHB_RADIUS_METRES = 150
@@ -86,15 +77,11 @@ _DBN_LAT = "-29.8587"
 _DBN_LNG = "31.0218"
 _DBN_RADIUS_METRES = 300
 
-_GPS_TOLERANCE_METRES = 50  # settings.GPS_TOLERANCE_METRES default — see core/config.py
+_GPS_TOLERANCE_METRES = 50
 
-
-# ── Router registration: the guard matrix (no database required) ──────────────
 
 
 def _routes_with_prefix(prefix: str) -> list[str]:
-    # BaseRoute doesn't declare .path; every route FastAPI registers via a decorator
-    # is an APIRoute, which does.
     return [
         r.path
         for r in app_main.app.routes
@@ -108,10 +95,6 @@ def _reload_with(*, panel: bool, mock: bool, environment: str = "development") -
     Restores every flag and reloads again on the way out, so a failure here cannot
     leave a poisoned app object for the rest of the suite.
     """
-    # production_settings, not a bare ENVIRONMENT flip: app.main enforces the production
-    # preconditions at import time, so a reload under ENVIRONMENT="production" must also
-    # present a configuration production would actually be allowed to serve. In
-    # development the extra values it sets are inert.
     with production_settings(
         ENVIRONMENT=environment, DEV_PANEL_ENABLED=panel, PULSE_USE_MOCK=mock,
     ):
@@ -158,8 +141,6 @@ def test_move_truck_returns_404_not_403_when_refused(panel: bool, mock: bool) ->
     assert _WAYPOINTS_URL not in routes
 
 
-# ── The ENVIRONMENT dimension, and why it is deliberately not a guard ─────────
-
 
 def test_routes_present_in_production_when_both_guards_pass() -> None:
     """DELIBERATE DEVIATION FROM FP-197 AS WRITTEN — read before "fixing" this.
@@ -188,8 +169,6 @@ def test_routes_still_absent_in_production_when_a_guard_fails(panel: bool, mock:
     """Production changes nothing about the guards — they refuse there too."""
     assert _reload_with(panel=panel, mock=mock, environment="production") == []
 
-
-# ── Fixtures for the behaviour tests (database required) ──────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -284,8 +263,6 @@ async def _move(client: AsyncClient, seeded, waypoint_id: str):
         headers=auth_header(_token(seeded)),
     )
 
-
-# ── Behaviour ─────────────────────────────────────────────────────────────────
 
 
 async def test_waypoints_endpoint_serves_the_ordered_route(pulsit_client, seeded) -> None:
@@ -402,7 +379,6 @@ async def test_pressing_the_same_waypoint_twice_is_idempotent(
     assert second.status_code == 200
     assert len(store.data) == len(state_after_first)
     for key, value in state_after_first.items():
-        # fixed_at moves with the clock; everything that describes WHERE must not.
         assert store.data[key]["lat"] == value["lat"]
         assert store.data[key]["lng"] == value["lng"]
         assert store.data[key]["status"] == value["status"]
@@ -452,11 +428,6 @@ async def test_move_truck_requires_authentication(pulsit_client, seeded) -> None
         _MOVE_URL, json={"trip_id": str(seeded["trip"].id), "waypoint_id": WAYPOINT_THREE_KM},
     )
 
-    # 403, not 401: get_current_dispatcher (auth/dependencies.py) answers a MISSING
-    # Authorization header with 403 and reserves 401 for a header it could not honour —
-    # a malformed token, an unknown subject, an expired session. Every other guarded
-    # endpoint on this API behaves the same way, so asserting 401 here was testing a
-    # convention the codebase does not have.
     assert response.status_code == 403
 
 
@@ -467,8 +438,6 @@ async def test_move_truck_rejects_a_malformed_body(pulsit_client, seeded) -> Non
 
     assert response.status_code == 422
 
-
-# ── FP-197: trip-stop-relative scenario mode ────────────────────────────────────
 
 
 @pytest_asyncio.fixture
@@ -623,18 +592,12 @@ async def test_scenario_mode_still_evaluates_the_expected_phase_ledger_stop(
 
     assert response.status_code == 200
     body = response.json()
-    # Expected fields describe Johannesburg (the ledger's current stop) ...
     assert body["precinct_name"] == "Johannesburg CBD"
     assert body["expected_precinct_name"] == "Johannesburg CBD"
     assert body["expected_trip_stop_id"] == str(multi_stop_seeded["origin_stop"].id)
-    # ... while the target fields describe Durban (what was actually requested), and
-    # the expected-stop distance is NOT 3000 m (that number belongs to the target).
     assert body["target_precinct_name"] == "Durban Point"
     assert body["target_trip_stop_id"] == str(multi_stop_seeded["destination_stop"].id)
     assert body["target_distance_metres"] == pytest.approx(3_000.0, abs=0.5)
-    # The tracker is nowhere near Johannesburg once staged 3 km from Durban, so the
-    # expected-stop verdict must fail — proving the two distances are not the same
-    # number wearing two field names.
     assert body["geofence_confirmed"] is False
     assert body["distance_metres"] != pytest.approx(3_000.0, abs=1.0)
 
@@ -781,10 +744,6 @@ async def test_trip_stop_belonging_to_a_different_trip_is_rejected(
     assert response.status_code == 404
 
 
-# ── Fix round 1: "same horse shared by demo trips" — pinning DevTriggerPanel.tsx's own
-# copy ("any other trip whose horse shares this same Pulsit tracker will observe the
-# same staged position too") to actual behaviour, not just prose. ─────────────────
-
 
 @pytest_asyncio.fixture
 async def shared_horse_seeded(db_session):
@@ -808,7 +767,6 @@ async def shared_horse_seeded(db_session):
         id=uuid.uuid4(), organization_id=org.id, full_name="Driver B",
         id_number="8001015009125", phone_number="+27821234571", license_number="DRV-SHARED-B",
     )
-    # ONE horse, shared by both trips below — the whole point of this fixture.
     horse = Vehicle(
         id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
         registration="EC 999-000", pulsit_device_id=f"PLT-SHARED-{uuid.uuid4().hex[:8]}",
@@ -872,7 +830,6 @@ async def test_two_trips_sharing_one_horse_observe_the_same_device_state(
     `move_truck()` itself makes internally — scoped to the shared organisation, BEFORE
     trip B's own move-truck call (further down) has a chance to overwrite it.
     """
-    # Trip A stages a KNOWN, distinctive position: 3 km from ITS OWN stop.
     stage_response = await _move_scenario(
         pulsit_client, shared_horse_seeded, trip_id=shared_horse_seeded["trip_a"].id,
         scenario=SCENARIO_THREE_KM, trip_stop_id=shared_horse_seeded["stop_a"].id,
@@ -881,18 +838,12 @@ async def test_two_trips_sharing_one_horse_observe_the_same_device_state(
     staged_lat = Decimal(stage_response.json()["latitude"])
     staged_lng = Decimal(stage_response.json()["longitude"])
 
-    # Read the SAME device back — scoped to the shared organisation — through the
-    # identical client call move_truck() uses internally. If this were keyed by trip
-    # rather than by device, trip B's read would come back with no position at all.
     client = pulsit_module.get_pulsit_client(organization_id=shared_horse_seeded["org"].id)
     fix = await client.get_position(shared_horse_seeded["horse"].pulsit_device_id)
     assert fix.has_position
     assert fix.lat == staged_lat
     assert fix.lng == staged_lng
 
-    # That SAME shared fix, judged against trip B's OWN expected precinct (Durban),
-    # must NOT reduce to the number it would have produced against trip A's stop
-    # (Johannesburg) — proving the ledger, not the shared device, decides "expected".
     verdict_for_b = evaluate_geofence(
         TrackerFix(lat=fix.lat, lng=fix.lng), shared_horse_seeded["precinct_b"],
     )
@@ -902,9 +853,6 @@ async def test_two_trips_sharing_one_horse_observe_the_same_device_state(
     )
     assert verdict_for_b.distance_metres != pytest.approx(distance_from_trip_as_stop, abs=1.0)
 
-    # End to end: trip B's OWN move-truck call reports its OWN expected stop (Durban),
-    # never trip A's (Johannesburg) — even though both trips' requests reach the same
-    # underlying device.
     trip_b_response = await _move_scenario(
         pulsit_client, shared_horse_seeded, trip_id=shared_horse_seeded["trip_b"].id,
         scenario=SCENARIO_AT_STOP, trip_stop_id=shared_horse_seeded["stop_b"].id,

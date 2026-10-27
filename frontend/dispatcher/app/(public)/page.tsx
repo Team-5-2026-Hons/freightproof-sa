@@ -14,8 +14,6 @@ export const metadata: Metadata = {
     'FreightProof records every handover of a road-freight trip and anchors a tamper-evident fingerprint of each one to a public ledger, giving South African carriers evidence for hijackings and disputed deliveries.',
 }
 
-// Public marketing page. It sits outside the (app) auth gate, so anyone can reach it, and
-// it's the first thing a visitor sees before choosing to sign in.
 export default function LandingPage() {
   return (
     <div className={styles.page}>

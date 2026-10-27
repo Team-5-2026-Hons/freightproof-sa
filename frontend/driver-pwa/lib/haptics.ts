@@ -10,18 +10,12 @@
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 
 export type HapticMoment =
-  /** A swipe crosses the point where releasing will confirm. A light detent tick. */
   | 'threshold'
-  /** A confirm swipe commits. The system "success" pattern. */
   | 'confirm'
-  /** The panic swipe commits. Heavy, so it can never be mistaken for a routine confirm. */
   | 'panic'
 
 let warned = false
 
-// One warning per session, not one per swipe: on the web, or before `npx cap sync` has
-// installed the native side of the plugin, every call rejects with "not implemented".
-// That is expected and harmless, but should be visible once in the Safari/logcat console.
 function warnOnce(err: unknown): void {
   if (warned) return
   warned = true

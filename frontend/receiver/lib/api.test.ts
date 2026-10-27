@@ -91,11 +91,6 @@ describe('consent requests', () => {
   })
 })
 
-// ---------------------------------------------------------------------------------------
-// Failure modes. The page branches on these, so the contract is: a refused token, a dead
-// network and a rate limit must each arrive as a different, predictable HandoverError.
-// ---------------------------------------------------------------------------------------
-
 const TYPED_NAME = 'Thandi Nkosi'
 const TYPED_ID = '9202204720082'
 const SECRET_TOKEN = 'tok-secret-capability'
@@ -109,7 +104,6 @@ const CONFIRM_PAYLOAD: ConfirmPayload = {
   receiver_accuracy_m: null,
 }
 
-/** What FastAPI sends for a failed Pydantic validation — note `input` echoes the typed value. */
 const VALIDATION_422_BODY = {
   detail: [
     {
@@ -147,8 +141,6 @@ describe('failure handling', () => {
 
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
-    // The warnings are part of the behaviour (nothing sensitive may reach them), so they
-    // are captured rather than silenced.
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 

@@ -40,8 +40,6 @@ class StopCommitment(NamedTuple):
     slot_time: datetime | None
 
 
-# The payload_version a journey lock carries once it commits to the stops. v1 receipts have
-# no such key; its absence is what identifies them.
 TRIP_PAYLOAD_VERSION_V2 = 2
 
 

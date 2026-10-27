@@ -12,22 +12,13 @@ export function DispatcherShell({ children }: DispatcherShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    // One dark base layer fills the whole window; the sidebar is flat on it and the page
-    // content is the only floating element.
-    // overflow-clip, not -hidden: hidden still scrolls programmatically (focus(), scrollIntoView), which
-    // shifted the whole app up and left a strip of page below it. `relative` makes this the containing block
-    // for absolutely positioned descendants (sr-only text, popovers) so they clip here instead of
-    // stretching the document and giving the window its own scrollbar.
     <div className="relative flex h-screen overflow-clip bg-primary">
       <Sidebar
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
       />
 
-      {/* Content card — inset from the window edge so it reads as a sheet above the base
-          layer. No left margin at md+ because the sidebar's own padding supplies that gutter. */}
       <div className="flex-1 flex flex-col min-w-0 m-3 md:ml-0 rounded-xl bg-surf shadow-level-6 overflow-clip relative">
-        {/* Mobile hamburger strip — hidden on md+ */}
         <header className="flex items-center gap-3 px-4 h-[60px] bg-surf-lowest border-b border-outline-v/20 md:hidden shrink-0">
           <button
             onClick={() => setMobileOpen(true)}
@@ -41,7 +32,6 @@ export function DispatcherShell({ children }: DispatcherShellProps) {
           </span>
         </header>
 
-        {/* Page content — scrolls within the panel */}
         <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
           {children}
         </main>

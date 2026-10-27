@@ -31,8 +31,6 @@ vi.mock('@/lib/supabase/client', () => ({
   },
   getAccessToken: vi.fn(() => null),
 }))
-// The idle timer is wiring around real timers and a BroadcastChannel; none of it is what
-// these tests are about, and leaving it live only adds a source of open handles.
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
 vi.mock('@/lib/cache/sessionCache', () => ({ clearSessionCaches: vi.fn(), registerSessionCache: vi.fn(() => () => {}) }))
 
@@ -63,11 +61,9 @@ function renderAuth() {
   return renderHook(() => useAuth(), { wrapper: AuthProvider })
 }
 
-// Supabase's onAuthStateChange callback, as this file needs to drive it.
 type FakeSession = { access_token: string; user: { id: string } }
 type AuthListener = (event: string, session: FakeSession | null) => void
 
-// A real Supabase session always carries its user; the port reads the id from it.
 const sessionOf = (access_token: string): FakeSession => ({ access_token, user: { id: 'user-1' } })
 
 /** Register the provider's listener and hand it back, so a test can raise events itself. */
@@ -85,8 +81,6 @@ const flushDeferrals = () => act(async () => { await new Promise(resolve => setT
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Restored per test: captureAuthListener() replaces the implementation, and it would
-  // otherwise leak into whichever test ran next.
   vi.mocked(supabase.auth.onAuthStateChange).mockImplementation(((): unknown => (
     { data: { subscription: { unsubscribe: vi.fn() } } }
   )) as unknown as typeof supabase.auth.onAuthStateChange)
@@ -97,9 +91,6 @@ beforeEach(() => {
 })
 
 describe('AuthContext.signIn', () => {
-  // The bug this file was written for: signIn used to resolve as soon as the credentials
-  // were accepted, so the login page navigated while `user` was still null and the guard
-  // sent the dispatcher straight back — every sign-in took two attempts.
   it('leaves no window where the guard would read the state as signed out', async () => {
     mockedGet.mockResolvedValue(PROFILE)
     const { result } = renderAuth()
@@ -109,7 +100,6 @@ describe('AuthContext.signIn', () => {
       await result.current.signIn({ email: PROFILE.email, password: 'pw' })
     })
 
-    // The exact predicate app/(app)/layout.tsx redirects on.
     expect(result.current.isLoading && !result.current.user).toBe(false)
     expect(result.current.user).toEqual(PROFILE)
   })
@@ -125,8 +115,6 @@ describe('AuthContext.signIn', () => {
     let pending: Promise<void> = Promise.resolve()
     await act(async () => {
       pending = result.current.signIn({ email: PROFILE.email, password: 'pw' }).then(() => { settled = true })
-      // Let every already-queued microtask drain, so "not settled" means genuinely
-      // waiting on the profile rather than merely not having been scheduled yet.
       await Promise.resolve()
       await Promise.resolve()
     })
@@ -144,8 +132,6 @@ describe('AuthContext.signIn', () => {
   })
 
   it('reports a failed profile load as its own error, not as bad credentials', async () => {
-    // fetchProfile swallows the transport error and returns null — the caller only ever
-    // sees "no profile", which must not be reported to the user as a wrong password.
     mockedGet.mockRejectedValue(new Error('backend unreachable'))
     const { result } = renderAuth()
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -154,7 +140,6 @@ describe('AuthContext.signIn', () => {
       act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) }),
     ).rejects.toBeInstanceOf(ProfileUnavailableError)
 
-    // Stranding the form mid-spinner would be its own bug.
     expect(result.current.isLoading).toBe(false)
   })
 
@@ -175,13 +160,10 @@ describe('AuthContext.signIn', () => {
 })
 
 describe('profile fetching', () => {
-  // signIn awaits the profile itself, and Supabase raises SIGNED_IN during the credential
-  // exchange — so without a claim between them, one login fetched /auth/me twice.
   it('does not fetch the profile twice for its own sign-in', async () => {
     const listener = captureAuthListener()
     mockedGet.mockResolvedValue(PROFILE)
     mockedSignIn.mockImplementation((async () => {
-      // Where Supabase actually raises it: inside signInWithPassword, before signIn returns.
       listener.current?.('SIGNED_IN', sessionOf('tok'))
       return { data: { user: null, session: null }, error: null }
     }) as unknown as typeof supabase.auth.signInWithPassword)
@@ -199,8 +181,6 @@ describe('profile fetching', () => {
     expect(result.current.user).toEqual(PROFILE)
   })
 
-  // The other half: the claim must be consumed, not left standing, or the next sign-in
-  // that did NOT come through signIn would silently never load a profile.
   it('still loads the profile for a SIGNED_IN it did not raise', async () => {
     const listener = captureAuthListener()
     mockedGet.mockResolvedValue(PROFILE)
@@ -217,19 +197,12 @@ describe('profile fetching', () => {
   })
 })
 
-/**
- * Trip records are cached at module scope and this app never reloads the page, so nothing
- * in the browser discards them when the signed-in dispatcher changes. See
- * lib/cache/sessionCache.ts for what that would otherwise leave on screen.
- */
 describe('AuthContext cache scoping', () => {
   it('forgets the previous dispatcher\'s records on sign-out', async () => {
     mockedGet.mockResolvedValue(PROFILE)
     const listener = captureAuthListener()
     const { result } = renderAuth()
 
-    // Signing in is itself a change of identity, so a session always starts from an
-    // empty cache — that first call is the baseline the sign-out is measured against.
     await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
     expect(mockedClearCaches).toHaveBeenCalledTimes(1)
 
@@ -245,8 +218,6 @@ describe('AuthContext cache scoping', () => {
     const { result } = renderAuth()
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    // A sign-in raised from another tab, which is the case that never passes through a
-    // signed-out state: the provider keeps rendering while the identity behind it swaps.
     act(() => { listener.current?.('SIGNED_IN', sessionOf('tok')) })
     await flushDeferrals()
     expect(mockedClearCaches).toHaveBeenCalledTimes(1)
@@ -265,8 +236,6 @@ describe('AuthContext cache scoping', () => {
     const { result } = renderAuth()
     await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
 
-    // A token refresh is the same session; clearing here would throw away a live page's
-    // records for nothing, on a timer the dispatcher never sees.
     mockedClearCaches.mockClear()
     act(() => { listener.current?.('TOKEN_REFRESHED', sessionOf('tok2')) })
     await flushDeferrals()
@@ -277,7 +246,6 @@ describe('AuthContext cache scoping', () => {
 
 describe('return path around idle expiry vs manual sign-out', () => {
   beforeEach(() => {
-    // A page a dispatcher could plausibly be idle on — the id itself is irrelevant here.
     window.history.pushState({}, '', '/trips/detail/9f1c8b2a')
   })
 
@@ -300,7 +268,6 @@ describe('return path around idle expiry vs manual sign-out', () => {
     mockedGet.mockResolvedValue(PROFILE)
     const { result } = renderAuth()
     await act(async () => { await result.current.signIn({ email: PROFILE.email, password: 'pw' }) })
-    // Simulate a path left over from an earlier idle expiry this same browser saw.
     localStorage.setItem(RETURN_PATH_KEY, '/trips/detail/9f1c8b2a')
 
     await act(async () => { await result.current.signOut() })

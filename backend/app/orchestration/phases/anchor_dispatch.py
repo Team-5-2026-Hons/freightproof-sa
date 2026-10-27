@@ -20,8 +20,6 @@ from app.orchestration.phases.payloads import compute_phase_actor_envelope_v4
 logger = logging.getLogger(__name__)
 
 
-# asyncio keeps only weak references to scheduled tasks. Retain dispatches and
-# fallback anchors until their completion callback has observed the result.
 _BACKGROUND_ANCHOR_TASKS: set[asyncio.Task[bool]] = set()
 
 
@@ -49,16 +47,11 @@ def _dispatch_anchor(
       This preserves the anchor attempt without turning the API event loop into a
       blocking Hedera worker.
     """
-    # Imported at call time: tasks/blockchain.py imports this module back, and Celery's
-    # own import is heavy enough to be worth keeping out of the request path's cold start.
     from app.tasks.blockchain import anchor_phase_event_task
 
     event_id = event.id
     payload = dict(canonical_payload)
     if event.performed_by_driver_id is not None and event.custody_sequence is not None:
-        # FP-83 C5: a driver-performed phase also commits to its actor and custody period (v4).
-        # Done here, the one path every phase anchor takes, so no phase can skip it; the hash the
-        # caller stamped is replaced by the envelope's, and that is what recovery and verify rebuild.
         payload = compute_phase_actor_envelope_v4(
             phase_event_id=event_id, evidence=payload, driver_id=event.performed_by_driver_id,
             custody_sequence=event.custody_sequence,

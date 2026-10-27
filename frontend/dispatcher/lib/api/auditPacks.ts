@@ -8,8 +8,6 @@ import type {
   IncidentDeclarationCreate,
 } from '@/lib/types/auditPack'
 
-// Issuing renders a PDF and anchors its seal on Hedera inside the request (~5–10s), so it
-// gets longer than the client's default 20s budget would spare on a slow day.
 const ISSUE_TIMEOUT_MS = 60_000
 const PDF_TIMEOUT_MS = 45_000
 
@@ -22,7 +20,6 @@ export function issueAuditPack(tripId: string, body: AuditPackCreate): Promise<A
 }
 
 export function revokeAuditPack(packId: string): Promise<AuditPack> {
-  // Idempotent server-side: revoking twice keeps the first revocation's time and author.
   return api.post<AuditPack>(`/api/v1/audit-packs/${packId}/revoke`, {}, { idempotent: true })
 }
 

@@ -56,8 +56,6 @@ async def _status(db, event_id: uuid.UUID) -> tuple[str, uuid.UUID | None]:
     return str(event.anchor_status.value if hasattr(event.anchor_status, "value") else event.anchor_status), event.receipt_id
 
 
-# ── Dispatch ──────────────────────────────────────────────────────────────────
-
 async def test_outer_commit_publishes_the_event_id_once(db_session):
     event_id = uuid.uuid4()
     anchor_event_task.delay.reset_mock()
@@ -74,7 +72,7 @@ async def test_outer_commit_publishes_the_event_id_once(db_session):
 
 async def test_rollback_publishes_nothing(db_session):
     anchor_event_task.delay.reset_mock()
-    await db_session.execute(text("select 1"))  # a request always has written something
+    await db_session.execute(text("select 1"))
 
     dispatch_evidence_anchor(db_session, event_id=uuid.uuid4())
     await db_session.rollback()
@@ -159,13 +157,13 @@ async def test_only_the_rolled_back_savepoints_dispatches_are_discarded(db_sessi
     kept, dropped, kept_after_release = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     anchor_event_task.delay.reset_mock()
     await db_session.execute(text("select 1"))
-    dispatch_evidence_anchor(db_session, event_id=kept)  # registered before any savepoint
+    dispatch_evidence_anchor(db_session, event_id=kept)
 
     savepoint = await db_session.begin_nested()
     dispatch_evidence_anchor(db_session, event_id=dropped)
     await savepoint.rollback()
     async with db_session.begin_nested():
-        dispatch_evidence_anchor(db_session, event_id=kept_after_release)  # released, so it survives
+        dispatch_evidence_anchor(db_session, event_id=kept_after_release)
     await db_session.commit()
     await _drain()
 
@@ -239,8 +237,6 @@ async def test_broker_failure_falls_back_to_a_local_anchor(db_session, monkeypat
     local.assert_awaited_once_with(event_id=event_id)
 
 
-# ── Recovery ──────────────────────────────────────────────────────────────────
-
 async def test_never_dispatched_event_is_recovered_and_anchored(db_session, world):
     event_id = await _event(db_session, world)
 
@@ -284,16 +280,12 @@ async def test_failed_attempt_rotates_updated_at_so_it_does_not_starve_newer_deb
     first = await recover_evidence_anchor(db_session, due_before=cutoff)
     second = await recover_evidence_anchor(db_session, due_before=cutoff)
 
-    # The oldest debt goes first, and failing moves it behind the newer one rather than
-    # being retried forever ahead of it.
     attempted = [call.kwargs["subject_id"] for call in real.await_args_list]
     assert (first, second) == (False, False)
     assert attempted == [older, newer]
     assert (await _status(db_session, older))[0] == "failed"
     assert (await _status(db_session, newer))[0] == "failed"
 
-
-# ── Wired into report creation ────────────────────────────────────────────────
 
 async def _critical_report(db, world: World):
     return await raise_exception(

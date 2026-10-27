@@ -35,8 +35,6 @@ describe('live trip list', () => {
     act(() => emit('evidence_uploaded'))
     await flush()
 
-    // A photo upload changes no list row (status, needs-review count), so refetching
-    // every trip on each upload would be wasted load.
     expect(api.get).toHaveBeenCalledTimes(1)
     unmount()
   })

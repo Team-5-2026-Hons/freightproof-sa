@@ -11,20 +11,6 @@ from app.integrations.parcel_perfect.waybill_fixtures import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Unassigned pool - valid references deliberately left off every seeded trip.
-#
-# The wizard needs waybills it can actually create a NEW trip from. Without this
-# pool a demo has only two options: reuse a seeded reference (now a 409, since a
-# consignment belongs to exactly one trip) or type something PP does not know
-# (404). Both are dead ends, and neither is the flow being demonstrated.
-#
-# FREEWB0001-0010 are unlabelled and safe to spend anywhere. FREEWB0011-0015 are
-# explicitly a testing batch (dev/CI use); FREEWB0016-0020 are explicitly a demo
-# batch — leave those alone outside the live walkthrough, since a reference spent
-# by mistake is a 409 mid-demo, not a fixture bug.
-# ---------------------------------------------------------------------------
-
 UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
     w.details.waybill: w
     for w in [
@@ -47,16 +33,12 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             contents=[PPContents(item=1, description="Building hardware", actmass=830.0, pieces=17),
                       PPContents(item=2, description="Sealants", actmass=160.0, pieces=4)],
         ),
-        # Deliberately off the shared manifest: the wizard must also work for a
-        # waybill entered one at a time, not only via bulk manifest fetch.
         _routed_waybill(
             waybill="FREEWB0004", origin=_JHB, destination=_CPT,
             manifest=None, parcel_count=3, weight_kg=61.0,
             declared_value=12750.0,
             contents=[PPContents(item=1, description="Returned equipment", actmass=61.0, pieces=3)],
         ),
-        # Unmapped PP account - exercises the "client org not resolved" warning on
-        # a trip the dispatcher creates themselves, not just in tests.
         _routed_waybill(
             waybill="FREEWB0005", origin=_CPT, destination=_JHB,
             manifest=None, parcel_count=2, weight_kg=39.0,
@@ -82,8 +64,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=6800.0,
             contents=[PPContents(item=1, description="Medical supplies", actmass=52.0, pieces=4)],
         ),
-        # Deliberately off the shared manifest, like FREEWB0004: covers the
-        # one-at-a-time entry path rather than bulk manifest fetch.
         _routed_waybill(
             waybill="FREEWB0009", origin=_JHB, destination=_CPT,
             manifest=None, parcel_count=6, weight_kg=178.0,
@@ -96,7 +76,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=27500.0,
             contents=[PPContents(item=1, description="Automotive parts", actmass=430.0, pieces=10)],
         ),
-        # --- Testing batch: spend freely against the dispatcher wizard in dev/CI ---
         _routed_waybill(
             waybill="FREEWB0011", origin=_CPT, destination=_JHB,
             manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=7, weight_kg=265.0,
@@ -115,8 +94,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=7600.0,
             contents=[PPContents(item=1, description="Optical instruments", actmass=41.0, pieces=3)],
         ),
-        # Deliberately off the shared manifest, like FREEWB0004/0009: covers the
-        # one-at-a-time entry path rather than bulk manifest fetch.
         _routed_waybill(
             waybill="FREEWB0014", origin=_CPT, destination=_BFN,
             manifest=None, parcel_count=19, weight_kg=910.0,
@@ -129,7 +106,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=9100.0,
             contents=[PPContents(item=1, description="Lab reagent kits", actmass=132.0, pieces=5)],
         ),
-        # --- Demo batch: reserve for the live walkthrough, do not spend in dev/CI ---
         _routed_waybill(
             waybill="FREEWB0016", origin=_CPT, destination=_JHB,
             manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=15, weight_kg=690.0,
@@ -149,8 +125,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             contents=[PPContents(item=1, description="Bagged agricultural feed", actmass=890.0, pieces=18),
                       PPContents(item=2, description="Veterinary supplies", actmass=150.0, pieces=4)],
         ),
-        # Deliberately off the shared manifest, like FREEWB0004/0009: covers the
-        # one-at-a-time entry path rather than bulk manifest fetch.
         _routed_waybill(
             waybill="FREEWB0019", origin=_JHB, destination=_CPT,
             manifest=None, parcel_count=4, weight_kg=76.0,
@@ -163,7 +137,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=26800.0,
             contents=[PPContents(item=1, description="Household goods", actmass=470.0, pieces=11)],
         ),
-        # --- Extra demo batch: added to give the live walkthrough more headroom ---
         _routed_waybill(
             waybill="FREEWB0021", origin=_CPT, destination=_JHB,
             manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=14, weight_kg=620.0,
@@ -226,7 +199,6 @@ UNASSIGNED_WAYBILLS: dict[str, PPWaybillResponse] = {
             contents=[PPContents(item=1, description="Tinned food pallets", actmass=980.0, pieces=21),
                       PPContents(item=2, description="Dry goods cartons", actmass=170.0, pieces=4)],
         ),
-        # --- Second extra batch: added when live testing exhausted the pool above ---
         _routed_waybill(
             waybill="FREEWB0031", origin=_CPT, destination=_JHB,
             manifest=UNASSIGNED_MANIFEST_NUMBER, parcel_count=13, weight_kg=560.0,

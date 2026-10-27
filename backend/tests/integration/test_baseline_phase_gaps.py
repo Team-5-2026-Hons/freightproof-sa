@@ -52,7 +52,6 @@ async def test_verify_subject_preserves_unversioned_confirmation_receipt_without
     confirmation = phases["confirmation"]
     confirmation.parcel_count_destination = 42
     confirmation.driver_visual_count = None
-    # The key stays present as null: that is the shape the original anchor hashed.
     payload = compute_confirmation_canonical_payload_v1(
         phase_event_id=confirmation.id, trip_id=trip.id,
         pp_scan_in_count=42, driver_visual_count=None,
@@ -87,8 +86,6 @@ async def test_replayed_activation_with_different_position_does_not_overwrite_th
     db_session, trip_fixture,
 ) -> None:
     trip, driver, phases = trip_fixture
-    # Plain values up front: _stored_position expires the session, and reading an attribute
-    # of an expired instance from async code raises MissingGreenlet.
     trip_id, driver_id, activation_id = trip.id, driver.id, phases["activation"].id
     key = str(uuid.uuid4())
     captured_at = datetime.now(UTC) - timedelta(seconds=30)
@@ -119,8 +116,6 @@ async def test_replayed_activation_with_different_position_does_not_overwrite_th
 async def test_replayed_loading_without_a_fix_does_not_erase_the_stored_position(
     db_session, trip_fixture,
 ) -> None:
-    # The no-fix replay is the realistic one: the original submission captured a fix, the
-    # retry was built after permission was lost. None must never overwrite a stored value.
     trip, driver, phases = trip_fixture
     trip_id, driver_id = trip.id, driver.id
     activation_id, loading_id = phases["activation"].id, phases["loading"].id
@@ -164,8 +159,6 @@ async def test_phase_completion_stays_committed_when_the_broker_rejects_the_anch
         def delay(*_args: object, **_kwargs: object) -> None:
             raise ConnectionError("broker unreachable")
 
-    # Replace the local fallback's work so it never opens a real database session; what
-    # matters here is that it is reached, not that it anchors.
     fallback_calls: list[uuid.UUID] = []
 
     async def _record_fallback(**kwargs: object) -> bool:
@@ -184,6 +177,6 @@ async def test_phase_completion_stays_committed_when_the_broker_rejects_the_anch
         .where(PhaseEvent.id == departure_id)
     )).one()
     assert row.status == PhaseStatus.COMPLETED
-    assert row.anchor_status == AnchorStatus.PENDING  # receipt still owed, not lost
-    assert row.event_hash is not None  # the evidence hash was written with the phase
+    assert row.anchor_status == AnchorStatus.PENDING
+    assert row.event_hash is not None
     assert departure_id in fallback_calls

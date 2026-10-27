@@ -37,14 +37,9 @@ from app.orchestration.assistant.tools_base import (
 from app.schemas.analytics import DurationStats
 from app.schemas.assistant import RecordRef, RouteTimeCard
 
-# A year of closed trips: enough for a lane run weekly to have a fair middle value, recent enough that
-# road works and depot changes from long ago don't skew it.
 HISTORY_MONTHS = 12
 METRES_PER_KM = 1000
 MINUTES_PER_HOUR = 60
-# A trip can't be faster door to door than the road allows. Past times whose middle is under this share
-# of the driving time are not real journeys (demo or test trips, or bad timestamps) and are left out.
-# 0.8, not 1.0: the route planner's truck speeds are cautious, so a real trip can beat them a little.
 PLAUSIBLE_SHARE_OF_DRIVING = 0.8
 DRIVING_BASIS = "Truck road time from the route planner: no stops, rest, loading or traffic."
 ARRIVAL_RULE = (

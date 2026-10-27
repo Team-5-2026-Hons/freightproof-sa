@@ -7,8 +7,6 @@ import { listAuditPackAccessEvents, listAuditPacks, revokeAuditPack } from '@/li
 import type { AuditPack } from '@/lib/types/auditPack'
 import { AuditPacksPanel } from './AuditPacksPanel'
 
-// The API client builds a Supabase client at import time — mocked the same way the other
-// panel tests do.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -47,19 +45,15 @@ beforeEach(() => {
 
 describe('AuditPacksPanel', () => {
   it('lists issued packs with recipient, seal and views', async () => {
-    // Arrange
     vi.mocked(listAuditPacks).mockResolvedValue([pack()])
 
-    // Act
     renderPanel()
 
-    // Assert
     expect(await screen.findByText('TRP-0042-AP1')).toBeInTheDocument()
     expect(screen.getByText(/Jane Adjuster, Santam Claims/)).toBeInTheDocument()
     expect(screen.getByText(/Insurance claim · ref CLM-88123/)).toBeInTheDocument()
     expect(screen.getByText(/Sealed on Hedera/)).toBeInTheDocument()
     expect(screen.getByText(/2× · last/)).toBeInTheDocument()
-    // The raw transaction id is not the dispatcher's to read.
     expect(screen.queryByText('0.0.1@1.0')).not.toBeInTheDocument()
   })
 
@@ -69,9 +63,7 @@ describe('AuditPacksPanel', () => {
 
     await screen.findByText('No audit packs issued for this trip yet.')
     expect(screen.queryByRole('heading', { name: 'Audit packs' })).not.toBeInTheDocument()
-    // The loud black primary is gone: issuing is a secondary action next to the heading.
     expect(screen.getByRole('button', { name: 'Issue audit pack' })).toHaveClass('bg-surf-high')
-    // The explanation of fact labels lives in the Info tab's help, not as clutter in the section.
     expect(screen.queryByText('How facts are labelled')).not.toBeInTheDocument()
   })
 
@@ -95,34 +87,27 @@ describe('AuditPacksPanel', () => {
   })
 
   it('opens the issue dialog through its callback', async () => {
-    // Arrange
     vi.mocked(listAuditPacks).mockResolvedValue([])
     const { onIssue } = renderPanel()
 
-    // Act
     await userEvent.click(await screen.findByRole('button', { name: 'Issue audit pack' }))
 
-    // Assert
     expect(onIssue).toHaveBeenCalledOnce()
   })
 
   it('revokes an active pack and refreshes the list', async () => {
-    // Arrange
     vi.mocked(listAuditPacks).mockResolvedValueOnce([pack()]).mockResolvedValueOnce([pack({ status: 'revoked', revoked_at: '2026-09-15T06:00:00Z' })])
     vi.mocked(revokeAuditPack).mockResolvedValue(pack({ status: 'revoked' }))
     renderPanel()
 
-    // Act
     await userEvent.click(await screen.findByRole('button', { name: 'Revoke link' }))
 
-    // Assert
     expect(revokeAuditPack).toHaveBeenCalledWith('pack-1')
     expect(await screen.findByText('Revoked')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Revoke link' })).not.toBeInTheDocument()
   })
 
   it('shows the access log with refused attempts highlighted', async () => {
-    // Arrange
     vi.mocked(listAuditPacks).mockResolvedValue([pack()])
     vi.mocked(listAuditPackAccessEvents).mockResolvedValue([
       { event_type: 'denied_revoked', client_ip: '41.0.0.9', user_agent: null, created_at: '2026-09-16T06:00:00Z' },
@@ -130,10 +115,8 @@ describe('AuditPacksPanel', () => {
     ])
     renderPanel()
 
-    // Act
     await userEvent.click(await screen.findByRole('button', { name: 'Access log' }))
 
-    // Assert
     const log = await screen.findByRole('list', { name: 'Access log for TRP-0042-AP1' })
     expect(log).toHaveTextContent('Tried a revoked link')
     expect(log).toHaveTextContent('41.0.0.9')
@@ -141,7 +124,6 @@ describe('AuditPacksPanel', () => {
   })
 
   it('labels the mailed-password events and highlights wrong passwords', async () => {
-    // Arrange
     vi.mocked(listAuditPacks).mockResolvedValue([pack()])
     vi.mocked(listAuditPackAccessEvents).mockResolvedValue([
       { event_type: 'denied_bad_password', client_ip: '41.0.0.9', user_agent: null, created_at: '2026-09-16T06:03:00Z' },
@@ -151,10 +133,8 @@ describe('AuditPacksPanel', () => {
     ])
     renderPanel()
 
-    // Act
     await userEvent.click(await screen.findByRole('button', { name: 'Access log' }))
 
-    // Assert
     const log = await screen.findByRole('list', { name: 'Access log for TRP-0042-AP1' })
     expect(log).toHaveTextContent('Password emailed')
     expect(log).toHaveTextContent('Entered the mailed password')

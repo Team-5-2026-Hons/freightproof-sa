@@ -12,15 +12,11 @@ import {
   type ScenarioId, type TimelineScenario,
 } from './phase-acts'
 
-// PhaseOverrideAction imports lib/api/client -> lib/supabase/client, which calls createClient()
-// at import time and throws without a real Supabase URL.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// ForensicOnly is gated on a real provider (itself gated on useAuth); the gate is what the
-// scenarios exercise, so its two inputs are set directly.
 const forensic = vi.hoisted(() => ({ canViewForensics: true, forensicOn: false, toggle: vi.fn() }))
 vi.mock('@/lib/context/ForensicModeContext', () => ({ useForensicMode: () => forensic }))
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-me' } }) }))
@@ -34,7 +30,6 @@ vi.mock('@/components/blockchain/VerifyButton', () => ({
 
 const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public')
 const PUBLIC_IMAGE_PREFIX = '/dev-fixtures/'
-// The one scenario whose point is that the page cannot resolve a cited artifact.
 const METADATA_UNAVAILABLE: ScenarioId = 'evidence-metadata-unavailable'
 const LONG_DESCRIPTION_SCENARIO: ScenarioId = 'long-exception-description'
 const LONG_PRECINCT_SCENARIO: ScenarioId = 'long-precinct-name'
@@ -170,7 +165,6 @@ describe.each(SCENARIO_IDS)('timeline scenario fixtures: %s', id => {
 
     for (const artifact of scenario.artifacts) {
       expect(artifact.trip_id).toBe(trip.id)
-      // Attribution is a pair: a role without a phase (or the reverse) is rejected by the server.
       expect(artifact.phase_event_id === null, artifact.id).toBe(artifact.evidence_role === null)
       if (artifact.phase_event_id !== null) expect(phaseIds.has(artifact.phase_event_id), artifact.id).toBe(true)
     }
@@ -233,7 +227,6 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
     expect(phaseGroups('In Transit')[1]!).toContainElement(live[0] as HTMLElement)
     expect(live[0]).toHaveAttribute('data-node-type', 'next')
     expect(within(live[0] as HTMLElement).getByText('Live')).toHaveClass('sr-only')
-    // The ring breathes only when motion is welcome; reduced motion keeps a static ring.
     expect(live[0]!.querySelector('[data-live-ring]')!.className).toMatch(/(^| )motion-safe:animate-pulse( |$)/)
     expect(live[0]!.querySelector('[data-live-ring]')!.className).not.toMatch(/(^| )animate-pulse( |$)/)
     expect(phaseGroups('In Transit')[0]!.querySelector('[data-live]')).toBeNull()

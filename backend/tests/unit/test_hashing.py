@@ -146,8 +146,6 @@ def test_snapshot_hash_ignores_key_order() -> None:
     assert canonical_json(forward) == canonical_json(reordered)
 
 
-# ── Journey lock payload v2: commits to the ordered stops ───────────────────────
-
 def _stops() -> list[StopCommitment]:
     base = datetime(2026, 3, 1, 8, 0, tzinfo=UTC)
     return [

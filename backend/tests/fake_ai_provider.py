@@ -18,7 +18,6 @@ from app.integrations.ai_chat.provider import (
 )
 
 FAKE_MODEL = "gemini-3.8-flash"
-# A typical call: about 6k prompt tokens, half of them cached, and a short answer.
 FAKE_USAGE = Usage(input_tokens=3_000, output_tokens=300, cache_write_tokens=0, cache_read_tokens=3_000)
 
 
@@ -51,7 +50,6 @@ class SentRequest:
 class FakeProvider:
     replies: list[ModelReply]
     model: str = FAKE_MODEL
-    # Raised on the call after the scripted replies run out, or straight away if set.
     error: AiProviderError | None = None
     sent: list[SentRequest] = field(default_factory=list)
 

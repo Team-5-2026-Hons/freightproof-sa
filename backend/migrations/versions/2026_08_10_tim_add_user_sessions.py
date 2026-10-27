@@ -28,8 +28,6 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "user_sessions",
-        # session_id is the primary key — see the module docstring on why this differs
-        # from driver_sessions.
         sa.Column("session_id", sa.String(255), primary_key=True, nullable=False),
         sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("issued_at", sa.DateTime(timezone=True), nullable=False),
@@ -37,9 +35,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
-    # user_id: the retention sweep deletes a user's own expired rows on their next sign-in.
     op.create_index("ix_user_sessions_user_id", "user_sessions", ["user_id"])
-    # last_seen_at: the same sweep filters on age.
     op.create_index("ix_user_sessions_last_seen_at", "user_sessions", ["last_seen_at"])
 
 

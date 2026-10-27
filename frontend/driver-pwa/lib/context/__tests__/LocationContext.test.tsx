@@ -80,7 +80,6 @@ describe('LocationProvider', () => {
   })
 
   it('records nothing at all when no trip is open', async () => {
-    // The app does not follow a driver around between jobs — no trip, no tracking.
     tripState = { trip: null }
 
     renderTrail()
@@ -101,8 +100,6 @@ describe('LocationProvider', () => {
   })
 
   it('does not record when the phone cannot produce a fix', async () => {
-    // A denied permission or a warehouse roof. Nothing is sent, and nothing is queued —
-    // there is no position to queue, and the driver is never told about it.
     mockCapture.mockResolvedValue(null)
 
     renderTrail()
@@ -113,8 +110,6 @@ describe('LocationProvider', () => {
   })
 
   it('omits accuracy rather than sending a zero when the platform reports none', async () => {
-    // 0 would claim a centimetre-perfect fix, which is the opposite of what a missing
-    // accuracy estimate means.
     mockCapture.mockResolvedValue({ ...FIX, accuracy: null })
 
     renderTrail()

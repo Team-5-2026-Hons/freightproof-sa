@@ -376,7 +376,6 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
             trip_reference=uuid.uuid4().hex,
             order_number=uuid.uuid4().hex,
             operator_organization_id=organization.id,
-            # Being the client or the event author must not grant operator access.
             client_organization_id=lookup_seed.organization.id,
             driver_id=driver.id,
             horse_id=vehicle.id,
@@ -441,13 +440,10 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
         db_session.add(evidence_event)
         await db_session.flush()
 
-        # A legacy substitution (request_id NULL, so no completing actor) is the simplest valid
-        # row; its visibility runs through the trip's operator organisation.
         incoming_driver = Driver(
             id=uuid.uuid4(),
             organization_id=organization.id,
             full_name="Incoming Driver",
-            # uq_drivers_org_id_number: must differ from the trip driver's in the same organisation.
             id_number="8001015009088",
             phone_number="+27821234567",
             license_number="TEST",

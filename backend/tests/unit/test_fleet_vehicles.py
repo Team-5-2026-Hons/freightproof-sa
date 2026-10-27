@@ -29,7 +29,6 @@ from app.db.models.vehicles import UQ_VEHICLES_ORG_PULSIT, UQ_VEHICLES_ORG_REGIS
 from app.orchestration.fleet.vehicles import create_vehicle, update_vehicle
 from app.schemas.vehicles import VehicleCreateBody, VehicleUpdateBody
 
-# Postgres error code for unique_violation — the service maps only this to DuplicateResourceError.
 _UNIQUE_VIOLATION_SQLSTATE = "23505"
 
 
@@ -47,8 +46,6 @@ class _FakeUniqueViolation(Exception):
         super().__init__(constraint_name)
         self.constraint_name = constraint_name
 
-
-# ── Test doubles ───────────────────────────────────────────────────────────────
 
 def _mock_db(scalar_result: object | None = None) -> MagicMock:
     """AsyncSession double for fleet.vehicles.
@@ -69,8 +66,6 @@ def _mock_db(scalar_result: object | None = None) -> MagicMock:
         now = datetime.now(timezone.utc)
         for obj in added:
             cols = obj.__table__.columns
-            # Vehicle.id uses a Python-side default=uuid.uuid4 applied by the ORM on
-            # flush; with a mocked session that never runs, so simulate it here.
             if "id" in cols and getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
             if "created_at" in cols and getattr(obj, "created_at", None) is None:
@@ -130,8 +125,6 @@ def _first_of_type(db: MagicMock, model: type) -> Any:
     raise AssertionError(f"No {model.__name__} was added to the session")
 
 
-# ── G2.1: create_vehicle anchors once; SEC-5 device id is hashed, not plaintext ──
-
 async def test_create_vehicle_anchors_once_and_hashes_pulsit_device_id() -> None:
     secret_device_id = "SECRET-TRACKER-001"
     db = _mock_db()
@@ -151,7 +144,6 @@ async def test_create_vehicle_anchors_once_and_hashes_pulsit_device_id() -> None
     assert kwargs["receipt_type"] is BlockchainReceiptType.VEHICLE_CREATED
 
     payload = kwargs["canonical_payload"]
-    # SEC-5: the raw GPS device id must never reach the chain — only its SHA-256.
     assert secret_device_id not in str(payload)
     fields = payload["fields"]
     assert "pulsit_device_id" not in fields
@@ -159,8 +151,6 @@ async def test_create_vehicle_anchors_once_and_hashes_pulsit_device_id() -> None
         secret_device_id.encode("utf-8")
     ).hexdigest()
 
-
-# ── G2.2: cosmetic update records an event but does NOT anchor ───────────────────
 
 async def test_update_vehicle_cosmetic_does_not_anchor_but_records_event() -> None:
     vehicle = _make_vehicle()
@@ -175,11 +165,8 @@ async def test_update_vehicle_cosmetic_does_not_anchor_but_records_event() -> No
     assert vehicle.make == "Scania"
     event = _first_of_type(db, VehicleEvent)
     assert event.event_type == VehicleEventType.COSMETIC_UPDATE.value
-    # Cosmetic change is still logged in the DB event (full diff), just never anchored.
     assert event.changed_fields == {"make": {"from": "Volvo", "to": "Scania"}}
 
-
-# ── G2.3: critical update anchors, payload carries ONLY the critical diff ────────
 
 async def test_update_vehicle_critical_anchors_only_the_diff() -> None:
     old_reg = "CA 123 456"
@@ -203,8 +190,6 @@ async def test_update_vehicle_critical_anchors_only_the_diff() -> None:
     assert event.event_type == VehicleEventType.LICENSE_PLATE_CHANGED.value
 
 
-# ── G2.4: SEC-5 also holds on the update path (device id change is hashed) ───────
-
 async def test_update_vehicle_pulsit_change_anchors_only_hashed() -> None:
     old_device = "PLT-EXIST-001"
     new_device = "SECRET-NEW-TRACKER"
@@ -218,7 +203,6 @@ async def test_update_vehicle_pulsit_change_anchors_only_hashed() -> None:
 
     anchor.assert_called_once()
     payload = anchor.call_args.kwargs["canonical_payload"]
-    # Neither the old nor new raw device id may appear on-chain.
     assert old_device not in str(payload)
     assert new_device not in str(payload)
     fields = payload["fields"]
@@ -228,8 +212,6 @@ async def test_update_vehicle_pulsit_change_anchors_only_hashed() -> None:
         "to": hashlib.sha256(new_device.encode("utf-8")).hexdigest(),
     }
 
-
-# ── G2.5: unknown id raises ResourceNotFoundError ───────────────────────────────
 
 async def test_update_vehicle_unknown_id_raises_not_found() -> None:
     db = _mock_db(scalar_result=None)
@@ -243,8 +225,6 @@ async def test_update_vehicle_unknown_id_raises_not_found() -> None:
 
     anchor.assert_not_called()
 
-
-# ── G2.6: unique violation on create raises DuplicateResourceError ──────────────
 
 async def test_create_vehicle_duplicate_raises_duplicate_resource() -> None:
     db = _mock_db()
@@ -262,8 +242,6 @@ async def test_create_vehicle_duplicate_raises_duplicate_resource() -> None:
 
     anchor.assert_not_called()
 
-
-# ── G2.7: the 409 names the field that actually clashed ────────────────────────
 
 async def test_create_vehicle_duplicate_pulsit_names_the_device_field() -> None:
     """A double-assigned tracker must not be reported as a duplicate registration.

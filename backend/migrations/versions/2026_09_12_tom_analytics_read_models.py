@@ -36,21 +36,11 @@ down_revision = "chiko_receipt_hash_index"
 branch_labels = None
 depends_on = None
 
-# SAST is permanently UTC+2 with no daylight saving; the named zone is used so the
-# boundary reads as intent in the SQL rather than as a bare offset.
 _OPERATIONS_TIME_ZONE = "Africa/Johannesburg"
 
-# Phase statuses that mean "the driver actually did this, at completed_at".
-# EXCEPTION is a completion that also recorded an anomaly; OVERRIDDEN is excluded
-# on purpose (see module docstring). Mirrored by ATTESTED_PHASE_STATUSES in
-# app/analytics/views.py for the one live query that reads base tables.
 _ATTESTED_STATUSES = "('completed', 'exception')"
 
 _DWELL_PHASES: tuple[str, ...] = ("activation", "loading", "departure", "unloading", "confirmation")
-
-# ── Shared CTE fragments ─────────────────────────────────────────────────────
-# Every view starts from the same definition of "a closed trip and its month", so it is
-# written once here and spliced into each view rather than drifting across five copies.
 
 _CLOSED_TRIPS_CTE = f"""
 trip_departures AS (
@@ -92,9 +82,6 @@ trip_exceptions AS (
     GROUP BY e.trip_id
 )"""
 
-# Each phase row alongside the phase immediately before it in the trip's committed
-# plan. The window runs over EVERY row of the trip (trip_creation included), so the
-# predecessor is always the true previous plan step; filters are applied afterwards.
 _TRIP_PHASES_CTE = """
 trip_phases AS (
     SELECT
@@ -114,7 +101,6 @@ trip_phases AS (
     WINDOW plan_order AS (PARTITION BY pe.trip_id ORDER BY pe.sequence_number)
 )"""
 
-# A gap between two phases is only a real measurement when BOTH ends were attested.
 _GAP_IS_ATTESTED = (
     f"status IN {_ATTESTED_STATUSES} AND prev_status IN {_ATTESTED_STATUSES} "
     "AND completed_at IS NOT NULL AND prev_completed_at IS NOT NULL"
@@ -142,8 +128,6 @@ def _dwell_select() -> str:
         f"pt.{phase}_dwell_minutes_sum, pt.{phase}_dwell_events_count" for phase in _DWELL_PHASES
     )
 
-
-# ── Driver ───────────────────────────────────────────────────────────────────
 
 _DRIVER_ANALYTICS = f"""
 CREATE MATERIALIZED VIEW driver_analytics AS
@@ -200,8 +184,6 @@ JOIN phase_totals pt
  AND pt.driver_id = tt.driver_id
  AND pt.month_start = tt.month_start
 """
-
-# ── Vehicle (monthly) ────────────────────────────────────────────────────────
 
 _VEHICLE_ANALYTICS = f"""
 CREATE MATERIALIZED VIEW vehicle_analytics AS
@@ -275,11 +257,6 @@ LEFT JOIN driving_totals dt
  AND dt.month_start = tt.month_start
 """
 
-# ── Vehicle incident streaks (whole history, one row per vehicle) ────────────
-# An incident is a closed trip carrying at least one MECHANICAL exception — two reports
-# on the same trip are one incident, not a zero-trip streak between them. Streaks are
-# counted in clean trips, never days: an idle truck proves nothing about reliability.
-
 _VEHICLE_INCIDENT_STREAKS = f"""
 CREATE MATERIALIZED VIEW vehicle_incident_streaks AS
 WITH {_CLOSED_TRIPS_CTE},
@@ -349,11 +326,6 @@ FROM segment_lengths
 GROUP BY operator_organization_id, horse_id
 """
 
-# ── Lane ─────────────────────────────────────────────────────────────────────
-# Arrays, not sum/count: median and P90 cannot be recombined from per-month values, only
-# recomputed over the pooled raw observations. Each schedule delta is computed per trip
-# here, so it can never be paired with the wrong trip's plan later.
-
 _ACTUAL_MINUTES = "EXTRACT(EPOCH FROM (ct.actual_arrival_at - ct.departed_at))::double precision / 60.0"
 _PLANNED_MINUTES = (
     "EXTRACT(EPOCH FROM (ct.planned_arrival_at - ct.planned_departure_at))::double precision / 60.0"
@@ -391,13 +363,6 @@ WHERE ct.origin_precinct_id IS NOT NULL AND ct.destination_precinct_id IS NOT NU
 GROUP BY ct.operator_organization_id, ct.origin_precinct_id, ct.destination_precinct_id, ct.month_start
 """
 
-# ── Facility ─────────────────────────────────────────────────────────────────
-# in_transit is excluded: corroboration_service deliberately never gives it a verdict
-# (it is anchored to the stop it DEPARTED from), so it would read NULL forever and
-# pollute unwitnessed_count with rows that were never going to be checked. The same
-# holds for overridden rows, which never run corroboration at all. trip_creation has no
-# stop and drops out of the inner join on its own.
-
 _FACILITY_ANALYTICS = f"""
 CREATE MATERIALIZED VIEW facility_analytics AS
 WITH {_CLOSED_TRIPS_CTE}
@@ -416,10 +381,6 @@ WHERE pe.phase_type <> 'in_transit'
 GROUP BY ct.operator_organization_id, ts.precinct_id, ct.month_start
 """
 
-# ── Unique indexes ───────────────────────────────────────────────────────────
-# REFRESH MATERIALIZED VIEW CONCURRENTLY refuses to run without a unique index over
-# plain columns covering every row — one per view, on exactly its grain.
-
 _VIEW_GRAINS: dict[str, tuple[str, ...]] = {
     "driver_analytics": ("operator_organization_id", "driver_id", "month_start"),
     "vehicle_analytics": ("operator_organization_id", "vehicle_id", "month_start"),
@@ -435,12 +396,6 @@ _UNIQUE_INDEXES: tuple[str, ...] = tuple(
     for view, columns in _VIEW_GRAINS.items()
 )
 
-# ── Data API lockdown ────────────────────────────────────────────────────────
-# 0003_tom_rls_policies closed PostgREST off from every table with RLS, but RLS cannot
-# be enabled on a materialized view, and Supabase's default privileges grant new public
-# objects to anon/authenticated. Without this REVOKE, every operator's analytics would
-# be readable cross-tenant through the Data API. Guarded on the roles existing so the
-# statement is a no-op on a plain Postgres (the test database, a local instance).
 _REVOKE_DATA_API_ACCESS = f"""
 DO $$
 DECLARE
@@ -475,6 +430,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Unique indexes are owned by their views and go with them.
     for statement in DOWNGRADE_STATEMENTS:
         op.execute(statement)

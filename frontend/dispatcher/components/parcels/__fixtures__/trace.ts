@@ -14,7 +14,6 @@ export function makePhase(kind: PhaseType, index: number): ParcelTracePhase {
   }
 }
 
-// The API's own gap wording (backend/app/orchestration/parcel_trace/projection.py _gaps), which the page must render verbatim.
 export const MISSING_SCAN_GAP = 'No destination parcel scan is recorded. A missing scan is an evidence gap, not proof of loss.'
 export const MANIFEST_GAP = 'This barcode appears in the creation manifest. Planned membership does not prove it was loaded.'
 export const BOUNDARIES_GAP = 'The historical pickup/delivery boundaries are unavailable; phases are shown as trip context.'
@@ -91,8 +90,6 @@ export function makeWayJourney(overrides: Partial<ParcelJourney> = {}): ParcelJo
   const kinds: PhaseType[] = ['trip_creation', 'activation', 'loading', 'departure', 'in_transit', 'arrival', 'unloading', 'confirmation']
   const phases: ParcelTracePhase[] = kinds.map((kind, index) => ({ ...makePhase(kind, index), completed_at: '2026-10-15T09:30:00Z', precinct_name: 'Origin Depot' }))
   phases[3] = { ...phases[3], completed_at: WAY_DEPARTURE_AT, seal_number: 'SEAL-WAY' }
-  // Trip creation and activation concern the whole trip, not this consignment's handling; the live trace marks them
-  // trip_context, which is why their three activation exceptions count as trip-wide rather than belonging to a step.
   for (const index of [0, 1]) phases[index] = { ...phases[index], relevance: 'trip_context' }
   for (const index of [4, 5, 6, 7]) phases[index] = { ...phases[index], status: 'pending', completed_at: null, anchor_status: 'pending' }
   const exceptions = [

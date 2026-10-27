@@ -19,8 +19,6 @@ from app.core.config_validation import (
     enforce_production_config,
 )
 
-# Values that satisfy the required fields Settings has no defaults for. None is read by
-# any rule under test — they exist only so Settings can be instantiated at all.
 _REQUIRED_FIELDS = {
     "DATABASE_URL": "postgresql+asyncpg://user:pw@db.example.com:5432/postgres",
     "REDIS_URL": "redis://redis.example.com:6379",
@@ -31,8 +29,6 @@ _REQUIRED_FIELDS = {
     "HEDERA_PRIVATE_KEY": "private-key",
 }
 
-# A production configuration with nothing wrong with it. Each test below breaks exactly
-# one thing, so a failure names the rule that fired rather than a soup of them.
 _VALID_PRODUCTION = {
     **_REQUIRED_FIELDS,
     "ENVIRONMENT": "production",
@@ -61,8 +57,6 @@ def _settings(*, omit: str | None = None, **overrides: object) -> Settings:
     return Settings(_env_file=None, **values)  # type: ignore[arg-type]
 
 
-# ── The happy path, and the non-production escape ────────────────────────────
-
 
 def test_a_correct_production_config_raises_nothing() -> None:
     errors = collect_production_config_errors(_settings())
@@ -71,7 +65,6 @@ def test_a_correct_production_config_raises_nothing() -> None:
 
 
 def test_development_is_never_blocked_by_a_production_rule() -> None:
-    # Every value here violates a production rule. In development none of them apply.
     settings = _settings(
         ENVIRONMENT="development",
         ALLOWED_ORIGINS=["*"],
@@ -84,8 +77,6 @@ def test_development_is_never_blocked_by_a_production_rule() -> None:
 
     assert errors == []
 
-
-# ── Receiver app reachability ────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -109,8 +100,6 @@ def test_a_loopback_receiver_url_is_rejected(loopback_url: str) -> None:
     "public_url",
     [
         "https://receiver.freightproof.co.za",
-        # Contains the substring "//localhost" but is an ordinary public hostname. A
-        # substring check refused this and would have blocked a legitimate deploy.
         "https://localhost.example.co.za",
     ],
 )
@@ -137,7 +126,6 @@ def test_an_empty_receiver_url_is_rejected() -> None:
 
 
 def test_a_plain_http_receiver_url_is_rejected() -> None:
-    # The binding cookie is set Secure outside development, so http can never hold it.
     errors = collect_production_config_errors(
         _settings(HANDOVER_RECEIVER_BASE_URL="http://receiver.freightproof.co.za")
     )
@@ -145,16 +133,12 @@ def test_a_plain_http_receiver_url_is_rejected() -> None:
     assert any("https" in error for error in errors)
 
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-
 
 def test_a_wildcard_origin_is_rejected_in_production() -> None:
     errors = collect_production_config_errors(_settings(ALLOWED_ORIGINS=["*"]))
 
     assert any("ALLOWED_ORIGINS" in error for error in errors)
 
-
-# ── Didit, when live ─────────────────────────────────────────────────────────
 
 
 def test_live_didit_without_credentials_is_rejected() -> None:
@@ -166,7 +150,6 @@ def test_live_didit_without_credentials_is_rejected() -> None:
 
 
 def test_live_didit_without_a_webhook_secret_is_rejected() -> None:
-    # The signature check fails closed, so an unset secret rejects every genuine delivery.
     errors = collect_production_config_errors(
         _settings(
             IDVS_USE_MOCK=False,
@@ -188,12 +171,8 @@ def test_mocked_didit_needs_no_credentials() -> None:
     assert errors == []
 
 
-# ── Proxy topology ───────────────────────────────────────────────────────────
-
 
 def test_an_unstated_proxy_topology_is_rejected() -> None:
-    # Absent entirely, not set to False — the point of the rule is that inheriting the
-    # default silently is different from deciding it.
     errors = collect_production_config_errors(
         _settings(omit="RATE_LIMIT_TRUST_PROXY_HEADERS")
     )
@@ -202,7 +181,6 @@ def test_an_unstated_proxy_topology_is_rejected() -> None:
 
 
 def test_a_deliberate_false_proxy_topology_is_accepted() -> None:
-    # A production deployment genuinely not behind a proxy must be able to say so.
     errors = collect_production_config_errors(
         _settings(RATE_LIMIT_TRUST_PROXY_HEADERS=False)
     )
@@ -211,9 +189,6 @@ def test_a_deliberate_false_proxy_topology_is_accepted() -> None:
 
 
 def test_trusting_forwarded_for_on_fly_is_rejected() -> None:
-    # Fly's proxy appends to X-Forwarded-For, so its left-most entry is caller-supplied.
-    # Trusting it buys the caller a fresh rate-limit bucket per forged value and lets them
-    # dictate the receiver_ip recorded as evidence — silently, which is why it must not boot.
     errors = collect_production_config_errors(
         _settings(
             FLY_APP_NAME="freightproof-api",
@@ -226,7 +201,6 @@ def test_trusting_forwarded_for_on_fly_is_rejected() -> None:
 
 
 def test_the_header_comparison_on_fly_ignores_case() -> None:
-    # A .env written in canonical HTTP casing must not slip past the rule.
     errors = collect_production_config_errors(
         _settings(
             FLY_APP_NAME="freightproof-api",
@@ -251,8 +225,6 @@ def test_the_fly_client_ip_header_is_accepted_on_fly() -> None:
 
 
 def test_forwarded_for_on_fly_is_accepted_when_no_proxy_header_is_trusted() -> None:
-    # With trust off the header is never read, so its name cannot matter. The rule must
-    # not fire here, or it would block the one safe way to run untrusted on Fly.
     errors = collect_production_config_errors(
         _settings(
             FLY_APP_NAME="freightproof-api",
@@ -269,8 +241,6 @@ def test_disabled_rate_limiting_is_rejected_in_production() -> None:
 
     assert any("RATE_LIMIT_ENABLED" in error for error in errors)
 
-
-# ── Reporting ────────────────────────────────────────────────────────────────
 
 
 def test_every_error_is_reported_together_not_one_per_restart() -> None:
@@ -299,11 +269,6 @@ def test_enforce_raises_with_every_error_in_the_message() -> None:
 def test_enforce_is_silent_for_a_correct_config() -> None:
     enforce_production_config(_settings())
 
-
-# ── FP-83: DRIVER_SUBSTITUTIONS_ENABLED ───────────────────────────────────────
-# Gates only NEW arrangements; off by default so a deploy never exposes a half-built feature.
-# A blank value must read as false because backend/.env.example ships the key empty and a
-# developer copying it must not hit a startup validation error.
 
 
 def test_driver_substitutions_flag_is_off_when_the_key_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -336,6 +301,5 @@ def test_driver_substitutions_flag_accepts_true(value: object) -> None:
 
 
 def test_a_blank_substitutions_flag_does_not_loosen_other_boolean_fields() -> None:
-    # The blank->false mapping is field-local: global parsing must still reject a blank bool.
     with pytest.raises(ValueError):
         _settings(RATE_LIMIT_ENABLED="")

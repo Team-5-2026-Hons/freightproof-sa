@@ -120,7 +120,6 @@ async def get_fleet_patterns_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> PatternsResponse:
-    # No grain: every pattern chart covers the whole period, so there is no bar limit.
     period = await _require_valid_period(
         db, organization_id=current_user.organization_id, start=start, end=end, grain=None,
     )
@@ -210,7 +209,6 @@ async def get_fleet_routes_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> RoutesResponse:
-    # No grain: sites and lanes are totals over the whole period.
     period = await _require_valid_period(
         db, organization_id=current_user.organization_id, start=start, end=end, grain=None,
     )

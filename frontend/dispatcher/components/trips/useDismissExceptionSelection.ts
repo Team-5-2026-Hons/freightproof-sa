@@ -3,15 +3,10 @@
 import { useEffect, useRef } from 'react'
 import { exceptionRowId } from '@/components/domain/ExceptionRow'
 
-/** A control that changes the view around the selection, not the selection itself, carries this
- * attribute so using it never deselects the exception (e.g. expanding or switching the timeline). */
 export const KEEP_EXCEPTION_SELECTION_ATTR = 'data-keep-exception-selection'
 
-// Escape belongs to these first: a form field may use it itself, and the overlay's <dialog>
-// closes on it, which already leaves the record.
 const ESCAPE_OWNERS = 'input, select, textarea, dialog[open]'
 
-// Set on the panel record: the id of the phase card that holds the exception's timeline row.
 const PHASE_ANCHOR_ATTR = 'data-phase-anchor'
 
 function returnFocusToTimeline(exceptionId: string, phaseAnchorId: string | null): void {
@@ -41,8 +36,6 @@ function recordIdAt(target: Element | null | undefined, attrs: readonly string[]
  * selected record on the page: an exception by default; an incident passes its own, so a click
  * on the incident itself (its row, or its entry in the Info panel) keeps it selected. */
 export function useDismissExceptionSelection(selectedId: string | null, onDismiss: () => void, recordAttrs: readonly string[] = EXCEPTION_RECORD_ATTRS): void {
-  // The latest callback is read through a ref so the listener is bound once per selection,
-  // not re-bound on every render of a caller that passes an inline function.
   const dismissRef = useRef(onDismiss)
   useEffect(() => { dismissRef.current = onDismiss })
 
@@ -50,12 +43,10 @@ export function useDismissExceptionSelection(selectedId: string | null, onDismis
     if (!selectedId) return
     function dismissOutside(event: MouseEvent): void {
       if (!(event.target instanceof Element)) return
-      // A drag that selects text (to copy a seal number, say) ends in a click; it is reading, not leaving.
       const textSelection = window.getSelection()
       if (textSelection && !textSelection.isCollapsed) return
       if (event.target.closest(`[${KEEP_EXCEPTION_SELECTION_ATTR}]`)) return
       if (recordIdAt(event.target, recordAttrs) === selectedId) return
-      // Another timeline row will select its own record; do not navigate twice for it.
       const button = event.target.closest('button[id]')
       if (button?.id.startsWith(exceptionRowId(''))) return
       dismissRef.current()
@@ -66,8 +57,6 @@ export function useDismissExceptionSelection(selectedId: string | null, onDismis
       const record = document.activeElement?.closest('[data-exception-id]')
       const fromRecord = recordAttrs === EXCEPTION_RECORD_ATTRS && record?.getAttribute('data-exception-id') === selectedId
       dismissRef.current()
-      // Leaving the record would otherwise drop focus to <body>: return it to where the reader
-      // came from, the row, or its phase card when the view does not show the row (Minimised).
       if (fromRecord && selectedId) returnFocusToTimeline(selectedId, record?.getAttribute(PHASE_ANCHOR_ATTR) ?? null)
     }
     document.addEventListener('click', dismissOutside, true)

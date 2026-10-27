@@ -41,8 +41,6 @@ from app.schemas.vehicles import VehicleCreateBody, VehicleUpdateBody
 from tests.conftest import auth_header, make_token
 
 
-# ── DB override ───────────────────────────────────────────────────────────────
-
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Wire every endpoint in this module to the rolled-back test session."""
@@ -53,8 +51,6 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
     yield
     app.dependency_overrides.pop(get_db, None)
 
-
-# ── Seed fixtures ─────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def seed_org(db_session: AsyncSession) -> dict:
@@ -92,8 +88,6 @@ async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
     db_session.add(client_org)
     await db_session.flush()
 
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
         is_shared=True,
         id=uuid.uuid4(),
@@ -160,11 +154,7 @@ def _make_trip_payload(seed: dict) -> dict:
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
-        # Required: a trip with no schedule (neither this nor a stop slot_time)
-        # can never pass phases.scheduling._reject_if_not_due (see TripCreateRequest
-        # .validate_request).
         "planned_departure_at": datetime.now(UTC).isoformat(),
-        # Arrival is required at creation (FP-139).
         "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
@@ -175,8 +165,6 @@ def _auth_headers(seed: dict) -> dict:
         make_token(sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id))
     )
 
-
-# ── Tests ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_verify_returns_no_receipt_for_a_visible_unanchored_subject(
@@ -281,7 +269,6 @@ async def test_verify_returns_verified_for_anchored_trip(
         transaction_id="0.0.12345@1715865610.0",
     )
 
-    # Step 1: create the trip with an anchored blockchain receipt.
     with patch("app.blockchain.anchor_service.HederaService") as MockCreate:
         MockCreate.return_value.submit_hash.return_value = fake_receipt
 
@@ -294,8 +281,6 @@ async def test_verify_returns_verified_for_anchored_trip(
     assert create_resp.status_code == 201
     trip_id = create_resp.json()["id"]
 
-    # Step 2: verify the trip — patch the verification-layer HederaService so
-    # verify_hash returns True (simulating a matching mirror-node response).
     with patch("app.orchestration.verification.service.HederaService") as MockVerify:
         MockVerify.return_value.verify_hash.return_value = True
 
@@ -308,13 +293,6 @@ async def test_verify_returns_verified_for_anchored_trip(
     assert verify_resp.status_code == 200
     assert verify_resp.json()["status"] == "verified"
 
-
-# ── Vehicle event verification (device ID is hashed in the anchored payload) ──────────
-#
-# These run the REAL create_vehicle / update_vehicle so the receipt holds exactly what
-# production anchors, then verify the event through verify_subject. fleet.vehicles hashes
-# pulsit_device_id before anchoring while VehicleEvent.changed_fields keeps the plaintext,
-# so the verifier must apply the same canonicalisation or every such event reads as tampered.
 
 _FAKE_HEDERA_RECEIPT = HederaReceipt(
     topic_id="0.0.12345", sequence_number=50, consensus_timestamp=None,
@@ -339,8 +317,6 @@ async def _verify_vehicle_event(db: AsyncSession, event_id: uuid.UUID) -> Verify
 async def _created_vehicle_event(
     db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID, *, device_id: str,
 ) -> tuple[uuid.UUID, VehicleEvent]:
-    # model_construct: the schema (rightly) refuses an empty device ID, but the falsy branch
-    # of the canonicalisation still has to be pinned.
     body = VehicleCreateBody.model_construct(
         registration=f"CA {uuid.uuid4().hex[:6]}", vehicle_type=VehicleType.HORSE,
         pulsit_device_id=device_id, make="Volvo", model=None, year=2018, vin_number=None,
@@ -367,8 +343,6 @@ async def _update_event(
     return (
         await db.execute(
             select(VehicleEvent)
-            # created_at is the transaction's now(), identical for every row in a test, so
-            # the update event is told apart by type rather than by recency.
             .where(
                 VehicleEvent.vehicle_id == vehicle_id,
                 VehicleEvent.event_type != VehicleEventType.CREATED.value,

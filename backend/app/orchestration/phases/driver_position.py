@@ -38,9 +38,6 @@ async def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteReque
     staged = await staged_demo_position(event.trip_id)
     if staged is not None:
         staged_lat, staged_lng = staged
-        # Overwrites unconditionally, unlike the reported pair below: a staged position is
-        # the operator saying "pretend the phone is here", and honouring it only when the
-        # handset also produced a fix would leave a demo at the mercy of the room's GPS.
         event.driver_phone_lat = staged_lat
         event.driver_phone_lng = staged_lng
         event.driver_position_source = DriverPositionSource.SIMULATED.value
@@ -49,24 +46,13 @@ async def _record_driver_position(event: PhaseEvent, payload: PhaseCompleteReque
             event.id, event.trip_id,
         )
     elif payload.driver_phone_lat is not None and payload.driver_phone_lng is not None:
-        # str() before Decimal: handing a float straight to a Numeric(10, 7) column
-        # carries the float's binary rounding error into fixed point (-26.0942 stores
-        # as -26.0941999...). The string form is the coordinate the phone actually
-        # reported.
         event.driver_phone_lat = Decimal(str(payload.driver_phone_lat))
         event.driver_phone_lng = Decimal(str(payload.driver_phone_lng))
         event.driver_position_source = DriverPositionSource.DEVICE.value
 
-    # Never substituted with completed_at or datetime.now(UTC) when absent —
-    # an invented capture instant would defeat the entire point of corroboration_
-    # service's skew check, which exists specifically to distrust a value this code
-    # made up.
     if payload.driver_captured_at is not None:
         event.driver_captured_at = payload.driver_captured_at
 
-    # A preview is advisory and non-writing; completion always assembles its own
-    # ActionLocationAssessment afterwards. Keep the driver's acknowledgement in its
-    # own columns so it cannot be mistaken for, or suppress, the measured result.
     if payload.location_warning_acknowledged_at is not None:
         event.location_warning_acknowledged_at = payload.location_warning_acknowledged_at
     if payload.location_warning_reason is not None:

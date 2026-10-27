@@ -22,15 +22,12 @@ export function SettingsLayout() {
   return (
     <div className="flex flex-col gap-6 md:flex-row md:gap-10">
       <nav aria-label="Settings sections" className="md:w-52 md:shrink-0">
-        {/* A scrolling row on a phone and a column from md up, so the same links serve both
-            and a long list never wraps into a block above the content. */}
         <ul className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
           {sections.map(section => {
             const isActive = section.id === active.id
             const Icon = section.icon
             return (
               <li key={section.id} className="shrink-0">
-                {/* replace: Back leaves Settings instead of stepping through each section. */}
                 <Link
                   href={ROUTES.settingsSection(section.id)}
                   replace

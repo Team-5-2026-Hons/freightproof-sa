@@ -15,8 +15,6 @@ from app.core.config import settings
 from app.dev.services import demo_phone
 from tests.conftest import FakeMockStateStore
 
-# Cape Town docks, the demo's own neighbourhood — a real coordinate so a stored value
-# that silently round-trips through float is visible in the assertions.
 STAGED_LAT = Decimal("-33.9188610")
 STAGED_LNG = Decimal("18.4233000")
 
@@ -40,8 +38,6 @@ async def test_staging_round_trips_the_exact_coordinate(
     await demo_phone.stage_phone_position(trip_id, lat=STAGED_LAT, lng=STAGED_LNG, store=store)
     staged = await demo_phone.staged_position(trip_id, store=store)
 
-    # Decimal in, Decimal out, digit for digit: these coordinates land in a
-    # Numeric(10, 7) column, where a float round-trip shifts the last place.
     assert staged == (STAGED_LAT, STAGED_LNG)
 
 
@@ -66,8 +62,6 @@ async def test_restaging_replaces_rather_than_merges(
     await demo_phone.stage_phone_position(trip_id, lat=STAGED_LAT, lng=STAGED_LNG, store=store)
     await demo_phone.stage_phone_position(trip_id, lat=second_lat, lng=second_lng, store=store)
 
-    # Pressing the panel button twice must leave identical state to pressing it once —
-    # re-pressing is how a presenter recovers from a mis-click.
     assert await demo_phone.staged_position(trip_id, store=store) == (second_lat, second_lng)
 
 
@@ -117,8 +111,6 @@ async def test_state_staged_while_flags_were_on_is_unreadable_once_they_are_off(
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", True)
     await demo_phone.stage_phone_position(trip_id, lat=STAGED_LAT, lng=STAGED_LNG, store=store)
 
-    # The read is gated too, not just the write: leftover state in a shared Redis must
-    # not start substituting positions the moment a deployment turns the panel off.
     monkeypatch.setattr(settings, "DEV_PANEL_ENABLED", False)
 
     assert await demo_phone.staged_position(trip_id, store=store) is None
@@ -140,8 +132,6 @@ async def test_unusable_stored_state_falls_back_to_the_real_fix(
     trip_id = uuid.uuid4()
     store.data[f"freightproof:mock:demo_phone:{trip_id}"] = stored  # type: ignore[assignment]
 
-    # Falling back to the device's own capture is the only safe direction to fail in, so
-    # nothing here may raise into a phase submit.
     assert await demo_phone.staged_position(trip_id, store=store) is None
 
 
@@ -169,8 +159,6 @@ async def test_follow_tracker_leaves_a_staged_position_alone_when_not_following(
         move_phone=False, store=store,
     )
 
-    # The FP-145 escape hatch: staging the truck alone is how a genuine phone/tracker
-    # divergence is tested, so it must not quietly move the phone too.
     assert staged is False
     assert await demo_phone.staged_position(trip_id, store=store) == (STAGED_LAT, STAGED_LNG)
 
@@ -183,6 +171,5 @@ async def test_follow_tracker_clears_when_the_tracker_goes_dark(
 
     staged = await demo_phone.follow_tracker(trip_id, lat=None, lng=None, move_phone=True, store=store)
 
-    # no_signal is not a place: the phone must not stay pinned where the truck used to be.
     assert staged is False
     assert await demo_phone.staged_position(trip_id, store=store) is None

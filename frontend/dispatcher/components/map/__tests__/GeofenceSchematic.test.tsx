@@ -17,8 +17,6 @@ describe('niceScaleMetres', () => {
   })
 
   it('never rounds a sub-1 input UP past the input — "down" means down', () => {
-    // Regression: the old implementation clamped every result to a floor of 1, which
-    // rounded 0.4 up to 1 — a scale bar reading "1 m" for a 0.4 m radius is a lie.
     expect(niceScaleMetres(0.4)).toBeLessThanOrEqual(0.4)
   })
 
@@ -39,7 +37,6 @@ describe('GeofenceSchematic', () => {
   it('renders a scale bar label', () => {
     render(<GeofenceSchematic radiusMetres={200} />)
 
-    // Scale is derived from the radius, so it must exist and end in "m".
     expect(screen.getByTestId('schematic-scale-label').textContent).toMatch(/^\d+ m$/)
   })
 
@@ -50,8 +47,6 @@ describe('GeofenceSchematic', () => {
   })
 
   it('does not throw and still renders a positive scale for a non-positive radius', () => {
-    // Not reachable via the create/edit form (validation floors radius at 50 m), but
-    // this component's whole job is to always render — it must survive garbage input.
     render(<GeofenceSchematic radiusMetres={0} />)
 
     const scaleMetres = Number(screen.getByTestId('schematic-scale-label').textContent?.replace(' m', ''))
@@ -72,8 +67,6 @@ describe('GeofenceSchematic', () => {
       const scaleWidthSvg = Number(scaleLine?.getAttribute('x2'))
       const scaleMetres = Number(scaleLabel.textContent?.replace(' m', ''))
 
-      // This is the property the whole component exists for: the circle and the scale
-      // bar must agree on metres-per-pixel, or the diagram lies about distance.
       expect(circleRadiusSvg / scaleWidthSvg).toBeCloseTo(radiusMetres / scaleMetres, 5)
     },
   )

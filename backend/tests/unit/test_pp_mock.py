@@ -26,7 +26,6 @@ async def test_unknown_reference_raises_not_found():
 
 
 def test_clients_have_one_manifest_reader():
-    # FP-281 piece B: get_manifest replaced the wizard-era get_waybills_by_manifest.
     assert not hasattr(MockParcelPerfectClient, "get_waybills_by_manifest")
     assert not hasattr(ParcelPerfectClient, "get_waybills_by_manifest")
 

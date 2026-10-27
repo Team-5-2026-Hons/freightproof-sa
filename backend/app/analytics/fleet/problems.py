@@ -36,10 +36,7 @@ from app.schemas.fleet_analytics import (
     TheftSignalsBucket,
 )
 
-# A problem with no linked phase event; its own bar on chart 3.4 so it's never
-# silently dropped.
 UNLINKED_STEP = "unlinked"
-# Plan order (PhaseType's own order), then "unlinked" last.
 STEP_ORDER: tuple[str, ...] = (*(phase.value for phase in PhaseType), UNLINKED_STEP)
 _SOURCE_ORDER: dict[ExceptionSource, int] = {source: index for index, source in enumerate(ExceptionSource)}
 

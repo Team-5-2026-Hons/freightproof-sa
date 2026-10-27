@@ -19,7 +19,6 @@ function when(iso: string | null): string {
 
 interface Props {
   tripId: string
-  /** Driver names by id, from the trip's participants; an unknown id shows as such. */
   driverNames: Record<string, string>
 }
 
@@ -31,8 +30,6 @@ interface Props {
 export function LateDriverEvidencePanel({ tripId, driverNames }: Props) {
   const fetchLate = useCallback(() => listLateEvidence(tripId), [tripId])
   const { data: items, isLoading, error, refetch, refetchSilent } = useAsyncData<LateEvidenceDetailRead[]>(fetchLate, EMPTY)
-  // Silent: a spinner refetch makes the panel return null, which would unmount an open review
-  // note and lose what the dispatcher had typed.
   useLiveResource('trip', tripId, refetchSilent, { kinds: ['late_driver_evidence_changed'] })
   useEffect(() => {
     const onVisible = (): void => { if (document.visibilityState === 'visible') refetchSilent() }

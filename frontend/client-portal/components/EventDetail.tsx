@@ -8,8 +8,6 @@ import { ExceptionAnchorList } from './ExceptionAnchorList'
 import { EvidencePhoto } from './EvidencePhoto'
 import { TierBadge } from './TierBadge'
 
-// A v2 exception lists its photos with the receipt that committed each; the `evidence` list
-// repeats them for older readers, so showing both would double every photo.
 function photoFile(photo: ExceptionPhoto): EvidenceFile {
   return {
     artifact_id: photo.artifact_id, role: 'exception_supporting', sha256: photo.sha256,
@@ -18,7 +16,6 @@ function photoFile(photo: ExceptionPhoto): EvidenceFile {
 }
 
 function LocationCheck({ assessment }: { assessment: LocationAssessment }) {
-  // Packs frozen before reasons existed omit it, so it is read defensively despite its type.
   const reasons = assessment.reasons ?? []
   return (
     <Field label="Location check">
@@ -27,7 +24,6 @@ function LocationCheck({ assessment }: { assessment: LocationAssessment }) {
       {assessment.driver_in_precinct != null && ` · driver ${assessment.driver_in_precinct ? 'inside' : 'outside'} precinct`}
       {assessment.truck_in_precinct != null && ` · truck ${assessment.truck_in_precinct ? 'inside' : 'outside'} precinct`}
       {reasons.length > 0 && (
-        // Why a check was "unverified" (stale fix, poor accuracy…): a verdict without its reason reads as a failure.
         <span className="block text-meta text-muted">{reasons.map(humanise).join('; ')}</span>
       )}
     </Field>
@@ -47,7 +43,6 @@ export function EventDetail({ token, item }: { token: string; item: TimelineItem
         <TierBadge tier={item.tier} />
       </div>
       {item.anchorWarning && (
-        // The server's tier is overridden in buildTimeline; say why, or the missing badge looks like an omission.
         <p role="alert" className="mb-2 text-small font-semibold text-err">
           One or more anchored fields differ from Hedera; the Anchored badge is withheld.
         </p>

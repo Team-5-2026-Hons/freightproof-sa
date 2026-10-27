@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ExceptionHederaLinks } from './ExceptionHederaLinks'
 import type { EvidenceAnchorSummary } from '@shared/lib/types/exception'
 
-// ForensicOnly's two inputs are set directly; the gate itself is what these tests exercise.
 const forensic = vi.hoisted(() => ({ canViewForensics: true, forensicOn: true, toggle: vi.fn() }))
 vi.mock('@/lib/context/ForensicModeContext', () => ({ useForensicMode: () => forensic }))
 

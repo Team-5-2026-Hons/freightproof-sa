@@ -21,20 +21,8 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Strin
 from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.text import REFERENCE_MAX_LENGTH, FreeText, clean_text
 
-# Bumped whenever a field is added, removed or changes meaning — an issued pack is
-# evidence, so a reader must be able to tell which contract it was written under.
-# v2 (FP-290): an exception carries every photo (`photos`) and the anchor state of each
-# action taken on it (`anchors`). Every v2 addition is defaulted, so a stored v1 manifest
-# still validates and reads as v1; the stored JSON itself is never rewritten.
-# v4: `investigations` (incidents a dispatcher ran over the trip, with their ledger and
-# affected parcels) and IncidentSummary.basis; both defaulted, so a stored v3 manifest still
-# validates and reads as v3.
 AUDIT_PACK_MANIFEST_VERSION = 4
 
-# anchored:     its hash is on Hedera (field-level where the anchored payload names it)
-# corroborated: independent sources agreed at capture time, but nothing is anchored
-# recorded:     FreightProof's own database record, captured at the time, not anchored
-# declared:     typed in by the operator after the event
 EvidenceTier = Literal["anchored", "corroborated", "recorded", "declared"]
 
 PositionSource = Literal["driver_phone", "vehicle_tracker", "trailer_tracker"]
@@ -81,8 +69,6 @@ class AnchoredRecord(_Frozen):
     hedera_sequence_number: int | None
     hedera_tx_id: str | None
     hedera_consensus_at: datetime | None
-    # False when the stored payload no longer hashes to the stored data_hash — our own
-    # receipt row was altered after anchoring, which the pack must say out loud.
     payload_matches_hash: bool
 
 
@@ -104,7 +90,6 @@ class StopRecord(_Frozen):
     lat: float
     lng: float
     geofence_radius_metres: int
-    # Set = the outline was the fence ([lat, lng] corners) and the radius is not used.
     geofence_polygon: list[tuple[float, float]] | None = None
     slot_time: datetime | None
 
@@ -164,16 +149,11 @@ class DriverSubstitutionRecord(_Frozen):
     substitution_at: datetime
     anchor_receipt_id: UUID | None
     tier: EvidenceTier
-    # FP-83 custody facts. Defaulted so manifests issued before them still parse unchanged.
-    # Ordered by sequence_number, the chain's only order; None on genuine legacy rows.
     sequence_number: int | None = None
     completion_mode: str | None = None
-    # Distinct actors, never merged: who arranged it, and what triggered completion.
     arranged_by_name: str | None = None
     completed_by: Literal["driver", "dispatcher"] | None = None
     missing_confirmation_reason: str | None = None
-    # The INCOMING driver's own identity as observed at completion; an admin attestation is a
-    # separate fact and never turns PENDING into verified.
     incoming_identity_status: str | None = None
     identity_attested_by_name: str | None = None
     identity_attested_at: datetime | None = None
@@ -209,8 +189,6 @@ class LateEvidenceRecord(_Frozen):
 class DriverRecord(_Frozen):
     driver_id: UUID
     full_name: str
-    # Masked unless the issuer opted in — an insurer claim form asks for it, but
-    # nobody else in the chain needs a full SA ID number.
     id_number: str
     id_number_masked: bool
     license_number: str
@@ -268,8 +246,6 @@ class PhaseRecord(_Frozen):
     overridden_by_dispatcher: bool
     override_note: str | None
     seal_number: str | None
-    # intact / damaged / missing, recorded at the Arrival gate only (None on every other
-    # phase). Defaulted so a manifest frozen before Arrival existed still validates.
     seal_condition: str | None = None
     parcel_count_origin: int | None
     parcel_count_destination: int | None
@@ -292,7 +268,6 @@ class CheckpointRecord(_Frozen):
     tier: EvidenceTier
 
 
-# The three anchorable actions on an exception, in the vocabulary a reader sees.
 AnchorAction = Literal["raised", "reviewed", "cancelled"]
 
 
@@ -343,13 +318,9 @@ class ExceptionRecord(_Frozen):
     contact_method: str | None
     review_note: str | None
     evidence: list[EvidenceFile]
-    # The tier of the REPORT: anchored only by a matching raise receipt. A review or
-    # cancellation receipt anchors that action (see `anchors`), never the report.
     tier: EvidenceTier
-    # v2. Every photo, in submitted order (`evidence` repeats them for v1 readers).
     photos: list[ExceptionPhoto] = []
     anchors: list[ExceptionAnchorRecord] = []
-    # GPS is never part of any receipt, so a position is always FreightProof's own record.
     position_tier: Literal["recorded"] = "recorded"
 
 
@@ -407,7 +378,6 @@ class IncidentDeclarationRecord(_Frozen):
 
     declaration_id: UUID
     exception_id: UUID | None
-    # Defaulted so a manifest stored before incidents existed still validates.
     incident_id: UUID | None = None
     saps_station: str | None
     saps_cas_number: str | None
@@ -431,14 +401,9 @@ class IncidentSummary(_Frozen):
     first_exception_type: str
     first_raised_at: datetime
     position: PositionFix | None
-    # Last fix from ANY source at or before the first critical exception — the "last
-    # known location" field on a SAPS docket and a claim form.
     last_known_position: PositionFix | None
     first_reviewed_at: datetime | None
     minutes_to_first_review: int | None
-    # "exception": anchored on the first critical exception. "investigation": anchored on a
-    # dispatcher-recorded hijacking with no earlier critical exception (a phone call after the
-    # driver's phone was taken) — a report, so the sheet prints it as declared, not captured.
     basis: Literal["exception", "investigation"] = "exception"
 
 
@@ -446,7 +411,6 @@ class AffectedParcelRecord(_Frozen):
     parcel_id: UUID
     barcode: str
     consignment_id: UUID
-    # Scan facts, never conclusions: see orchestration.incidents.queries.scan_state.
     scan_state: Literal["scanned_in", "no_scan_in_recorded", "no_scan_recorded"]
     latest_finding: str | None
 
@@ -478,8 +442,6 @@ class InvestigationRecord(_Frozen):
     summary: str
     reporter_role: str
     report_channel: str
-    # No reporter name: the manifest is hashed and its hash anchored on Hedera, and a person's
-    # name never goes into an anchored record. The role and channel say what a claim needs.
     reported_occurred_at: datetime | None
     received_at: datetime
     confidence: str
@@ -498,7 +460,6 @@ class InvestigationRecord(_Frozen):
 class TripSummary(_Frozen):
     trip_id: UUID
     trip_reference: str
-    # Nullable since FP-281, like Trip.order_number: a trip keyed by the PP manifest has none.
     order_number: str | None
     trip_type: str
     status: str
@@ -531,15 +492,10 @@ class AuditPackManifest(_Frozen):
     location_coverage: LocationCoverage
     anchored_records: list[AnchoredRecord]
     incident: IncidentSummary | None = None
-    # Defaulted so manifests issued before declarations existed still validate.
     declarations: list[IncidentDeclarationRecord] = []
-    # FP-83: retained late driver evidence; defaulted so earlier manifests still parse.
     late_evidence: list[LateEvidenceRecord] = []
-    # v4: defaulted so earlier manifests still parse.
     investigations: list[InvestigationRecord] = []
     observations: list[Observation]
-    # Human-readable list of what was withheld, printed on the data-protection page so
-    # a reader knows an absence is a redaction, not a missing record.
     redactions: list[str]
 
     def as_json_dict(self) -> dict[str, Any]:
@@ -576,23 +532,17 @@ class PackIssue(_Frozen):
     verify_url: str | None
 
 
-# ── Issue / read DTOs ─────────────────────────────────────────────────────────
-
-# Link lifetimes on offer. Fixed choices rather than any number: an insurer's claim
-# window is weeks, and a link that lives forever is a leak waiting to happen.
 AuditPackExpiryDays = Literal[7, 30, 90]
 DEFAULT_AUDIT_PACK_EXPIRY_DAYS: AuditPackExpiryDays = 30
 
 AuditPackStatus = Literal["active", "expired", "revoked"]
 
-RECIPIENT_MAX_LENGTH = 200     # audit_packs.recipient_name / recipient_organization
-RECIPIENT_EMAIL_MAX_LENGTH = 320  # audit_packs.recipient_email (RFC 5321 ceiling)
+RECIPIENT_MAX_LENGTH = 200
+RECIPIENT_EMAIL_MAX_LENGTH = 320
 
 _RecipientStr = Annotated[
     str, StringConstraints(min_length=1, max_length=RECIPIENT_MAX_LENGTH), AfterValidator(clean_text)
 ]
-# Shape only (one @, a dotted domain, no spaces). Whether the inbox exists is proved by
-# the recipient entering the emailed code, which no syntax check could do.
 _EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -618,8 +568,6 @@ class AuditPackCreate(BaseModel):
 
     recipient_name: _RecipientStr
     recipient_organization: _RecipientStr
-    # Required since FP-291: the pack opens only after a code sent here is entered, so a
-    # forwarded link alone is not enough. Packs issued before then may have none.
     recipient_email: _RecipientEmail
     purpose: AuditPackPurpose
     external_reference: _Reference | None = None
@@ -684,9 +632,6 @@ class AuditPackAccessEventRead(_Frozen):
     created_at: datetime
 
 
-# ── Public (share-link) DTOs ──────────────────────────────────────────────────
-
-# Same vocabulary as VerifyStatus, so the page and the dispatcher's verify panel agree.
 LiveCheckStatus = Literal["verified", "db_mismatch", "hedera_mismatch", "no_receipt", "error"]
 
 
@@ -736,17 +681,13 @@ class LiveVerification(_Frozen):
     checked_at: datetime
     seal_status: LiveCheckStatus
     records: list[LiveRecordCheck]
-    # A count only — enough to say "ask for an updated pack", without revealing what
-    # was added to someone who only holds the old link.
     records_added_since_issue: int
 
 
 
-# ── Incident declarations ─────────────────────────────────────────────────────
-
-SAPS_STATION_MAX_LENGTH = 200   # incident_declarations.saps_station
-SAPS_CAS_MAX_LENGTH = 50        # incident_declarations.saps_cas_number
-SAPS_OFFICER_MAX_LENGTH = 200   # incident_declarations.saps_officer
+SAPS_STATION_MAX_LENGTH = 200
+SAPS_CAS_MAX_LENGTH = 50
+SAPS_OFFICER_MAX_LENGTH = 200
 
 _Station = Annotated[str, StringConstraints(min_length=1, max_length=SAPS_STATION_MAX_LENGTH), AfterValidator(clean_text)]
 _CasNumber = Annotated[str, StringConstraints(min_length=1, max_length=SAPS_CAS_MAX_LENGTH), AfterValidator(clean_text)]
@@ -765,7 +706,6 @@ class IncidentDeclarationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     exception_id: UUID | None = None
-    # The investigation the declaration belongs to (the hijacking guide's SAPS step sets it).
     incident_id: UUID | None = None
     saps_station: _Station | None = None
     saps_cas_number: _CasNumber | None = None
@@ -784,9 +724,7 @@ class IncidentDeclarationCreate(BaseModel):
         return self
 
 
-# ── Mailed viewer password (FP-291) ──────────────────────────────────────────────────
-
-PASSWORD_MAX_LENGTH = 128  # generous ceiling for a pasted password; the hash is what's compared
+PASSWORD_MAX_LENGTH = 128
 
 
 class PasswordEntry(BaseModel):

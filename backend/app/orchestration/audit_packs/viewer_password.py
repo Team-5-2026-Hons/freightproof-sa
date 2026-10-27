@@ -31,15 +31,9 @@ from app.integrations.sendgrid import send_plain_text_email
 
 logger = logging.getLogger(__name__)
 
-# 12 random bytes -> 16 URL-safe characters: short enough to read off an email and type,
-# long enough that guessing it is not a realistic attack on its own (the lockout below
-# covers the rest).
 PASSWORD_BYTES = 12
-# Five wrong guesses locks the password out for this long, then the count resets. A
-# permanent lock would strand the recipient: there is no "resend" step to recover with.
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_WINDOW = timedelta(minutes=15)
-# The grant is a second bearer secret, sized like the share token itself.
 GRANT_BYTES = 32
 
 _EMAIL_SUBJECT = "Your FreightProof audit pack"
@@ -57,9 +51,6 @@ class PasswordCheck:
 
 
 def requires_viewer_password(pack: AuditPack) -> bool:
-    # Needs the password as well as the email: a pack issued to an email address under the old
-    # one-time-code flow has no password_hash, and gating it would lock its recipient out for
-    # good, since no password was ever mailed to them.
     return pack.recipient_email is not None and pack.password_hash is not None
 
 
@@ -71,13 +62,10 @@ def mask_email(address: str) -> str:
 
 
 def hash_token(raw_token: str) -> str:
-    # Same formula as lifecycle.hash_token, kept local (not imported) to avoid a circular
-    # import: lifecycle imports this module to send the issue email.
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
 def hash_password(pack_id: uuid.UUID, password: str) -> str:
-    # Salted with the pack id: one precomputed table must not cover every pack at once.
     return hash_token(f"{pack_id}:{password}")
 
 
@@ -86,8 +74,6 @@ def generate_password() -> str:
 
 
 def issue_email_body(*, password: str, label: str, share_url: str, expires_at: datetime) -> str:
-    # Link, password and pack label only — the body passes through SendGrid outside South
-    # Africa (POPIA), so nothing about the trip, cargo, driver or incident goes in it.
     return (
         f"FreightProof audit pack {label} has been shared with you:\n\n"
         f"    {share_url}\n\n"
@@ -125,14 +111,11 @@ async def verify_password(db: AsyncSession, pack: AuditPack, *, password: str, n
     protection.
     """
     if pack.password_hash is None:
-        # No password was ever issued (a link-only or pre-password pack): nothing can match,
-        # and a direct POST here must read as a wrong guess, not crash into a 500.
         return PasswordCheck(outcome="wrong")
 
     if pack.password_locked_until is not None:
         if pack.password_locked_until > now:
             return PasswordCheck(outcome="locked")
-        # The lockout window passed: give the recipient a clean slate.
         pack.password_failed_attempts = 0
         pack.password_locked_until = None
 

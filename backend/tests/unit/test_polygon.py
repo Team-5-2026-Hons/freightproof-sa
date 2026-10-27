@@ -4,11 +4,9 @@ import pytest
 
 from app.core import polygon as geo
 
-# ~97 m (east-west) × ~111 m (north-south) box around a Durban depot pin.
 _BOX = [(-29.7937, 30.9815), (-29.7937, 30.9825), (-29.7947, 30.9825), (-29.7947, 30.9815)]
 _CENTRE = (-29.7942, 30.9820)
 
-# An L-shaped yard: the corner average lands in the missing square, outside the outline.
 _L_SHAPE = [
     (-29.7900, 30.9800), (-29.7900, 30.9840), (-29.7910, 30.9840),
     (-29.7910, 30.9810), (-29.7940, 30.9810), (-29.7940, 30.9800),
@@ -21,13 +19,11 @@ def test_contains_point_inside_and_outside():
 
 
 def test_contains_respects_a_concave_notch():
-    # Inside the L's bounding box but in its missing square.
     assert geo.contains(_L_SHAPE, (-29.7930, 30.9830)) is False
     assert geo.contains(_L_SHAPE, (-29.7905, 30.9830)) is True
 
 
 def test_distance_to_boundary_from_outside():
-    # 0.001° of longitude east of the box's east edge at -29.79° ≈ 96.6 m.
     distance = geo.distance_to_boundary_metres(_BOX, (-29.7942, 30.9835))
 
     assert distance == pytest.approx(96.6, abs=1.0)

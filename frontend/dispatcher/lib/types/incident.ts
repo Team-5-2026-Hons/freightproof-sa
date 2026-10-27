@@ -29,7 +29,6 @@ export type ResponseStepKey =
   | 'client_notified' | 'driver_welfare_check' | 'audit_pack_issued'
 export type ResponseStepState = 'done' | 'in_progress' | 'todo' | 'not_applicable'
 
-/** The close response's warning when theft is reported with no CAS number on record. */
 export const THEFT_REPORTED_WITHOUT_CAS = 'theft_reported_without_cas'
 
 export interface IncidentCreate {

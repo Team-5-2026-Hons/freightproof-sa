@@ -21,8 +21,6 @@ from typing import Any
 SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots"
 UPDATE_ENV_VAR = "UPDATE_SNAPSHOTS"
 
-# How many differing lines to show in a failure. The full diff is one `git diff` away
-# after regenerating; a 40k-line OpenAPI diff in the pytest output helps nobody.
 MAX_DIFF_LINES = 60
 
 

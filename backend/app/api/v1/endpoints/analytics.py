@@ -110,7 +110,6 @@ async def list_vehicle_streaks_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> list[VehicleStreakResponse]:
-    # No month range, by design: a streak is either still running or it is not.
     return await list_vehicle_streaks(db, organization_id=current_user.organization_id)
 
 
@@ -154,10 +153,6 @@ async def list_facility_analytics_endpoint(
     )
 
 
-# The fleet-wide page's routes (/analytics/fleet/*) live in their own module but mount here,
-# so the shared main.py needs no change.
 router.include_router(fleet_router)
-# The Cost tab's rates (/analytics/cost-profile), mounted the same way (FP-294).
 router.include_router(cost_profile_router)
-# The Ask about these figures panel (/analytics/chat), mounted the same way (FP-295).
 router.include_router(chat_router)

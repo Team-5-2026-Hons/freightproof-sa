@@ -21,8 +21,6 @@ if TYPE_CHECKING:
 class ParcelPerfectPort(Protocol):
     """What the real and mock Parcel Perfect clients both provide."""
 
-    # Callers branch on this instead of catching PPUnsupportedError (the real client
-    # has no manifest lookup; the mock does).
     supports_manifest_lookup: bool
 
     async def get_manifest(self, manifest_number: int) -> PPManifestResponse: ...

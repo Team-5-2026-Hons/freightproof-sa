@@ -2,9 +2,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { SETTINGS_SECTIONS, visibleSections } from './sections'
 import { SETTINGS_SECTION_IDS } from '@/lib/settings/section-query'
 
-// The registry imports each section's component, and AccountSection reaches useAuth ->
-// AuthContext -> the real Supabase client, which throws without env vars. Nothing here
-// renders a section, so a stub at the module boundary is enough.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: null, signOut: vi.fn() }) }))
 
 describe('SETTINGS_SECTIONS', () => {

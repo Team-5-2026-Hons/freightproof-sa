@@ -89,8 +89,6 @@ def _legacy_exchange(request: DriverSubstitutionRequest) -> ExchangePoint:
 async def build_request_read(
     db: AsyncSession, request: DriverSubstitutionRequest, *, viewer: Viewer, now: datetime,
 ) -> SubstitutionRequestRead:
-    # created_at and updated_at are server-side values; reading them off a just-flushed row
-    # would lazy-load, which is illegal in an async session.
     await db.refresh(request)
     (read,) = await build_request_reads(db, [request], viewer=viewer, now=now)
     return read
@@ -203,7 +201,6 @@ async def _completed_for(
     for row in (await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.request_id.in_(completed_ids))
     )).scalars():
-        # in_() never matches NULL, so a legacy row (request_id NULL) cannot arrive here.
         if row.request_id is None:
             raise ValueError("A completed substitution matched by request has no request id")
         if row.request_id in found:
@@ -228,12 +225,10 @@ async def _request_read(
     ]
     state = SubstitutionState(request.state)
     required = required_confirmation_roles(request.request_format)
-    # Only a completed request is read against its substitution row, whatever the caller handed over.
     if state is not SubstitutionState.COMPLETED:
         completed = None
 
     if completed is not None:
-        # Frozen at completion; never re-read from the driver, whose status may have moved since.
         if completed.incoming_identity_observed_at is None:
             raise ValueError("Completed request has no recorded identity observation")
         identity = IdentitySnapshot(

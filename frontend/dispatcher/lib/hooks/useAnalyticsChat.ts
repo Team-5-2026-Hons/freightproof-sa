@@ -8,10 +8,7 @@ import type { Basis, ChatAnswer, ChatAnswerKind, ChatPageView, ChatStatus, ChatT
 
 export const CHAT_PATH = '/api/v1/analytics/chat'
 export const CHAT_STATUS_PATH = '/api/v1/analytics/chat/status'
-/** An answer can take two model calls and a few database queries; the server gives each
- *  model call 30 s with one retry, so a minute covers the slow case without hanging forever. */
 export const CHAT_TIMEOUT_MS = 60_000
-/** The server rejects more (app/schemas/analytics_chat.py MAX_HISTORY_TURNS). */
 export const MAX_HISTORY_TURNS = 10
 const HTTP_TOO_MANY_REQUESTS = 429
 
@@ -26,18 +23,14 @@ export interface ChatMessageItem {
   id: number
   role: 'user' | 'assistant'
   text: string
-  /** Assistant messages only. */
   kind?: ChatAnswerKind
   basis?: Basis[]
 }
 
 export interface AnalyticsChat {
   messages: ChatMessageItem[]
-  /** The question being answered right now, shown until the answer arrives. */
   pending: string | null
   error: string | null
-  /** This month's spend from the latest answer; null until the first one (the page's status
-   *  read covers that time). */
   spend: SpendStatus | null
   /** Resolves true when an answer arrived; false leaves the question for the dispatcher to retry. `page` is what
    *  the dispatcher has on screen, so "these figures" means the period they're looking at. */
@@ -78,8 +71,6 @@ export function useAnalyticsChat(onTooManyRequests: () => void): AnalyticsChat {
       return true
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-      // A 429 is either the per-minute limit or the monthly budget: re-reading the status
-      // says which (spend.available), without matching on the error's wording.
       if (err instanceof ApiError && err.status === HTTP_TOO_MANY_REQUESTS) {
         setSpend(null)
         onTooManyRequests()

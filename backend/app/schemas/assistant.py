@@ -16,14 +16,10 @@ from app.db.models.enums import IncidentOutcome, IncidentStatus, IncidentType, T
 
 RecordKind = Literal["driver", "vehicle", "trip", "precinct"]
 
-# Spec §4. A question is a sentence or two; ten turns carry "him" and "the first horse" across a
-# booking without resending a long conversation (and its cost) every time. The same limits as FP-295.
 MAX_QUESTION_CHARS = 500
 MAX_HISTORY_TURNS = 10
 MAX_TURN_CHARS = 2_000
-# The records one answer can show: a card of trips plus their drivers and horses.
 MAX_REFS_PER_TURN = 30
-# Longer than any name, registration, depot or trip reference in the database (String(255) columns).
 MAX_LABEL_CHARS = 255
 MAX_DETAIL_CHARS = 50
 
@@ -39,9 +35,7 @@ class RecordRef(BaseModel):
 
     kind: RecordKind
     id: UUID
-    # A driver's full name, a registration, a depot name or a trip reference.
     label: str = Field(max_length=MAX_LABEL_CHARS)
-    # One fact that tells look-alikes apart: vehicle type, depot hub code, trip status.
     detail: str | None = Field(default=None, max_length=MAX_DETAIL_CHARS)
     is_active: bool = True
 
@@ -66,7 +60,6 @@ class TripRow(BaseModel):
     trip_type: TripType
     origin: str
     destination: str
-    # The driver holding the trip now (after any handover, FP-83).
     driver_id: UUID
     driver: str
     horse_id: UUID
@@ -81,7 +74,6 @@ class TripRow(BaseModel):
     phase_completed: int
     phase_total: int
     needs_review: NeedsReview
-    # Live, and its planned arrival has passed.
     overdue: bool
 
 
@@ -91,16 +83,13 @@ class TripListCard(BaseModel):
     type: Literal["trip_list"] = "trip_list"
     title: str
     total: int
-    # Of `total`: started and on the road · booked, not started · held by an exception.
     on_the_road: int
     booked: int
     on_hold: int
     window_start: datetime | None
     window_end: datetime | None
     rows: list[TripRow]
-    # More trips matched than `rows` shows.
     truncated: bool
-    # Where the whole list lives: the Dashboard for live trips, Trip History for closed and cancelled ones (B34).
     full_list: Literal["dashboard", "history"]
 
 
@@ -145,15 +134,11 @@ class TripCard(BaseModel):
 
     type: Literal["trip"] = "trip"
     trip: TripRow
-    # Depot names in stop order.
     stops: list[str]
-    # Set when the trip was handed over: who started it.
     original_driver: str | None
     open_incidents: list[IncidentRow]
-    # The trip page's Info panel and Record integrity tally (coverage audit items 3 and 5).
     delivery_confirmed_at: datetime | None
     closed_at: datetime | None
-    # Minutes: positive late, negative early; None without both times.
     departure_delay_minutes: int | None
     arrival_delay_minutes: int | None
     parcels_booked: int | None
@@ -174,7 +159,6 @@ class BookingRow(BaseModel):
     origin: str
     destination: str
     busy_from: datetime
-    # None: busy until the trip is closed or cancelled (a live trip past its planned end).
     busy_until: datetime | None
     planned_until: datetime | None
 
@@ -198,7 +182,6 @@ class ChooseCard(BaseModel):
     what: RecordKind
     typed: str
     options: list[RecordRef]
-    # Matches past the ones shown.
     more: int
 
 
@@ -220,9 +203,7 @@ class VehicleCard(BaseModel):
     on_trip_now: list[BookingRow]
     exceptions_to_review: NeedsReview
     exception_types: list[str]
-    # Other exceptions waiting on trips it was used on: about the trip, not the vehicle.
     trip_exceptions_to_review: NeedsReview
-    # Breakdowns (mechanical exceptions) recorded against it in the look-back window, reviewed or not.
     recent_breakdowns: int
     open_incidents: list[IncidentRow]
 
@@ -235,7 +216,6 @@ class ExpiryRow(BaseModel):
 
     record: RecordRef
     document: DocumentKind
-    # None only when one named record has no date recorded.
     expiry: date | None
     expired: bool
 
@@ -246,10 +226,8 @@ class ExpiryListCard(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     type: Literal["expiry_list"] = "expiry_list"
-    # None when one named driver or vehicle was asked about, whatever its date.
     within_days: int | None
     rows: list[ExpiryRow]
-    # Active records with no expiry date recorded, which no window can include.
     without_date: int
     truncated: bool
 
@@ -262,7 +240,6 @@ class HistoryRow(BaseModel):
     status: TripStatus
     origin: str
     destination: str
-    # When it closed, else when it left, else when it was planned to leave, else when it was booked.
     happened_at: datetime
 
 
@@ -273,7 +250,6 @@ class HistoryCard(BaseModel):
 
     type: Literal["history"] = "history"
     who: RecordRef
-    # None: all time.
     window_start: datetime | None
     window_end: datetime | None
     total: int
@@ -281,7 +257,6 @@ class HistoryCard(BaseModel):
     cancelled: int
     live: int
     booked: int
-    # The newest trips, newest first.
     recent: list[HistoryRow]
 
 
@@ -329,7 +304,6 @@ class CrewGroup(BaseModel):
     kind: CrewKind
     nothing_booked: list[RecordRef]
     booked: list[BookedCrew]
-    # Either list was cut to fit the card.
     truncated: bool
 
 
@@ -348,16 +322,12 @@ class RouteTimeCard(BaseModel):
     type: Literal["route_time"] = "route_time"
     origin: RecordRef
     destination: RecordRef
-    # Truck road time from the route planner: no stops, rest or loading. None when it couldn't be looked up.
     driving_minutes: int | None
     distance_km: int | None
-    # Why there is no driving time ("not set up", "unavailable"), else None.
     driving_unavailable: str | None
-    # Closed trips on this depot pair in the history window, and their door-to-door times.
     past_trip_count: int
     typical_minutes: int | None
     slow_minutes: int | None
-    # The past times were faster than the road allows (demo or test trips), so they aren't shown.
     history_left_out: bool
     history_from: date
     history_to: date
@@ -371,7 +341,6 @@ class ParcelJourneyRow(BaseModel):
     trip_status: TripStatus
     origin: str
     destination: str
-    # before_pickup · within_journey · after_delivery · cancelled · unknown (parcel trace); None for a waybill-only look-up.
     position: str | None
     phase: str | None
     last_depot: str | None
@@ -397,7 +366,6 @@ class FormPreviewCard(BaseModel):
     type: Literal["form_preview"] = "form_preview"
     mode: Literal["empty_leg", "manifest"]
     manifest_number: int | None
-    # The manifest's own route and size, when the pre-check could read it.
     manifest_summary: str | None
     driver: RecordRef | None
     horse: RecordRef | None
@@ -406,7 +374,6 @@ class FormPreviewCard(BaseModel):
     destination: RecordRef | None
     departure: datetime | None
     arrival: datetime | None
-    # Clashes and gaps the dispatcher should see before opening the form.
     warnings: list[str]
 
 
@@ -418,16 +385,9 @@ AssistantCard = Annotated[
 ]
 
 
-# ── Actions: buttons under an answer. They only ever open a page (spec D2): nothing is saved. ──
-
-# The pages a button may open. The frontend maps each to its own ROUTES entry, so no URL is built here.
-# No "trips" (there is no trips list page: live trips are on the Dashboard, finished ones in Trip History) and no
-# "sla" (a placeholder that always shows "No data"): coverage audit L0, S1 (B34).
 PageName = Literal[
     "dashboard", "trip", "history", "exceptions", "incidents", "drivers", "driver", "vehicles", "vehicle",
     "precincts", "precinct", "parcels", "analytics",
-    # The Add forms, opened empty, never filled in (B41): Add precinct is its own page (/precincts/new); Add driver and
-    # Add vehicle are the Drivers and Vehicles pages' pop-ups, opened by their address (lib/fleet/add-form-link.ts).
     "add_precinct", "add_driver", "add_vehicle",
 ]
 
@@ -463,10 +423,7 @@ class OpenPageAction(BaseModel):
     kind: Literal["open_page"] = "open_page"
     label: str
     page: PageName
-    # The record a detail page shows (driver, vehicle, trip, precinct pages).
     record_id: UUID | None
-    # Only filters the page already reads from its address (exceptions: severity, q; parcels: barcode,
-    # waybill; analytics: ask). The frontend drops anything else.
     filters: dict[str, str]
 
 
@@ -491,21 +448,16 @@ class AssistantRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     question: Question
-    # Oldest first.
     history: list[AssistantTurn] = Field(default_factory=list, max_length=MAX_HISTORY_TURNS)
-    # The records the question means, when it came from a choice card's button ("I mean Tim Giltig").
     refs: list[RecordRef] = Field(default_factory=list, max_length=MAX_REFS_PER_TURN)
 
 
 class AssistantSpend(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # This organisation's assistant spend this SAST calendar month.
     spent_usd: float
-    # Both chats (this one and the Analytics chat), every organisation: what the shared budget counts (D7).
     all_chats_spent_usd: float
     budget_usd: float
-    # False once all_chats_spent_usd has reached the budget.
     available: bool
 
 
@@ -516,17 +468,11 @@ class AssistantAnswer(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     answer: str
-    # answer: a tool ran · follow_up: it asked a question back · declined: a refusal, an out-of-scope
-    # question or a cap reached, with no facts.
     kind: AnswerKind
     cards: list[AssistantCard]
-    # Buttons that open a page (never save): at most MAX_ACTIONS.
     actions: list[AssistantAction]
-    # The tools that ran, in order: the "Checked: Trips · Driver bookings" line under the answer.
     tools_used: list[str]
-    # Every record this answer's cards show, for the next question's history.
     refs: list[RecordRef]
-    # None when the spend couldn't be read (Redis down).
     spend: AssistantSpend | None
 
 

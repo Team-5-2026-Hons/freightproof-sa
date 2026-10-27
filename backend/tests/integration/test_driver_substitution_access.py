@@ -159,7 +159,6 @@ async def _own_detail(client, w, who, seq):
     return await _get(client, f"/api/v1/trips/me/{w.trip_id}", who)
 
 
-# (name, call, needs the claimed sequence). Writes carry it; reads do not.
 ACTIONS: list[tuple[str, Action]] = [
     ("locations", _location), ("checkpoints", _checkpoint), ("exceptions", _exception),
     ("artifacts", _artifact), ("phase_complete", _phase_complete), ("location_preview", _preview),
@@ -199,8 +198,6 @@ async def test_unrelated_driver_gets_a_plain_404(client: AsyncClient, handed_ove
     assert response.status_code == 404, response.text
     assert "code" not in str(response.json().get("detail"))
 
-
-# ── custody_sequence ─────────────────────────────────────────────────────────
 
 
 async def test_omitted_sequence_is_accepted_only_before_any_substitution(client: AsyncClient, db_session):
@@ -250,8 +247,6 @@ async def test_exact_retry_is_accepted_before_a_stale_sequence_is_rejected(clien
     assert other_key.json()["detail"]["code"] == "CUSTODY_CONTEXT_CHANGED"
 
 
-# ── actor-bound replay ───────────────────────────────────────────────────────
-
 
 async def test_former_driver_exact_replay_has_no_current_trip_data(client: AsyncClient, db_session):
     world = await build_world(db_session)
@@ -269,10 +264,8 @@ async def test_former_driver_exact_replay_has_no_current_trip_data(client: Async
     assert replay.status_code == 409
     assert replay.json()["detail"]["code"] == "EVIDENCE_ALREADY_RECORDED"
     assert replay.json()["detail"]["evidence_id"] == str(world.activation_id)
-    # Only the contract's three fields: no trip, driver or phase data rides along.
     assert set(replay.json()["detail"]) == {"code", "message", "evidence_id"}
     assert changed_key.json()["detail"]["code"] == "TRIP_HANDED_OVER"
-    # Another actor's key is never acknowledged as the caller's own success, and no trip detail leaks.
     assert other_actor.status_code == 409
     other_detail = other_actor.json()["detail"]
     assert not (isinstance(other_detail, dict) and other_detail.get("code") == "EVIDENCE_ALREADY_RECORDED")
@@ -298,7 +291,6 @@ async def test_former_driver_exception_replay_is_acknowledged_by_opaque_referenc
         "message": replay.json()["detail"]["message"],
         "evidence_id": accepted.json()["id"],
     }
-    # B reusing A's client_report_id must not be handed A's report back as B's own.
     assert other_actor.status_code != 200 and other_actor.status_code != 201
     stored = (await db_session.execute(select(TripException).where(TripException.trip_id == world.trip_id))).scalars().all()
     assert len(stored) == 1
@@ -334,8 +326,6 @@ async def test_no_substitution_trip_keeps_its_legacy_replay_semantics(client: As
 
     assert (first.status_code, replay.status_code, different_key.status_code) == (200, 200, 200)
 
-
-# ── overridden phase after a handover ────────────────────────────────────────
 
 
 async def test_current_driver_capture_for_overridden_phase_after_handover_returns_phase_overridden(

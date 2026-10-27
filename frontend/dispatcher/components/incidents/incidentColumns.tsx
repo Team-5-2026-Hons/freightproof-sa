@@ -9,14 +9,6 @@ import { fmtAge } from '@/lib/format/period'
 import type { IncidentSummary } from '@/lib/types/incident'
 import { IncidentStatusChip } from './IncidentStatusChip'
 
-// Columns scale up to fill a wider container but never shrink, so what is shown must add up to no more
-// than the container or the table scrolls sideways and clips its last column. Each optional column
-// therefore hides below the width at which everything before it still fits:
-//   core (reference + type + status + summary)  660
-//   + received                                  770   hides below 800
-//   + unresolved                                880   hides below 900
-//   + investigated by                          1030   hides below 1100
-// The summary is the widest, so it takes the largest share when the screen is wider than that.
 const REFERENCE_WIDTH_PX = 170
 const TYPE_WIDTH_PX = 120
 const STATUS_WIDTH_PX = 130
@@ -41,7 +33,6 @@ export function buildIncidentColumns(
     { id: 'summary', label: 'What was reported', width: SUMMARY_WIDTH_PX, render: i => <span className="line-clamp-2">{i.summary}</span> },
     {
       id: 'received', label: 'Received', width: RECEIVED_WIDTH_PX, hideBelow: RECEIVED_HIDE_BELOW_PX, sortable: true,
-      // The full date and time clipped at laptop widths; the age fits, and the exact time stays on hover.
       render: i => (
         <span className="whitespace-nowrap tabular-nums" title={fmtSastDateTime(i.received_at) ?? undefined}>
           {Number.isFinite(Date.parse(i.received_at)) ? `${fmtAge(i.received_at, now)} ago` : '—'}

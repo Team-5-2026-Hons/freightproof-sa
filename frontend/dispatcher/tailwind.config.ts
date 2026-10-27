@@ -9,8 +9,6 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // ── Design-system shorthand tokens — mirror CSS variable names exactly ──
-        // Use these when building new UI. Class names: bg-surf, text-on-surf, etc.
         canvas:       '#0a0a0c',
         surf:         '#fcf8f9',
         'surf-low':   '#f6f3f4',
@@ -20,17 +18,6 @@ const config: Config = {
         'on-surf-v':  '#46464f',
 
         sec:   { DEFAULT: '#0051d5', c: '#d8e2ff', on: '#ffffff', onc: '#001551' },
-        // `chip` is a second, opaque container tone for `ok` — used only by the Chip
-        // component's 'complete' pill, which read as a too-bright neon mint at the
-        // standard `c` tone. Same hue as `--ok`/`--ok-c` (162°, matching how `c` tones
-        // relate to their DEFAULT elsewhere in this file — same hue, high saturation,
-        // only lightness moved), at HSL(162°, 50%, 68%) rather than `c`'s (162°, 89%,
-        // 76%): saturation pulled back enough to read as calmer than `c`, lightness
-        // pulled back enough to keep it visibly a colour rather than a wash. (An
-        // earlier attempt mixed `--ok` toward white instead, which desaturates and
-        // lightens at once — the opposite of "more saturated, still light" — and read
-        // as bland.) `c`/`onc` are unchanged and still back every other "success"
-        // surface (banners, badges) that uses them.
         ok:    { DEFAULT: '#006c4c', c: '#89f8c7', chip: '#85d6be', on: '#ffffff', onc: '#002114' },
         err:   { DEFAULT: '#ba1a1a', c: '#ffdad6', on: '#ffffff', onc: '#410002' },
         warn:  { DEFAULT: '#805600', c: '#ffb95f', on: '#ffffff', onc: '#2b1700' },
@@ -39,30 +26,26 @@ const config: Config = {
         outline: {
           DEFAULT: '#777680',
           v:       '#c7c6ca',
-          // backwards-compat alias used by existing components
           variant: '#c7c6ca',
         },
 
-        // ── Semantic tokens — backwards-compat names with corrected hex values ──
-        // These match the shorthand tokens above; kept so existing class names work
-        // during the UI rebuild. Remove once all components use shorthand names.
         primary: {
-          DEFAULT:       '#1b1b1c',   // was #000000 — now matches --primary
-          container:     '#303031',   // --primary-c
+          DEFAULT:       '#1b1b1c',
+          container:     '#303031',
           on:            '#ffffff',
           'on-container':'rgba(255,255,255,0.45)',
         },
         secondary: {
           DEFAULT:       '#0051d5',
-          container:     '#d8e2ff',   // was #316bf3 — now matches --sec-c
+          container:     '#d8e2ff',
           on:            '#ffffff',
-          'on-container':'#001551',   // was #fefcff — now matches --on-sec-c
+          'on-container':'#001551',
         },
         success: {
-          DEFAULT:       '#006c4c',   // was #1a7c3e — now matches --ok
-          container:     '#89f8c7',   // was #c8f2d9 — now matches --ok-c
+          DEFAULT:       '#006c4c',
+          container:     '#89f8c7',
           on:            '#ffffff',
-          'on-container':'#002114',   // was #0a3d1f — now matches --on-ok-c
+          'on-container':'#002114',
         },
         error: {
           DEFAULT:       '#ba1a1a',
@@ -71,12 +54,11 @@ const config: Config = {
           'on-container':'#410002',
         },
         warning: {
-          DEFAULT:       '#805600',   // was tertiary #b87500 — now matches --warn
-          container:     '#ffb95f',   // was #ffddb8 — now matches --warn-c
+          DEFAULT:       '#805600',
+          container:     '#ffb95f',
           on:            '#ffffff',
           'on-container':'#2b1700',
         },
-        // tertiary kept as alias so nothing silently breaks during transition
         tertiary: {
           DEFAULT:       '#805600',
           container:     '#ffb95f',
@@ -97,10 +79,6 @@ const config: Config = {
         },
       },
 
-      // D37: four named steps, in rem so browser zoom scales them. Aliases of DESIGN_SYSTEM §5.1
-      // roles (label = Label-M, meta = Body-S, body = Body-M, title = Title-S). Anything that
-      // carries a value (an id, a count, a time) is never below `meta`. New and rewritten
-      // components use only these; the ~357 literal sizes elsewhere migrate in a later codemod.
       fontSize: {
         label: ['0.6875rem', { lineHeight: '1rem', fontWeight: '600', letterSpacing: '0.04em' }],
         meta:  ['0.75rem',   { lineHeight: '1rem', letterSpacing: '0.03em' }],
@@ -129,14 +107,12 @@ const config: Config = {
       },
 
       boxShadow: {
-        // Design-system elevation levels — matches DESIGN_SYSTEM.md §4
         'level-1': '0 1px 0 rgba(27,27,28,0.06)',
         'level-2': '0 2px 8px rgba(27,27,28,0.04)',
         'level-3': '0 0 20px rgba(27,27,28,0.17)',
         'level-4': '0 2px 16px rgba(27,27,28,0.08)',
         'level-5': '0 8px 32px rgba(27,27,28,0.18)',
         'level-6': '0 16px 64px rgba(0,0,0,0.5)',
-        // Backwards-compat aliases
         'ambient-sm':     '0 4px 20px rgba(27,27,28,0.06)',
         'ambient':        '0 8px 40px rgba(27,27,28,0.06)',
         'ambient-header': '0 8px 30px rgba(0,0,0,0.06)',

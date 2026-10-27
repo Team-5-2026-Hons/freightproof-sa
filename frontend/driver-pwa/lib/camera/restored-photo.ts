@@ -15,7 +15,6 @@
 
 const PENDING_CAPTURE_KEY = 'fp:pending-camera-capture'
 
-// Same window as RESUME_MAX_AGE_MS: a camera round trip, with room for a phone call.
 export const PENDING_CAPTURE_MAX_AGE_MS = 30 * 60 * 1000
 
 interface PendingCapture {
@@ -23,8 +22,6 @@ interface PendingCapture {
   startedAt: string
 }
 
-// Held in memory only: a data URL is hundreds of KB, and it is claimed within moments of
-// the relaunch, so it never needs to outlive this JavaScript session.
 let restored: { key: string, dataUrl: string } | null = null
 const listeners = new Set<() => void>()
 
@@ -47,7 +44,6 @@ export function markCapturePending(key: string, now: Date = new Date()): void {
   try {
     storage()?.setItem(PENDING_CAPTURE_KEY, JSON.stringify(record))
   } catch (err) {
-    // Storage full or blocked: the capture still works, it just cannot be restored.
     console.warn('Could not mark the camera capture as pending', err)
   }
 }

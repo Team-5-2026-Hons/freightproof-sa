@@ -159,7 +159,6 @@ async def test_history_returns_only_terminal_trips_ordered_by_closed_at(
         db_session, seed, tag="newer", status=TripStatus.CANCELLED,
         closed_at=datetime(2026, 4, 3, 10, 0, tzinfo=UTC),
     )
-    # A later updated_at must not move an older closure above the newer closure.
     older.updated_at = datetime(2026, 5, 1, 10, 0, tzinfo=UTC)
     await _make_trip(
         db_session, seed, tag="active", status=TripStatus.ACTIVE, closed_at=None,
@@ -364,8 +363,6 @@ async def test_history_date_range_is_inclusive_in_configured_operations_timezone
     seed: HistorySeed,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    # A non-default offset proves the endpoint reads the shared setting instead of
-    # embedding South Africa's current UTC offset as a second constant.
     monkeypatch.setattr(settings, "OPERATIONS_UTC_OFFSET_HOURS", 3)
     boundary_date = date(2026, 4, 10)
     inside_start = await _make_trip(

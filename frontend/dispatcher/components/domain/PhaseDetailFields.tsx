@@ -2,9 +2,6 @@
 
 import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 
-// ── Shared field primitives ───────────────────────────────────────────────────
-// These establish the pattern for future per-phase detail components.
-
 export function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="py-3 first:pt-0 last:pb-0">

@@ -58,34 +58,26 @@ _MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_analytics_read_models.py"
 )
-# Drops and recreates vehicle_analytics and vehicle_incident_streaks for horses AND
-# trailers. Always run after FP-153's statements, the order Alembic applies them in.
 _TRAILER_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_trailer_vehicle_analytics.py"
 )
-# Turns all five into plain (live) views. Always run last, the order Alembic applies it in.
 _LIVE_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
 )
-# FP-83: the driver view recreated with handover-aware attribution. Always run after the live views.
 _SUBSTITUTION_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
 )
 
-# Adds arrival to the driver view's phase dwell. Always run after the FP-83 recreation.
 _ARRIVAL_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_10_23_ciaran_driver_analytics_arrival.py"
 )
 
-# SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 
-# A mechanical breakdown is logged mid-drive in every seeded trip (between departure at
-# +100 and arrival at +400 on the default single-leg timeline).
 _MECHANICAL_AT_MINUTE = 200
 
 
@@ -104,8 +96,6 @@ _LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_view
 _SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsub_driver_analytics")
 _ARRIVAL_MIGRATION = _load_migration(_ARRIVAL_MIGRATION_PATH, "ciaran_drv_arrival_dwell")
 
-
-# ── Timeline building blocks ─────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -190,8 +180,6 @@ def _minutes(delta: timedelta) -> float:
     return delta.total_seconds() / 60
 
 
-# ── Seeding ──────────────────────────────────────────────────────────────────
-
 
 def _new_horse(org: Organization) -> Vehicle:
     tag = uuid.uuid4().hex[:8].upper()
@@ -271,8 +259,6 @@ async def _trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=planned_departure,
         planned_arrival_at=planned_arrival,
-        # Reproduces phases.advance_departure's known defect: stamped on EVERY departure, so it holds
-        # the LAST leg. Seeded deliberately wrong to prove no view reads it.
         actual_departure_at=at(departures[-1].minute) if departures else None,
         actual_arrival_at=(
             at(final_leg.minute)
@@ -284,7 +270,6 @@ async def _trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -362,8 +347,6 @@ async def _vehicle_history(
             )
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────────────
-
 
 @pytest_asyncio.fixture
 async def views(db_session: AsyncSession) -> None:
@@ -395,8 +378,6 @@ def month() -> date:
     return _add_months(datetime.now(_SAST).date().replace(day=1), -3)
 
 
-# ── Driver ───────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.usefixtures("views")
 async def test_driver_metrics_counts_closed_trips_only(
@@ -410,8 +391,6 @@ async def test_driver_metrics_counts_closed_trips_only(
                      at=_start(month, 10, hour=12))
     await _exception(db_session, on_time, ExceptionType.SEAL_MISMATCH, ExceptionSeverity.CRITICAL,
                      at=_start(month, 10, hour=13))
-    # Late, and its loading overridden: loading AND departure dwell (whose predecessor is
-    # the override) are not observations; the override still counts toward the rate.
     await _trip(
         db_session, operator, start=_start(month, 12), stops=lane, planned_departure_minute=30,
         steps=[
@@ -483,7 +462,6 @@ async def test_driver_metrics_measure_arrival_dwell_from_the_drive_to_the_gate(
 
     assert (metrics.arrival_dwell_minutes_sum, metrics.arrival_dwell_events_count) == (15, 1)
     assert metrics.arrival_dwell_minutes_avg == pytest.approx(15.0)
-    # Unloading is now measured from arrival, not from the end of the drive.
     assert (metrics.unloading_dwell_minutes_sum, metrics.unloading_dwell_events_count) == (30, 1)
 
 
@@ -492,7 +470,6 @@ async def test_driver_metrics_range_sums_months_before_dividing(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
     next_month = _add_months(month, 1)
-    # Departure is at +100 on the default timeline: plan +120 is on time, +30 is late.
     await _trip(db_session, operator, start=_start(month, 5), steps=_single_leg(),
                 stops=lane, planned_departure_minute=120)
     await _trip(db_session, operator, start=_start(month, 6), steps=_single_leg(),
@@ -514,7 +491,6 @@ async def test_driver_metrics_range_sums_months_before_dividing(
     assert first.on_time_departure_rate == pytest.approx(0.5)
     assert second.on_time_departure_rate == pytest.approx(1.0)
     assert both.trip_count == 3
-    # 2 on time of 3 — not the 0.75 that averaging the two monthly rates would give.
     assert both.on_time_departure_rate == pytest.approx(2 / 3)
 
 
@@ -527,8 +503,6 @@ async def test_multi_stop_trip_measured_from_first_ledger_departure(
     db_session.add(mid)
     await db_session.flush()
     last_day = _add_months(month, 1) - timedelta(days=1)
-    # Starts 23:00 SAST on the month's last day: the FIRST departure (+50) is still in
-    # `month`, the last (+250) is in the next month — as is trips.actual_departure_at.
     start = datetime(last_day.year, last_day.month, last_day.day, 23, tzinfo=_SAST)
     await _trip(
         db_session, operator, start=start, steps=_cross_dock(),
@@ -552,14 +526,10 @@ async def test_multi_stop_trip_measured_from_first_ledger_departure(
 
     assert driver.trip_count == 1
     assert later == []
-    # First departure +50 vs plan +60: on time. The last leg (+250) would have been late.
     assert driver.on_time_departures_count == 1
-    # Both loadings pooled (30 + 30), both departures (10 + 20).
     assert (driver.loading_dwell_minutes_sum, driver.loading_dwell_events_count) == (60, 2)
     assert (driver.departure_dwell_minutes_sum, driver.departure_dwell_events_count) == (30, 2)
-    # Two legs of 150 minutes each.
     assert vehicle.driving_hours_sum == pytest.approx(5.0)
-    # Door to door from the first departure: 400 - 50.
     assert lane_row.actual_transit_minutes.median == pytest.approx(350.0)
 
 
@@ -569,7 +539,6 @@ async def test_month_bucket_follows_south_african_time(
 ) -> None:
     next_month = _add_months(month, 1)
     midnight = datetime(next_month.year, next_month.month, 1, tzinfo=_SAST)
-    # Departs 00:40 SAST on the 1st — still the previous month in UTC.
     start = midnight - timedelta(minutes=60)
     departed = start + timedelta(minutes=100)
     await _trip(db_session, operator, start=start, steps=_single_leg(), stops=lane)
@@ -608,8 +577,6 @@ async def test_trip_without_attested_departure_is_excluded(
     assert facilities == []
 
 
-# ── Vehicle ──────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.usefixtures("views")
 async def test_vehicle_metrics_mechanical_breakdown_and_gaps(
@@ -625,7 +592,6 @@ async def test_vehicle_metrics_mechanical_breakdown_and_gaps(
     t3 = _start(month, 20, hour=12)
     t4 = _start(next_month, 5, hour=11)
     await _exception(db_session, first, ExceptionType.MECHANICAL, ExceptionSeverity.WARNING, at=t1)
-    # A swap is a separate, ambiguous signal — never counted as a breakdown.
     await _exception(db_session, swap, ExceptionType.VEHICLE_SUBSTITUTION, ExceptionSeverity.WARNING,
                      at=_start(month, 10, hour=11))
     await _exception(db_session, double, ExceptionType.MECHANICAL, ExceptionSeverity.CRITICAL, at=t2)
@@ -645,12 +611,9 @@ async def test_vehicle_metrics_mechanical_breakdown_and_gaps(
     assert this_month.mechanical_exceptions_count == 3
     assert (this_month.mechanical_info_count, this_month.mechanical_warning_count,
             this_month.mechanical_critical_count) == (1, 1, 1)
-    # The vehicle's first-ever breakdown has no gap; the next two do.
     assert this_month.mechanical_gap_count == 2
     assert this_month.mechanical_gap_minutes_sum == pytest.approx(_minutes(t3 - t1))
-    # Three single-leg trips of 300 minutes on the road.
     assert this_month.driving_hours_sum == pytest.approx(15.0)
-    # The gap crosses the month boundary back to the previous month's last breakdown.
     assert following.mechanical_gap_count == 1
     assert following.mean_minutes_between_mechanical == pytest.approx(_minutes(t4 - t3))
 
@@ -685,15 +648,10 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
     horses = {name: _new_horse(operator.org) for name in ("mixed", "record", "clean", "double")}
     db_session.add_all(horses.values())
     await db_session.flush()
-    # clean runs between incidents:  2 | 1 | 0 | open 1
     await _vehicle_history(db_session, operator, horses["mixed"], month, lane, "..X.XX.")
-    # 1 | open 3 — the open run is already the record
     await _vehicle_history(db_session, operator, horses["record"], month, lane, ".X...")
-    # open 2, no incident ever
     await _vehicle_history(db_session, operator, horses["clean"], month, lane, "..")
-    # 1 | open 1 — two reports on one trip are one incident, not a 0-trip streak
     await _vehicle_history(db_session, operator, horses["double"], month, lane, ".2.")
-    # An open trip after the last incident must not extend the current streak.
     await _trip(
         db_session, operator, start=_start(month, 25), horse=horses["mixed"], stops=lane,
         status=TripStatus.ACTIVE, steps=_pending_from(_single_leg(), PhaseType.IN_TRANSIT),
@@ -717,8 +675,6 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
     assert streaks[horses["double"].id] == (1, 1)
     assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
 
-
-# ── Trailers ──────────────────────────────────────────────────────────────────
 
 
 async def _vehicle_rows(db: AsyncSession, operator: Operator, month: date) -> dict[uuid.UUID, Any]:
@@ -751,7 +707,6 @@ async def test_trailer_is_credited_with_its_trips_and_driving_hours(
     rows = await _vehicle_rows(db_session, operator, month)
 
     assert rows.keys() == {operator.horse.id, trailer.id}
-    # One single-leg trip of 300 minutes on the road: the trailer travelled all of it.
     assert (rows[trailer.id].trip_count, rows[trailer.id].driving_hours_sum) == (1, pytest.approx(5.0))
     assert rows[trailer.id].mechanical_exceptions_count == 0
     assert (rows[operator.horse.id].trip_count, rows[operator.horse.id].driving_hours_sum) == (
@@ -779,7 +734,6 @@ async def test_interlink_breakdown_counts_only_for_the_trailer_it_was_recorded_a
     assert rows[front.id].mechanical_exceptions_count == 0
     assert rows[operator.horse.id].mechanical_exceptions_count == 0
     assert all(row.trip_count == 1 for row in rows.values())
-    # The rear trailer's one trip is an incident; the others ran it clean.
     assert streaks == {rear.id: (0, 0), front.id: (1, None), operator.horse.id: (1, None)}
 
 
@@ -807,10 +761,7 @@ async def test_breakdown_gaps_are_measured_per_vehicle(
 
     rows = await _vehicle_rows(db_session, operator, month)
 
-    # The front trailer's breakdown is its first ever: it is not measured from the rear
-    # trailer's earlier one, even though both rode on the same trips.
     assert (rows[front.id].mechanical_exceptions_count, rows[front.id].mechanical_gap_count) == (1, 0)
-    # The rear trailer's second breakdown is measured from its own first.
     assert (rows[rear.id].mechanical_exceptions_count, rows[rear.id].mechanical_gap_count) == (2, 1)
     assert rows[rear.id].mechanical_gap_minutes_sum == pytest.approx(_minutes(t3 - t1))
     assert rows[operator.horse.id].mechanical_exceptions_count == 0
@@ -890,7 +841,6 @@ async def test_trailer_streaks_and_trips_since_last_incident(
     assert streaks[trailers["record"].id] == (3, 1)
     assert streaks[trailers["clean"].id] == (2, None)
     assert streaks[trailers["double"].id] == (1, 1)
-    # trips_since_last_incident equals each trailer's open segment.
     assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
     total_trips = sum(len(pattern) for pattern in patterns.values())
     assert streaks[operator.horse.id] == (total_trips, None)
@@ -925,12 +875,9 @@ async def test_unattributed_breakdown_does_not_break_a_trailer_streak(
 
     assert streaks[trailer.id] == (3, None)
     assert trailer_since == 3
-    # The horse: '.X.' — one clean run closed by the breakdown, one still open.
     assert streaks[operator.horse.id] == (1, 1)
     assert horse_since == 1
 
-
-# ── Lane ─────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.usefixtures("views")
@@ -938,7 +885,6 @@ async def test_lane_metrics_pool_months_before_percentiles(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
     next_month = _add_months(month, 1)
-    # (start, actual minutes, planned minutes or None) — departure at +100 on plan.
     seeded = [
         (_start(month, 5), 100, 120),
         (_start(month, 6), 200, 120),
@@ -972,19 +918,15 @@ async def test_lane_metrics_pool_months_before_percentiles(
     assert (first.origin_precinct_id, first.destination_precinct_id) == (lane[0].id, lane[1].id)
     assert first.actual_transit_minutes.median == pytest.approx(200.0)
     assert first.actual_transit_minutes.p90 == pytest.approx(280.0)
-    # The trip with no plan has an actual duration but no schedule delta.
     assert first.actual_transit_minutes.sample_count == 3
     assert first.schedule_delta_minutes.sample_count == 2
     assert first.schedule_delta_minutes.mean == pytest.approx(30.0)
     assert second.actual_transit_minutes.median == pytest.approx(1000.0)
-    # Pooled [100, 200, 300, 1000]: the median is 250, not the 600 that averaging the
-    # two monthly medians (200, 1000) would give.
     assert both.actual_transit_minutes.sample_count == 4
     assert both.actual_transit_minutes.median == pytest.approx(250.0)
     assert both.actual_transit_minutes.p90 == pytest.approx(790.0)
     assert both.actual_transit_minutes.mean == pytest.approx(400.0)
     assert (both.actual_transit_minutes.minimum, both.actual_transit_minutes.maximum) == (100, 1000)
-    # Deltas pooled: [-20, 80, 100].
     assert both.schedule_delta_minutes.median == pytest.approx(80.0)
     assert (both.trip_count, both.exception_count) == (4, 2)
     assert both.exception_density == pytest.approx(0.5)
@@ -1009,14 +951,11 @@ async def test_lane_metrics_skip_trips_with_unknown_endpoint(
     assert driver.trip_count == 1
 
 
-# ── Facility ─────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.usefixtures("views")
 async def test_facility_metrics_three_states_without_in_transit_or_overrides(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    # in_transit is left NULL on both trips, as evidence.corroboration always leaves it.
     await _trip(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_geofenced(_single_leg(), {
@@ -1050,8 +989,6 @@ async def test_facility_metrics_three_states_without_in_transit_or_overrides(
     assert dest.corroboration_rate == pytest.approx(2 / 3)
 
 
-# ── Tenancy ──────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.usefixtures("views")
 async def test_analytics_are_scoped_to_operator_organization(
@@ -1080,12 +1017,9 @@ async def test_analytics_are_scoped_to_operator_organization(
     )
 
     assert (mine.trip_count, theirs.trip_count) == (1, 2)
-    # One trip's worth at the shared precincts: activation/loading/departure, unloading/confirmation.
     assert my_facilities == {lane[0].id: 3, lane[1].id: 2}
     assert [d.driver_id for d in my_drivers] == [operator.driver.id]
 
-
-# ── Migration mechanics ──────────────────────────────────────────────────────
 
 
 @pytest.mark.usefixtures("views")
@@ -1094,7 +1028,6 @@ async def test_live_views_migration_makes_every_view_a_plain_security_invoker_vi
 ) -> None:
     relations = await db_session.execute(
         text(
-            # relkind is Postgres's one-byte "char" type, which asyncpg returns as bytes.
             "SELECT relname, relkind::text AS relkind, reloptions FROM pg_class "
             "WHERE relname = ANY(:names) AND relnamespace = current_schema()::regnamespace"
         ),
@@ -1103,7 +1036,6 @@ async def test_live_views_migration_makes_every_view_a_plain_security_invoker_vi
 
     by_name = {row.relname: row for row in relations}
     assert sorted(by_name) == sorted(ANALYTICS_VIEW_NAMES)
-    # 'v' is a plain view ('m' would be materialized): nothing to refresh, never stale.
     assert {row.relkind for row in by_name.values()} == {"v"}
     assert all("security_invoker=true" in (row.reloptions or []) for row in by_name.values())
 
@@ -1130,18 +1062,14 @@ async def test_live_views_migration_downgrade_restores_materialized_views(
     )
 
     assert sorted(row.matviewname for row in materialized) == sorted(ANALYTICS_VIEW_NAMES)
-    # The unique indexes REFRESH ... CONCURRENTLY needs are back on every view.
     assert sorted(row.indexname for row in indexes) == sorted(
         f"uq_{name}_grain" for name in ANALYTICS_VIEW_NAMES
     )
-    # Recreated WITH DATA, so the snapshot already holds the trip seeded before it.
     assert metrics.trip_count == 1
 
 
 @pytest.mark.usefixtures("views")
 async def test_migration_downgrade_drops_every_view(db_session: AsyncSession) -> None:
-    # Alembic order, newest first: the live views go back to materialized, then the
-    # trailer migration comes off, then FP-153's.
     for statement in (
         *_LIVE_MIGRATION.DOWNGRADE_STATEMENTS,
         *_TRAILER_MIGRATION.DOWNGRADE_STATEMENTS,
@@ -1170,8 +1098,6 @@ async def test_trailer_migration_downgrade_restores_the_horse_only_views(
     await _trip(db_session, operator, start=_start(month, 10), steps=_single_leg(), stops=lane,
                 trailers=[trailer])
 
-    # Alembic order: the live views come off first (back to materialized), then the
-    # trailer migration. Both recreate their views WITH DATA, so the seeded trip is in them.
     for statement in (
         *_LIVE_MIGRATION.DOWNGRADE_STATEMENTS,
         *_TRAILER_MIGRATION.DOWNGRADE_STATEMENTS,
@@ -1187,7 +1113,6 @@ async def test_trailer_migration_downgrade_restores_the_horse_only_views(
         {"names": ["uq_vehicle_analytics_grain", "uq_vehicle_incident_streaks_grain"]},
     )
 
-    # FP-153's views know nothing of trailers: the horse is the only vehicle again.
     assert [row.vehicle_id for row in metrics] == [operator.horse.id]
     assert [streak.vehicle_id for streak in streaks] == [operator.horse.id]
     assert sorted(row.indexname for row in indexes) == [

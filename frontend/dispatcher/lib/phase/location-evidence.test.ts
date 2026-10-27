@@ -17,8 +17,6 @@ import {
   locationEvidenceForPhase,
 } from './location-evidence'
 
-// Cape Town CBD and a point ~1.11 km due north: same fixture pair geo.test.ts uses,
-// so a separation failure here and there points at the same underlying maths.
 const CAPE_TOWN = { lat: -33.9249, lng: 18.4241 }
 const NORTH_1KM = { lat: -33.9149, lng: 18.4241 }
 
@@ -277,11 +275,7 @@ describe('locationEvidenceForPhase: persisted assessment', () => {
     })
     const evidence = locationEvidenceForPhase(phase, PRECINCT)
     expect(evidence.driverFix).toBeNull()
-    // The persisted snapshot owns timing too: an absent capture remains absent rather
-    // than silently acquiring a timestamp from an older phase column.
     expect(evidence.trackerFix?.capturedAt).toBeNull()
-    // The current precinct is only a legacy reference. A partial snapshot must not
-    // make it appear to be the geometry evaluated at the historical action.
     expect(evidence.boundary).toBeNull()
     expect(evidence.assessmentRecorded).toBe(true)
   })
@@ -389,9 +383,7 @@ describe('hasLocationEvidence', () => {
 })
 
 describe('boundaryInDefaultFrame', () => {
-  // ~1.11 km north of the fix: well inside BOUNDARY_NEARBY_METRES.
   const NEARBY_PRECINCT: Precinct = { ...PRECINCT, latitude: NORTH_1KM.lat, longitude: NORTH_1KM.lng }
-  // ~12.6 degrees (~1,400 km) north: the brief's "fix a country away from its precinct" case.
   const FAR_PRECINCT: Precinct = { ...PRECINCT, latitude: CAPE_TOWN.lat + 12.6, longitude: CAPE_TOWN.lng }
 
   it('keeps a boundary that is within BOUNDARY_NEARBY_METRES of a fix', () => {
@@ -431,10 +423,6 @@ describe('boundaryInDefaultFrame', () => {
 })
 
 describe('locationEvidenceForAssessment: a snapshot that is not a phase', () => {
-  // A driver's exception report or a checkpoint finding carries its own capture-time
-  // comparison. There is no phase geofence verdict to honour for it, so the verdict is
-  // the plain "unavailable" one — never the transit-leg or not-checked-yet explanations,
-  // which describe a phase this capture is not.
   it('draws both fixes and the recorded proximity from the snapshot alone, with the plain unavailable verdict', () => {
     const evidence = locationEvidenceForAssessment({
       schema_version: 1, policy_version: 'proximity-v1', evaluated_at: '2026-03-01T08:01:00Z',
@@ -451,14 +439,11 @@ describe('locationEvidenceForAssessment: a snapshot that is not a phase', () => 
     expect(evidence.proximity).toBe('separated')
     expect(evidence.verdict).toBe('not_verified')
     expect(evidence.assessmentRecorded).toBe(true)
-    // No recorded geometry means no boundary: the current precinct must not be
-    // recast as what was evaluated at capture time.
     expect(evidence.boundary).toBeNull()
   })
 })
 
 describe('outline boundaries', () => {
-  // ~100 m box around CAPE_TOWN.
   const BOX: [number, number][] = [
     [CAPE_TOWN.lat + 0.00045, CAPE_TOWN.lng - 0.00055], [CAPE_TOWN.lat + 0.00045, CAPE_TOWN.lng + 0.00055],
     [CAPE_TOWN.lat - 0.00045, CAPE_TOWN.lng + 0.00055], [CAPE_TOWN.lat - 0.00045, CAPE_TOWN.lng - 0.00055],
@@ -482,7 +467,6 @@ describe('outline boundaries', () => {
 
     expect(boundary?.provenance).toBe('recorded_snapshot')
     expect(boundary?.polygon).toEqual(BOX)
-    // Half the ~107 m × 100 m box's diagonal.
     expect(boundary?.radiusMetres).toBeGreaterThan(60)
     expect(boundary?.radiusMetres).toBeLessThan(80)
   })

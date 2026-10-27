@@ -10,14 +10,10 @@ from app.orchestration.analytics_chat.definitions import ABOUT_BY_TOOL
 from app.orchestration.analytics_chat.tools import TOOLS
 from tests.page_copy import EXPLAINING_KEYS, page_lines, page_text
 
-# On the page but left out of the figure tools' `about` blocks (the page guide carries every one of them, B45).
 _LEFT_OUT = {
-    # The general rule; every tool's description says it, and the tabs' own lines give the exceptions.
     "Trends count closed trips, grouped by the day they first departed (South African time). Tiles show right now.",
-    # The incident map has no chat tool: its pins are where a named driver was (spec D5).
     "The position saved with each report: the driver’s phone for driver reports and for tracker mismatches at "
     "a stop; the simulated tracker for checks on the road. Any trip status; dispatcher notes are left out.",
-    # How to read a drawing ("faint lines", "faded" bars); the chat gets is_partial and the numbers instead.
     "The two faint lines mark the average lane: trips across, problems per trip up. Top-right = busy and risky.",
     "Faded: a part week, month or year at either end of the period, or one still running.",
 }
@@ -36,7 +32,6 @@ def _chat_lines() -> set[str]:
 
 
 def test_the_page_wording_files_are_found_and_read() -> None:
-    # Guards the guard: if the files moved, the tests below would pass on nothing.
     explanations = _page_explanations()
 
     assert len(explanations) > 30
@@ -46,7 +41,6 @@ def test_the_page_wording_files_are_found_and_read() -> None:
 def test_every_line_the_chat_is_given_is_on_the_page_word_for_word() -> None:
     explanations, text = _page_explanations(), _page_text()
 
-    # A few lines are fixed sentences inside a template, so they are found in the file text instead.
     not_on_page = sorted(line for line in _chat_lines() if line not in explanations and line not in text)
 
     assert not_on_page == [], "These lines are no longer on the page; copy the page's new wording into definitions.py"
@@ -59,12 +53,10 @@ def test_every_explanation_on_the_page_is_given_to_the_chat_or_left_out_on_purpo
 
 
 def test_left_out_lines_are_still_on_the_page() -> None:
-    # Otherwise the list keeps excusing lines that no longer exist.
     assert _LEFT_OUT <= _page_explanations()
 
 
 def test_every_tool_has_the_pages_lines_and_the_page_level_data_note() -> None:
-    # Every figure tool; explain returns the page guide instead (B45).
     assert set(ABOUT_BY_TOOL) == {tool.name for tool in TOOLS if tool.gives_figures}
     for about in ABOUT_BY_TOOL.values():
         assert about["Every figure on the page"][0].startswith("Every figure comes from FreightProof's own records")

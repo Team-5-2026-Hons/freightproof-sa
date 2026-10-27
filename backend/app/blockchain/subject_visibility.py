@@ -25,9 +25,6 @@ from app.db.models.trips import DriverSubstitution, Trip
 from app.db.models.vehicles import Vehicle
 
 
-# A query builder takes the subject id (a value, or a column when the query is used inside
-# EXISTS) and the caller's organisation, and returns a select of the subject's id that has a
-# row only when the subject belongs to that organisation.
 type _VisibilityQuery = Callable[
     [uuid.UUID | SQLColumnExpression[uuid.UUID], uuid.UUID], Select[tuple[uuid.UUID]]
 ]
@@ -89,8 +86,6 @@ def _driver_event_visible(
 def _phase_event_visible(
     subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
 ) -> Select[tuple[uuid.UUID]]:
-    # H2/H5 anchor receipts with the phase event as subject — scoped to
-    # the org operating the trip the phase belongs to.
     return (
         select(PhaseEvent.id)
         .join(Trip, Trip.id == PhaseEvent.trip_id)
@@ -104,8 +99,6 @@ def _phase_event_visible(
 def _precinct_event_visible(
     subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
 ) -> Select[tuple[uuid.UUID]]:
-    # Scoped to the precinct's OWNER, not to who can see it. is_shared governs the
-    # precinct list; it never opens the audit trail to another organisation.
     return (
         select(PrecinctEvent.id)
         .join(Precinct, Precinct.id == PrecinctEvent.precinct_id)
@@ -119,7 +112,6 @@ def _precinct_event_visible(
 def _audit_pack_visible(
     subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
 ) -> Select[tuple[uuid.UUID]]:
-    # An issued pack's seal is the issuing operator's, like the trip it summarises.
     return select(AuditPack.id).where(
         AuditPack.id == subject_id,
         AuditPack.organization_id == organization_id,
@@ -129,8 +121,6 @@ def _audit_pack_visible(
 def _evidence_event_visible(
     subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
 ) -> Select[tuple[uuid.UUID]]:
-    # event -> exception -> trip -> operator organisation. The event's own trip_id must agree
-    # with the exception's, so a mis-pointed event is invisible rather than borrowing a tenant.
     return (
         select(EvidenceAnchorEvent.id)
         .join(TripException, TripException.id == EvidenceAnchorEvent.exception_id)
@@ -146,7 +136,6 @@ def _evidence_event_visible(
 def _driver_substitution_visible(
     subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
 ) -> Select[tuple[uuid.UUID]]:
-    # A custody amendment belongs to its trip's operator, like the trip's own journey lock.
     return (
         select(DriverSubstitution.id)
         .join(Trip, Trip.id == DriverSubstitution.trip_id)
@@ -157,7 +146,6 @@ def _driver_substitution_visible(
 def _driver_substitution_correction_visible(
     subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
 ) -> Select[tuple[uuid.UUID]]:
-    # correction -> substitution -> trip -> operator organisation.
     return (
         select(DriverSubstitutionCorrection.id)
         .join(DriverSubstitution, DriverSubstitution.id == DriverSubstitutionCorrection.substitution_id)
@@ -166,10 +154,6 @@ def _driver_substitution_correction_visible(
     )
 
 
-# One tenant rule per subject type. This is the blockchain half of the subject policy; the
-# orchestration half (how a subject is rebuilt for verification) is the registry in
-# orchestration/verification/service.py. They are two registries and not one object because
-# blockchain/ sits below orchestration/ and may not import it.
 SUBJECT_VISIBILITY_QUERIES: Mapping[SubjectType, _VisibilityQuery] = MappingProxyType({
     SubjectType.TRIP: _trip_visible,
     SubjectType.VEHICLE: _vehicle_visible,
@@ -184,9 +168,6 @@ SUBJECT_VISIBILITY_QUERIES: Mapping[SubjectType, _VisibilityQuery] = MappingProx
     SubjectType.DRIVER_SUBSTITUTION_CORRECTION: _driver_substitution_correction_visible,
 })
 
-# Subject types that have no tenant rule and so are never visible to anyone. Empty today: it
-# exists so that leaving a new SubjectType out of the registry is a decision written down here,
-# and a test fails until someone makes it.
 NEVER_VISIBLE_SUBJECT_TYPES: frozenset[SubjectType] = frozenset()
 
 

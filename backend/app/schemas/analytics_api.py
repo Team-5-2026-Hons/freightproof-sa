@@ -25,7 +25,7 @@ class VehicleMetricsResponse(VehicleMetrics):
     """One vehicle's closed-trip numbers, horse or trailer, with its registration and type."""
 
     registration: str | None
-    vehicle_type: VehicleType | None  # horses and trailers share this list
+    vehicle_type: VehicleType | None
 
 
 class VehicleStreakResponse(VehicleStreak):

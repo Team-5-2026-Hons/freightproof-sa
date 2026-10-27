@@ -77,15 +77,9 @@ export function pointAtLength(samples: readonly RoadSample[], length: number): P
 
 /** Heading in degrees (0 = travelling straight down the page) between two nearby points. */
 export function headingDegrees(from: Point, to: Point): number {
-  // atan2(dx, dy) rather than (dy, dx): the truck artwork faces down the page, so
-  // "straight down" is the zero heading and bends to the right are negative.
   return -(Math.atan2(to.x - from.x, to.y - from.y) * 180) / Math.PI
 }
 
-// Where on screen the truck rides, as a fraction of viewport height. At the very top of
-// the page the road only just peeks above the fold, so the line starts low (the truck
-// moves with the first flick of the wheel) and settles at mid-screen once the visitor
-// is scrolling through the journey.
 const CAMERA_START = 0.86
 const CAMERA_CRUISE = 0.55
 const CAMERA_SETTLE_VIEWPORTS = 0.6

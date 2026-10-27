@@ -4,7 +4,6 @@ import { Chip } from '@/components/ui/Chip'
 import { InfoRow } from '@/components/ui/InfoRow'
 import type { Vehicle } from '@shared/lib/types/vehicle'
 
-// The list's grid, shared with its loading skeleton so the two always lay out the same.
 export const VEHICLE_GRID_CLASSES = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4'
 
 interface VehicleCardProps {
@@ -30,7 +29,6 @@ export function VehicleCard({ vehicle, onClick }: VehicleCardProps) {
         <Chip type={vehicle.is_active ? 'complete' : 'pending'} label={vehicle.is_active ? 'Active' : 'Inactive'} />
       </div>
 
-      {/* Same field + treatment as the detail page's TopBar sub (type · make · model · year) */}
       <div className="text-[11px] font-[500] tracking-[0.03em] text-sec tabular-nums mt-[2px] truncate">
         {subtitle || '—'}
       </div>

@@ -9,8 +9,6 @@ export const metadata: Metadata = {
   description: 'The browser storage FreightProof SA uses, and why there is nothing to opt in to.',
 }
 
-// Kept in step with the code: every key the dispatcher app reads or writes in the
-// browser (grep localStorage/sessionStorage). Add a row here whenever a key is added.
 const STORAGE_ROWS = [
   ['sb-…-auth-token', 'Keeps you signed in to the dashboard (set by our authentication provider, Supabase).', 'Strictly necessary', 'Until you sign out or the session expires'],
   ['fp:last-activity', 'Signs you out after a period of inactivity, across tabs.', 'Strictly necessary', 'Cleared when you sign out'],

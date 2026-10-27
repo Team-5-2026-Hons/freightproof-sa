@@ -38,9 +38,7 @@ from app.schemas.people import UserRead
 router = APIRouter(prefix="/chat", tags=["analytics"])
 
 PROVIDER_FAILED_DETAIL = "The AI service didn't answer. Try again."
-# Only an admin topping up the provider account fixes this, so "try again" would be misleading.
 CREDIT_DETAIL = "The AI account has run out of credit. It needs topping up before the chat can answer."
-# Gemini's free daily allowance resets at midnight Pacific time, which is 09:00 in South Africa.
 QUOTA_DETAIL = "The AI's allowance is used up for now. If it stays that way, the daily allowance resets at 09:00."
 
 

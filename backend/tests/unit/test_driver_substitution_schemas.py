@@ -88,8 +88,6 @@ def _confirm(**over: Any) -> dict[str, Any]:
     }
 
 
-# ── Coordinates are all-or-nothing ────────────────────────────────────────────
-
 
 @pytest.mark.parametrize(
     "present",
@@ -132,8 +130,6 @@ def test_out_of_range_capture_coordinates_are_rejected(override: dict[str, float
     with pytest.raises(ValidationError):
         ConfirmSubstitutionRequest(**_confirm(**override))
 
-
-# ── Seal checks ───────────────────────────────────────────────────────────────
 
 
 def test_intact_seal_number_is_normalised_by_the_phase_rule() -> None:
@@ -241,8 +237,6 @@ def test_seal_condition_for_substitutions_is_separate_from_the_phase_enum() -> N
     assert {c.value for c in SealCondition} == {"intact", "damaged", "missing"}
 
 
-# ── Enums: state, role, condition, action, blocker ─────────────────────────────
-
 
 @pytest.mark.parametrize(
     ("enum_name", "values"),
@@ -291,8 +285,6 @@ def test_invalid_condition_is_rejected_on_a_seal_check() -> None:
     with pytest.raises(ValidationError):
         SealCheck(**_seal("torn"))
 
-
-# ── Text bounds and identity-override reasons ───────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -406,8 +398,6 @@ def test_expected_version_must_be_at_least_one() -> None:
         CancelSubstitutionRequest(client_request_id=_id(), expected_version=0, reason="x")
 
 
-# ── Timestamps carry an offset; actor IDs never come from the body ──────────────
-
 
 @pytest.mark.parametrize(
     ("model", "body", "field"),
@@ -436,8 +426,6 @@ def test_actor_ids_in_a_request_body_are_rejected(smuggled: str) -> None:
     with pytest.raises(ValidationError):
         ArrangeSubstitutionRequest(**_arrange(), **{smuggled: str(_id())})
 
-
-# ── LateEvidencePayload: discriminated union over four existing request schemas ──
 
 
 def _in_transit_phase() -> dict[str, Any]:
@@ -494,8 +482,6 @@ def test_late_evidence_custody_sequence_is_not_negative() -> None:
     with pytest.raises(ValidationError):
         LateEvidenceRequest(**body)
 
-
-# ── Read shapes: invariants the fixtures rely on ────────────────────────────────
 
 
 def _driver(name: str = "Driver One") -> dict[str, Any]:
@@ -619,10 +605,6 @@ def test_driver_access_round_trips() -> None:
     assert access.participation is ds.DriverParticipation.FORMER
 
 
-# ── Error codes: status mapping as data ─────────────────────────────────────────
-
-# (endpoint/action, outcome, http status, code or None) — transcribed from the contract's
-# "Endpoint/status/code matrix". None means the row is a success or uses existing auth codes.
 _MATRIX: list[tuple[str, str, int, str | None]] = [
     ("arrange_or_replace", "new arrangements disabled", 503, "SUBSTITUTIONS_DISABLED"),
     ("arrange_or_replace", "incoming account inactive", 409, "INCOMING_DRIVER_INACTIVE"),
@@ -685,12 +667,9 @@ def test_error_detail_carries_optional_context() -> None:
     assert ds.SubstitutionErrorResponse(detail=detail).detail.current_version == 4
 
 
-# ── Python <-> TypeScript parity ────────────────────────────────────────────────
-
 _REPO = Path(__file__).resolve().parents[3]
 _TS_TYPES = _REPO / "frontend" / "shared" / "lib" / "types" / "driver-substitution.ts"
 
-# Contract type name -> the Pydantic model that must carry exactly the same field names.
 _PARITY_MODELS: dict[str, type[BaseModel]] = {
     "DriverContact": ds.DriverContact,
     "ExchangePoint": ds.ExchangePoint,

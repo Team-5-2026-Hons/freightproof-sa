@@ -9,7 +9,6 @@ const LOCATION_TYPES = ['gps_mismatch','driver_location_mismatch','driver_vehicl
 export function ExceptionDetailEvidence({ exception }: Props) {
   const assessment = exception.action_location_assessment
   const hasFix = exception.gps_lat !== null && exception.gps_lng !== null
-  // A report with a photo list shows every photo; an older row carries only the singular field.
   const photos = exception.supporting_artifacts ?? []
   const hasPhoto = photos.length > 0 || exception.supporting_artifact_id !== null
   return <section aria-label="Recorded evidence" className="mt-6 border-t border-outline-v/30 pt-4 text-sm text-on-surf-v">

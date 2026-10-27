@@ -3,9 +3,6 @@ import { cn } from '@/lib/utils'
 
 export type StatusTone = 'success' | 'attention' | 'neutral'
 
-// Ground, text and dot per tone. Tints, not the saturated *-container chip fills: a
-// banner is a sentence the driver reads, and a loud box makes it harder to read, not
-// easier to notice.
 const TONE: Record<StatusTone, { ground: string; body: string; dot: string }> = {
   success:   { ground: 'bg-success-tint text-success-ink',     body: 'text-success-ink',      dot: 'bg-success' },
   attention: { ground: 'bg-attention-tint text-attention-ink', body: 'text-attention-ink',    dot: 'bg-attention' },
@@ -14,16 +11,9 @@ const TONE: Record<StatusTone, { ground: string; body: string; dot: string }> = 
 
 interface StatusBannerProps {
   tone: StatusTone
-  /** One line: what is true right now. */
   title: string
-  /** One sentence: what to do next. Optional. */
   children?: ReactNode
-  /** Replaces the tone dot, e.g. a clock for "Starts today at 12:00". */
   icon?: ReactNode
-  /**
-   * Announce changes to assistive tech. Off by default — most banners describe a settled
-   * state, and a live region that re-announces on every render is noise.
-   */
   live?: boolean
   className?: string
 }

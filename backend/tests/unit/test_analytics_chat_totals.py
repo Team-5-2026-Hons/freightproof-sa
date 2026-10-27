@@ -49,7 +49,6 @@ def _week(start: str, trips: int, info: int, warning: int, critical: int) -> dic
 
 
 def test_problems_totals_count_every_severity_the_20_oct_case() -> None:
-    # The shape behind the 20 Oct miss: 16 warnings one week, 17 warnings + 1 critical the next.
     response = _problems([_week(_WEEK_A, 1, 0, 16, 0), _week(_WEEK_B, 1, 0, 17, 1)])
 
     totals = problems_totals(response)
@@ -69,7 +68,6 @@ def test_problems_totals_equal_the_sum_of_their_rows() -> None:
     assert totals["closed_trips"] == sum(r["trip_count"] for r in rows)
     assert totals["problems"] == sum(r["info_count"] + r["warning_count"] + r["critical_count"] for r in rows)
     assert totals["theft_signals"] == 3
-    # Zero types are left out, so the model doesn't list types that never happened.
     assert totals["theft_signals_by_type"] == {"seal_mismatch": 2, "panic_button": 1}
 
 
@@ -114,7 +112,6 @@ def _on_time(punctuality: list[dict[str, Any]]) -> OnTimeResponse:
 
 
 def test_on_time_totals_pool_the_buckets_before_dividing() -> None:
-    # 1 of 1 then 0 of 1: the overall rate is 1 of 2 (50%), not the average of 100% and 0% by luck.
     totals = on_time_totals(_on_time([_punctuality(_WEEK_A, 1, 0, 1, 1), _punctuality(_WEEK_B, 3, 1, 3, 0)]))
 
     assert (totals["arrivals_with_plan"], totals["on_time_arrivals"]) == (4, 1)
@@ -185,8 +182,6 @@ def test_routes_totals_sum_lanes_and_sites() -> None:
     }
 
 
-# ── Leaders and ages (analysis A2) ──────────────────────────────────────────
-
 
 
 def test_top_lists_every_tie() -> None:
@@ -211,7 +206,6 @@ def _pattern_set(hour_counts: dict[int, int], days: int) -> dict[str, Any]:
 
 
 def test_patterns_busiest_hour_is_the_three_way_tie_the_page_shows() -> None:
-    # The 19 Oct page: 3 departures, one each at 11:00, 12:00 and 19:00, over 21 days.
     response = PatternsResponse.model_validate({
         "period": {**_PERIOD, "grain": None},
         "departures": _pattern_set({11: 1, 12: 1, 19: 1}, 21),
@@ -245,7 +239,6 @@ def test_problems_leaders_step_type_across_sources_and_time_of_day() -> None:
     totals = problems_totals(response)
 
     assert totals["most_problems_in"] == {"value": 18, "of": [_WEEK_B]}
-    # Mechanical is 4 + 3 = 7 across sources, beating GPS mismatch's 6.
     assert totals["most_common_type"] == {"value": 7, "of": ["mechanical"]}
     assert totals["step_with_most_problems"] == {"value": 7, "of": ["arrival"]}
     assert totals["riskiest_time_of_day"] == {"value": 2, "of": ["evening"]}
@@ -266,7 +259,6 @@ def test_routes_lane_leaders_by_problems_and_per_trip() -> None:
                 "destination_precinct_id": "20eed781-8446-4ba3-9c29-507587265725", "destination_name": destination,
                 "trip_count": trips, "problem_count": problems,
                 "driving_minutes": {"sample_count": 0, "mean": None, "minimum": None, "maximum": None, "median": None, "p90": None}}
-    # Lanes arrive sorted by trips, so the most-problems lane is not first: the leader must still find it.
     response = RoutesResponse.model_validate({
         "period": {**_PERIOD, "grain": None}, "sites": [],
         "lanes": [lane("Cape Town", "Johannesburg", 10, 5), lane("Durban", "Johannesburg", 2, 8)],
@@ -329,7 +321,6 @@ def _tiles(oldest: datetime | None) -> FleetTilesResponse:
 
 
 def test_right_now_age_is_ready_to_say_in_days_and_hours() -> None:
-    # Eval run 3 (20 Oct) at about 11:15 UTC: the model said "5 days and 13 hours" and "5 days and 137 hours".
     oldest = datetime(2026, 10, 14, 17, 59, tzinfo=UTC)
     now = oldest + timedelta(days=5, hours=17, minutes=16)
 

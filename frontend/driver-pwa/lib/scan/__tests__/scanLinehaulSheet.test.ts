@@ -44,7 +44,6 @@ describe('scanLinehaulSheet', () => {
   })
 
   it('keeps only the first page, with a warning, when iOS returns several', async () => {
-    // VisionKit ignores maxNumDocuments, so the driver can scan more than the one sheet.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockScan.mockResolvedValue({ status: 'success', scannedImages: ['FIRST', 'SECOND'] })
 

@@ -37,7 +37,6 @@ from app.orchestration.fleet.vehicles import get_vehicle_detail
 from app.orchestration.trips.availability import LIVE_STATUSES, format_when
 from app.schemas.assistant import HistoryCard, HistoryRow, RecordRef
 
-# The newest trips listed; the counts cover all of them.
 MAX_RECENT = 10
 DRIVER_COUNTED_AS = "Trips this driver took part in: first assigned, taken over or handed over (as on their page)."
 VEHICLE_COUNTED_AS = "Trips this vehicle was on, as horse or trailer (as on its page)."

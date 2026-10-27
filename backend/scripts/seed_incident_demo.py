@@ -67,7 +67,6 @@ from app.schemas.incidents import (
     StatusUpdate,
 )
 
-# The DEMO_MODE identity (app/auth/dependencies.py), as in seed_audit_pack_demo.py.
 _DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 _DEMO_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 _LOCAL_HOSTS = ("localhost", "127.0.0.1")
@@ -192,7 +191,6 @@ async def _live(db: AsyncSession, base: dict[str, Any], suffix: str) -> Trip:
 
 
 async def main() -> None:
-    # The parsed host, not a substring: a remote URL can carry "localhost" in a password or query.
     if make_url(settings.DATABASE_URL).host not in _LOCAL_HOSTS:
         sys.exit("Refusing to run: DATABASE_URL is not a localhost database. This script seeds a LOCAL "
                  "database only — see the usage line in its docstring.")

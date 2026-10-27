@@ -30,7 +30,6 @@ describe('Parcel Perfect presets', () => {
   })
 
   it('formats the POD date in SAST, not UTC', () => {
-    // 23:30Z on the 22nd is 01:30 SAST on the 23rd.
     expect(ppDate(new Date('2026-10-22T23:30:00Z'))).toBe('23/10/2026')
   })
 

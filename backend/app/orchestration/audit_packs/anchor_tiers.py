@@ -55,9 +55,6 @@ def _is_intact(event: EvidenceAnchorEvent, receipts: Mapping[uuid.UUID, Blockcha
     if _text(event.anchor_status) != AnchorStatus.ANCHORED.value or event.receipt_id is None:
         return False
     receipt = receipts.get(event.receipt_id)
-    # The receipt must be about THIS event, owned by the event's trip, and of the kind it
-    # records, as the verifier selects it: matching hashes alone would let a receipt re-pointed
-    # at another event, trip or kind still pass.
     return (
         receipt is not None
         and _text(receipt.subject_type) == SubjectType.EVIDENCE_EVENT.value
@@ -89,8 +86,6 @@ def _rebuilt_payload(
         return canonical.exception_reviewed_payload(
             event_id=event.id, record=record, review=build_review_record(exception),
         )
-    # Same preconditions as the verifier: a trip that is no longer cancelled cannot back a
-    # cancellation, whatever closed_at says.
     if (
         kind == BlockchainReceiptType.TRIP_CANCELLED.value
         and trip.closed_at is not None and _text(trip.status) == TripStatus.CANCELLED.value
@@ -128,8 +123,6 @@ def assess_exception_anchors(
     committed: dict[str, str] = {}
     if raise_event is not None and _is_intact(raise_event, receipts):
         committed = {p["artifact_id"]: p["sha256"] for p in raise_event.payload_json.get("photos", [])}
-    # A photo is linked to the receipt only when that receipt committed this artifact with
-    # this exact hash; a photo whose hash has since changed is no longer what it committed.
     photo_records = []
     for position, a in enumerate(photos):
         committed_exactly = raise_event is not None and committed.get(str(a.id)) == a.file_hash

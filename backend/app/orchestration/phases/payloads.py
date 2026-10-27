@@ -12,12 +12,7 @@ from app.db.models.enums import PhaseStatus, PhaseType
 
 
 PHASE_PAYLOAD_VERSION_V2 = 2
-# Loading only: v2 plus the scanned linehaul PDF's hash. Every other phase stays on v2.
 PHASE_PAYLOAD_VERSION_V3 = 3
-# FP-83 C5: an envelope around any v2/v3 evidence payload that also commits to WHICH driver
-# performed the phase and in which custody period, so a phase captured by A cannot later be
-# relabelled as B's after a handover. Used only for driver-performed phases (the gate stamps
-# performed_by_driver_id); dispatcher overrides and every older receipt keep their versions.
 PHASE_PAYLOAD_VERSION_V4 = 4
 
 

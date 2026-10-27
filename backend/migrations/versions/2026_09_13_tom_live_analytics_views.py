@@ -41,14 +41,10 @@ test is the SQL shipped.
 from alembic import op
 
 revision = "tom_live_analytics_views"
-# Chained after Tim's FP-155 handover migration, which merged to dev first from the same
-# parent (tom_trailer_vehicle_analytics). The two touch no common tables.
 down_revision = "tim_handover_confirm"
 branch_labels = None
 depends_on = None
 
-# Each view's grain: the columns that identify one row. Only the downgrade uses them, to
-# rebuild the unique index REFRESH MATERIALIZED VIEW CONCURRENTLY refuses to run without.
 _VIEW_GRAINS: dict[str, tuple[str, ...]] = {
     "driver_analytics": ("operator_organization_id", "driver_id", "month_start"),
     "vehicle_analytics": ("operator_organization_id", "vehicle_id", "month_start"),
@@ -59,8 +55,6 @@ _VIEW_GRAINS: dict[str, tuple[str, ...]] = {
     "facility_analytics": ("operator_organization_id", "precinct_id", "month_start"),
 }
 
-# The catalog stores a view's query with a trailing semicolon (and sometimes whitespace).
-# CREATE ... AS must end at the query, so those are trimmed before it is reused.
 _TRIM_QUERY_END = r"E'; \n'"
 
 
@@ -81,7 +75,6 @@ END $$
 
 
 def _to_materialized_view(view: str) -> str:
-    # CREATE MATERIALIZED VIEW defaults to WITH DATA, so the snapshot is filled on creation.
     return f"""
 DO $$
 DECLARE
@@ -101,10 +94,6 @@ _UNIQUE_INDEXES: tuple[str, ...] = tuple(
     for view, columns in _VIEW_GRAINS.items()
 )
 
-# Recreated views lose the earlier REVOKE, and Supabase's default privileges grant every
-# new public object to anon/authenticated. Without this, every operator's analytics would
-# be readable cross-tenant through the Data API. Guarded on the roles existing, so it is a
-# no-op on plain Postgres (the test database, a local instance).
 _REVOKE_DATA_API_ACCESS = f"""
 DO $$
 DECLARE

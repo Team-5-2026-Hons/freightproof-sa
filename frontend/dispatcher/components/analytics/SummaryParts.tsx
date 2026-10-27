@@ -18,14 +18,12 @@ import { cn } from '@shared/lib/utils/cn'
 import { ANALYTICS_COPY } from './copy'
 
 const FRAME_COPY = {
-  // Same wording as DataTable's error state, so a failure reads alike on /analytics.
   loadFailed: 'Failed to load',
   retry: 'Try again',
   aboutTitle: 'These figures',
   aboutLabel: 'About these figures',
 } as const
 
-// The right panel is already bg-surf-lowest, so tiles take the next tone down.
 const TILE_CLASS = 'bg-surf-low rounded-lg'
 const DOT_CLASS = 'h-1.5 w-1.5 shrink-0 rounded-full'
 
@@ -34,13 +32,10 @@ const SEVERITY_ORDER = ['info', 'warning', 'critical'] as const satisfies readon
 /** Colours for a count strip cell whose count is non-zero. */
 export interface CountStyle {
   dot: string
-  /** Cell background and text colour. */
   tint?: string
   text?: string
 }
 
-// Colours follow each severity's chip, so a severity reads the same here as on an exception
-// chip. Info chips are neutral grey, so an info count is marked but not tinted.
 const SEVERITY_STYLE: Record<ExceptionSeverity, CountStyle> = {
   info: { dot: 'bg-outline-v' },
   warning: { dot: 'bg-warn', tint: 'bg-warn-c/25', text: 'text-warn' },
@@ -53,11 +48,7 @@ interface AnalyticsSummaryFrameProps {
   isLoading: boolean
   error: string | null
   onRetry: () => void
-  /** Where this page's figures come from, shown behind the ⓘ. Required, not optional: the type
-   *  checker is what guarantees all three detail pages name a source, and it is reachable in every
-   *  state because the answer doesn't depend on whether the figures loaded. */
   source: string
-  /** The figures, shown once loaded without error. */
   children: ReactNode
 }
 
@@ -82,8 +73,6 @@ export function AnalyticsSummaryFrame({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Always shown, so the range can still be changed after an error or an empty result.
-          The source sits behind the ⓘ beside it: it describes the whole tab, in every state. */}
       <div className="flex items-center gap-2">
         <MonthRangePicker value={range} onChange={onRangeChange} />
         <InfoPopover title={FRAME_COPY.aboutTitle} ariaLabel={FRAME_COPY.aboutLabel} question={source} />
@@ -93,7 +82,6 @@ export function AnalyticsSummaryFrame({
   )
 }
 
-// Placeholder rows under the tiles; the real summaries list between three and six.
 const SKELETON_LIST_ROWS = 4
 const SKELETON_TILE_CLASS = cn(TILE_CLASS, 'flex flex-col gap-3 p-4')
 
@@ -160,7 +148,6 @@ export function StatTiles({ children }: { children: ReactNode }) {
 interface StatTileProps {
   label: string
   value: string
-  /** The blue lead tile (Trips). */
   accent?: boolean
 }
 
@@ -191,7 +178,6 @@ export function CountStrip({ cells }: { cells: readonly CountCell[] }) {
             key={label}
             label={label}
             value={String(count)}
-            // A zero recedes and anything else is coloured, so the eye lands on what happened.
             muted={!happened}
             toneClass={happened ? style.text : undefined}
             dotClass={happened ? style.dot : undefined}
@@ -219,7 +205,6 @@ export function SeverityStrip({ counts }: { counts: Readonly<Record<ExceptionSev
 interface DetailRowProps {
   label: string
   value: string
-  /** Draw the value quietly. Defaults to true for a dash. */
   quiet?: boolean
 }
 
@@ -243,19 +228,15 @@ export function ListRows({ children }: { children: ReactNode }) {
 interface ListRowProps {
   label: string
   value: string
-  /** Unit after the figure, e.g. "trips". Left off a dash. */
   unit?: string
   dotClass?: string
-  /** Colour for the figure; defaults to the body text colour. */
   figureClass?: string
-  /** A caveat that must be read with this figure, printed under its label. */
   note?: string
 }
 
 export function ListRow({ label, value, unit, dotClass, figureClass, note }: ListRowProps) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-3">
-      {/* The label stays the <dt>'s own text, so it pairs directly with the <dd>. */}
       <dt className="flex min-w-0 flex-wrap items-center gap-x-3 text-[14px] text-on-surf">
         {dotClass && <span aria-hidden="true" className={cn(DOT_CLASS, dotClass)} />}
         {label}
@@ -281,13 +262,9 @@ interface StatProps {
   label: string
   value: string
   size?: 'md' | 'lg'
-  /** Label over the figure (tiles) rather than under it (the severity strip). */
   labelAbove?: boolean
-  /** Draw the figure quietly; a dash is always quiet. */
   muted?: boolean
-  /** Text colour for the label and figure, e.g. a severity's colour. */
   toneClass?: string
-  /** Colour class for a small dot after the figure. */
   dotClass?: string
   className?: string
 }
@@ -295,8 +272,6 @@ interface StatProps {
 function Stat({ label, value, size = 'md', labelAbove = false, muted = false, toneClass, dotClass, className }: StatProps) {
   const quiet = muted || value === NO_DATA
   return (
-    // Label always comes first in the DOM (screen reader hears "Trips, 11"); flex-col-reverse
-    // puts the figure on top visually.
     <div className={cn('flex gap-2', labelAbove ? 'flex-col' : 'flex-col-reverse', className)}>
       <dt className={cn('text-[13px]', toneClass ?? 'text-on-surf-v')}>{label}</dt>
       <dd
@@ -307,7 +282,6 @@ function Stat({ label, value, size = 'md', labelAbove = false, muted = false, to
         )}
       >
         {value}
-        {/* Decorative: the label beside it already names what is counted. */}
         {dotClass && <span aria-hidden="true" className={cn(DOT_CLASS, dotClass)} />}
       </dd>
     </div>

@@ -46,11 +46,9 @@ interface TrendLinesProps<Row> {
   isPartial: (row: Row) => boolean
   series: readonly LineSeries<Row>[]
   renderTooltip: (row: Row) => ReactNode
-  /** The y-axis heading, e.g. "Cancelled trips". Required: every chart names its value axis. */
   yLabel: string
   height?: number
   yTickFormat?: (value: number) => string
-  /** Fixed range, e.g. [0, 100] for a percentage, so the scale never exaggerates a wobble. */
   yDomain?: [number, number]
   allowDecimals?: boolean
 }
@@ -66,7 +64,6 @@ export function TrendLines<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
   yTickFormat, yDomain, allowDecimals = false,
 }: TrendLinesProps<Row>) {
-  // Taller inside the zoom modal.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))
@@ -77,7 +74,6 @@ export function TrendLines<Row>({
   }))
 
   return (
-    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
     <ResponsiveContainer width="100%" height="100%" minHeight={height}>
       <LineChart data={data} margin={TIME_CHART_MARGIN}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />

@@ -15,11 +15,8 @@ from app.schemas.audit_pack import AuditPackManifest
 _TEMPLATE_NAME = "incident_sheet.html.j2"
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
-# FreightProof exception → the TAPA incident category it most likely corresponds to.
-# A SUGGESTION printed as such: classifying a crime is the reporter's call, not ours.
 _TAPA_SUGGESTION: dict[str, str] = {
     "panic_button": "Hijacking / robbery (suspected)",
-    # A dispatcher-recorded hijacking with no earlier critical exception (summarise_incident).
     "hijacking": "Hijacking / robbery (reported)",
     "seal_broken_in_transit": "Theft from vehicle (suspected)",
     "seal_mismatch": "Theft from vehicle (suspected)",

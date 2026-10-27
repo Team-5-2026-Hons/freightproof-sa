@@ -70,7 +70,6 @@ async def start_verification(
     `client` is for tests and callers that already hold one; by default the configured
     mock-or-live client is used, so the endpoint never touches the integration layer.
     """
-    # `!=`, never `is not`: status loads as a bare str (see ingest_webhook_decision).
     if (
         verification.consent_given_at is None
         or verification.status != ReceiverVerificationStatus.PENDING
@@ -101,12 +100,9 @@ async def start_verification(
         await db.flush()
         return None
 
-    # Persisted BEFORE the receiver is redirected: the client never names a
-    # session, so it can never substitute somebody else's approved one.
     verification.provider_session_id = session.session_id
     await db.flush()
 
-    # Best-effort: a token that can't be extended just degrades the tier.
     await extend_token_for_verification(db, token_id=token.id)
 
     return session
@@ -210,9 +206,6 @@ async def sweep_abandoned_verifications(db: AsyncSession, *, older_than_seconds:
     forever. Returns how many rows were terminalised.
     """
     cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
-    # FOR UPDATE: a row a resolve or webhook is writing is waited for, then re-checked against the
-    # PENDING condition (PostgreSQL re-evaluates it after the lock), so a verdict recorded in the
-    # meantime is skipped instead of being overwritten with ABANDONED.
     stale = (
         await db.execute(
             select(ReceiverIdentityVerification).where(

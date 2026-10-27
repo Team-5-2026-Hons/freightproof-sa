@@ -32,7 +32,6 @@ class EvidenceArtifactCreate(EvidenceArtifactBase):
 class EvidenceArtifactUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    # Artifacts are immutable after creation; only metadata fields may be patched.
     captured_lat: Optional[float] = None
     captured_lng: Optional[float] = None
 
@@ -40,8 +39,6 @@ class EvidenceArtifactUpdate(BaseModel):
 class EvidenceArtifactRead(EvidenceArtifactBase):
     id: UUID
     created_at: datetime
-    # Read-only: set by the upload route (drivers) or the handover route (receiver), never
-    # accepted through EvidenceArtifactCreate.
     phase_event_id: Optional[UUID] = None
     evidence_role: Optional[EvidenceRole] = None
 

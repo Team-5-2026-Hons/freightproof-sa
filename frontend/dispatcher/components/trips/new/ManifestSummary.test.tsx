@@ -28,7 +28,6 @@ describe('ManifestSummary', () => {
   it('gives each cargo figure its own tile', () => {
     render(<ManifestSummary preview={makePreview()} />)
 
-    // The waybill table has its own "Parcels" column heading; the tiles are <dt>s.
     const tile = (label: string): Element | null =>
       screen.getAllByText(label).find(el => el.tagName === 'DT')?.nextElementSibling ?? null
     expect(tile('Waybills')).toHaveTextContent('2')

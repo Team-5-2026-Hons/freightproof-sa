@@ -34,8 +34,6 @@ import { readPreferences } from '@/lib/preferences'
 import type { IncidentSummary, IncidentType } from '@/lib/types/incident'
 import type { StatusView } from '@/lib/incidents/list-view-state'
 
-// All first, and the default: closing an incident must not make it vanish from the list
-// the dispatcher is looking at. Its chip says Closed instead.
 const STATUS_TABS: readonly { id: StatusView; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'open', label: 'Open' },
@@ -57,10 +55,8 @@ const OWNER_OPTIONS = [
 const INCIDENT_TABLE_ID = 'incidents'
 const REPORT_HINT = "Report an incident from a trip's Info tab, or from an exception."
 const FIRST_PAGE = 1
-// Received is an age ("3 h ago"), so one tick a minute keeps it honest without a refetch.
 const CLOCK_TICK_MS = 60_000
 
-// useSearchParams (the filters live in the URL) needs a Suspense boundary above it in the App Router.
 export default function IncidentsPage(): React.JSX.Element {
   return (
     <Suspense fallback={<div role="status" aria-label="Loading incidents" className="flex flex-1 items-center justify-center"><Spinner size="lg" /></div>}>
@@ -73,19 +69,15 @@ function IncidentsList(): React.JSX.Element {
   const { user } = useAuth()
   const { notify } = useToast()
   const now = useNow(CLOCK_TICK_MS)
-  // Held in the URL so the list is still filtered after opening an incident and coming back.
   const { state: { status, type: incidentType, owner }, update, search, setSearch, href: listHref } = useUrlListState(INCIDENT_LIST_CODEC)
-  // Rows carry the filtered list as returnTo, so the incident page's Back button finds it too.
   const columns = useMemo(
     () => buildIncidentColumns(now, id => withReturnTo(ROUTES.incidentDetail(id), listHref)),
     [now, listHref],
   )
   const [page, setPage] = useState(FIRST_PAGE)
-  // Read once per mount, as Trip History does: a changed preference applies on the next visit.
   const [pageSize] = useState(() => readPreferences().rowsPerPage)
   const { sort, tableSort, onSort } = useTableSort({ keys: INCIDENT_SORT_KEYS, firstDir: defaultIncidentSortDirection, initial: DEFAULT_INCIDENT_SORT })
 
-  // Status, type and "assigned to me" are narrowed by the server; search and "unassigned" are not.
   const { data, isLoading, error, refetch } = useIncidents({
     status: status === 'all' ? undefined : status,
     incident_type: incidentType === 'all' ? undefined : incidentType,
@@ -99,7 +91,6 @@ function IncidentsList(): React.JSX.Element {
   const visible = useMemo(() => sortIncidents(filterIncidents(data, { search, owner }), sort), [data, search, owner, sort])
   const slice = useMemo(() => paginate(visible, page, pageSize), [visible, page, pageSize])
 
-  // Every control that changes which rows there are, or their order, starts again at page one.
   function startOver<V>(set: (value: V) => void): (value: V) => void {
     return value => { set(value); setPage(FIRST_PAGE) }
   }

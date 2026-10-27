@@ -100,8 +100,6 @@ def _body(question: str = "How were arrivals over the last 12 weeks?", history: 
     return {"question": question, "history": history or []}
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_chat_answers_from_the_same_figures_as_the_on_time_tab(
     client: AsyncClient, db_session: AsyncSession, operator: Operator, seed: dict[str, Any], model: FakeProvider,
@@ -119,26 +117,21 @@ async def test_chat_answers_from_the_same_figures_as_the_on_time_tab(
     assert (basis["tool"], basis["tab"], basis["label"], basis["grain"]) == ("on_time", "on-time", "On time", "week")
     assert basis["closed_trip_count"] == len(_RECENT_DAYS)
     assert body["spend"] == _SPEND.model_dump()
-    # What the model was given equals what the On time tab shows for that period:
     sent_results = model.sent[1].messages[-1]
     assert isinstance(sent_results, ToolResults)
     page = await client.get(
         _ON_TIME, params={"start": basis["start"], "end": basis["end"], "grain": "week"}, headers=headers(operator),
     )
     sent = json.loads(sent_results.results[0].content)
-    # The tab's figures exactly, with the page's own lines (B43) and the server's totals (B37) in front.
     assert {key: value for key, value in sent.items() if key not in {"about", "totals"}} == page.json()
     assert list(sent)[:2] == ["about", "totals"]
     assert sent["totals"]["arrivals_with_plan"] == len(_RECENT_DAYS)
-    # ...and holds this operator's 3 trips only, not the other operator's 3.
     assert sum(bucket["arrivals_with_plan"] for bucket in page.json()["punctuality"]) == len(_RECENT_DAYS)
 
 
 async def test_chat_explains_cost_from_the_guide_for_the_tab_on_screen(
     client: AsyncClient, operator: Operator, model: FakeProvider,
 ) -> None:
-    # B45: Tom's question, with the Cost tab and last 12 weeks on screen. Explained from the guide, with the
-    # organisation's real rates, labelled as an explanation, and the screen's period passed to the model.
     model.replies = [
         tool_reply(("explain", {"topic": "cost"})),
         text_reply("Operating cost is road distance times fuel (R 17.64 per km) and other running per km."),
@@ -181,8 +174,6 @@ async def test_chat_right_now_basis_has_no_dates(client: AsyncClient, operator: 
     assert (basis["tab"], basis["start"], basis["end"], basis["closed_trip_count"]) == (None, None, None, None)
 
 
-# ── Auth ─────────────────────────────────────────────────────────────────────
-
 
 async def test_chat_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.post(_CHAT, json=_body())
@@ -210,8 +201,6 @@ async def test_chat_status_without_token_returns_403(client: AsyncClient) -> Non
     assert response.status_code == 403
 
 
-# ── 422 ──────────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.parametrize(
     "body",
@@ -233,8 +222,6 @@ async def test_chat_invalid_body_returns_422(
     assert response.status_code == 422
     assert model.sent == []
 
-
-# ── 503 / 429 / 502 ──────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(("setting", "value"), [("AI_CHAT_ENABLED", False), ("GEMINI_API_KEY", "")])
@@ -292,8 +279,6 @@ async def test_chat_provider_failure_returns_502(client: AsyncClient, operator: 
     assert response.status_code == 502
     assert response.json()["detail"] == "The AI service didn't answer. Try again."
 
-
-# ── Status ───────────────────────────────────────────────────────────────────
 
 
 async def test_chat_status_when_on_reports_spend(client: AsyncClient, operator: Operator) -> None:

@@ -3,7 +3,6 @@
 import { ExceptionMoreRow, ExceptionRow, type ExceptionRowData, type OpenException } from './ExceptionRow'
 
 interface Props {
-  /** The rows to show, already capped and in chronological order. */
   rows: readonly ExceptionRowData[]
   hiddenCount: number
   phaseId: string | null

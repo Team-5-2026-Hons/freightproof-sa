@@ -68,15 +68,10 @@ from app.schemas.people import UserRead
 
 logger = logging.getLogger(__name__)
 
-# Comparing two periods takes 2 tool calls and 2–3 model calls; these leave room for one
-# corrected mistake without letting a confused model loop (and spend) on.
 MAX_MODEL_CALLS = 5
 MAX_TOOL_CALLS = 4
-# A reply this short that ends in "?" is a question back, not an answer (spec B35). A real answer
-# leads with its figures (prompt.py), so it is longer, or doesn't end in a question.
 FOLLOW_UP_MAX_CHARS = 200
 
-# Built once, in a fixed order: the tool list is part of the cached prompt prefix.
 TOOL_SPECS: tuple[ToolSpec, ...] = tuple(
     ToolSpec(name=tool.name, description=tool.description, input_schema=tool.input_schema()) for tool in TOOLS
 )
@@ -84,7 +79,6 @@ TOOL_SPECS: tuple[ToolSpec, ...] = tuple(
 AnswerKind = Literal["answer", "follow_up", "explanation", "declined"]
 
 
-# AI_CHAT_PROVIDER → the setting holding that provider's key.
 _PROVIDER_KEYS = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 
 
@@ -145,11 +139,8 @@ class _Question:
     provider: ChatProvider
     price: ModelPrice
     now: datetime
-    # The dispatcher's question: numbers in it may honestly appear in a reply that used no tool.
     text: str
-    # The periods the question names, read by code and passed to the model (analysis §10.3).
     period_hint: str | None
-    # What the dispatcher has on screen (page_view.py), or None when the panel didn't say.
     page_hint: str | None = None
 
 
@@ -162,7 +153,6 @@ class _Progress:
     tools_used: list[str] = field(default_factory=list)
     model_calls: int = 0
     cost_micro_usd: int = 0
-    # Whether the model has already been sent back once for giving figures without a tool.
     corrected: bool = False
 
 
@@ -249,14 +239,11 @@ def _kind(progress: _Progress, text: str) -> AnswerKind:
         return "answer"
     if text.rstrip().endswith("?"):
         return "follow_up"
-    # Explained from the page guide and nothing else (B45): no figures, but not a refusal either.
     return "explanation" if _EXPLAIN_TOOL in progress.tools_used else "declined"
 
 
-# The page-guide tool: it explains the page and returns no fleet figures (B45).
 _EXPLAIN_TOOL = "explain"
 
-# Preset names: a reply that used no tool may still mention "the last 12 weeks" or "the last 3 months".
 _PERIOD_WORDS = " ".join(preset.value for preset in PeriodPreset)
 
 
@@ -265,8 +252,6 @@ def _unsourced_figures(question: _Question, progress: _Progress, text: str) -> l
     guide. Any such number was made up: no tool gave it (eval run 4, q16: "Total trips: 2,752…")."""
     if progress.basis:
         return []
-    # The period hint counts too: a question asked back for "past month" offers "the last 30 days". So does what the
-    # page guide returned: an explanation may quote a threshold or a cost rate (B45).
     return unmatched_numbers(
         text,
         [question.text, _PERIOD_WORDS, question.period_hint or "", question.page_hint or "", *tool_texts(progress.messages)],
@@ -275,11 +260,9 @@ def _unsourced_figures(question: _Question, progress: _Progress, text: str) -> l
 
 def _final(question: _Question, progress: _Progress, reply: ModelReply) -> tuple[str, AnswerKind] | None:
     """The answer for a reply with no tool calls, or None to send the model back once to fix it."""
-    # Em dashes are taken out here, before any check, so what is checked is what is shown (B44).
     text = without_em_dashes(reply.text.strip()) or CUT_OFF_MESSAGE
     invented = _unsourced_figures(question, progress, text)
     if invented and not progress.corrected:
-        # "No tool, no figures": enforced here, not only asked for in the prompt.
         progress.corrected = True
         progress.messages.append(AssistantReply(reply))
         progress.messages.append(UserText(FIGURES_NEED_A_TOOL))
@@ -291,8 +274,6 @@ def _final(question: _Question, progress: _Progress, reply: ModelReply) -> tuple
         )
         return NO_SOURCE_MESSAGE, "declined"
     if _is_question_back(text):
-        # It states no figures, even if the model looked something up before asking, so it
-        # gets "No figures used" rather than "Based on" lines it doesn't rest on.
         progress.basis.clear()
     return text, _kind(progress, text)
 
@@ -302,7 +283,6 @@ async def _answer(question: _Question, progress: _Progress) -> tuple[str, Answer
     while progress.model_calls < MAX_MODEL_CALLS:
         reply = await _call_model(question, progress)
         if reply.stop == "refusal":
-            # Nothing the fixed reply says rests on figures, so it gets no "Based on" line.
             progress.basis.clear()
             return REFUSAL_MESSAGE, "declined"
         if not reply.tool_calls:
@@ -315,7 +295,6 @@ async def _answer(question: _Question, progress: _Progress) -> tuple[str, Answer
             break
         progress.messages.append(AssistantReply(reply))
         progress.messages.append(await _run_tools(question, progress, reply.tool_calls))
-    # The cap message states no figures, so it shows "No figures used", not the lookups behind it.
     progress.basis.clear()
     return TOOL_CAP_MESSAGE, "declined"
 

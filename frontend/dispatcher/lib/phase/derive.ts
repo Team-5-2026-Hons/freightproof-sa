@@ -22,9 +22,6 @@ export interface PhaseChainNode {
   label: string
 }
 
-// Mirrors phase_service._is_resolved exactly: a phase the ledger will never revisit.
-// `exception` IS resolved — the trip still departs/unloads/closes past it, the anomaly
-// just stays recorded on the row. Rendering it visually distinct is nodeTypeFor's job.
 const RESOLVED: readonly PhaseStatus[] = ['completed', 'exception', 'overridden']
 
 export function isResolved(phase: PhaseDescriptor): boolean {
@@ -47,12 +44,9 @@ export function nodeTypeFor(
   activePhaseEventId: PhaseEventId | null,
   tripStatus?: CoarseTripStatus | null,
 ): PhaseNodeType {
-  // Must run before isResolved: exception is a resolved status but still an anomaly for display.
   if (phase.status === 'exception') return 'warn'
   if (isResolved(phase)) return 'done'
   if (phase.status === 'in_progress') return 'active'
-  // A trip created weeks ahead sits dormant until activated; showing Activation as `next`
-  // would falsely read as "about to happen any moment".
   if (phase.phase_type === 'activation' && tripStatus === 'created') return 'pending'
   return phase.phase_event_id === activePhaseEventId ? 'next' : 'pending'
 }
@@ -125,11 +119,8 @@ export function legDepartureAt(
 }
 
 export interface AnchorTally {
-  /** Phases that owe a Hedera receipt — anchor_status !== 'not_required'. */
   owed: number
   anchored: number
-  /** Fail-open casualties. A completed phase with a failed anchor must
-   *  never render as an unqualified success. */
   failed: number
 }
 
@@ -158,7 +149,6 @@ export function tripChipMeta(
   const base = TRIP_STATUS_META[status]
   if (currentPhase === null) return base
   if (status === 'active') return { ...base, label: PHASE_NAMES[currentPhase] }
-  // chipType stays 'exception', so the chip is amber whatever the label says.
   if (status === 'exception_hold') return { ...base, label: `⚠ ${PHASE_NAMES[currentPhase]}` }
   return base
 }

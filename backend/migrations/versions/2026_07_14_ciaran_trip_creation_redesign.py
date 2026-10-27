@@ -35,9 +35,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Once consignments with NULL client_organization_id exist (the intended steady
-    # state — PP-unresolved orgs), restoring NOT NULL will fail without a backfill.
-    # That's expected — don't run this downgrade blindly.
     op.alter_column(
         "consignments",
         "client_organization_id",

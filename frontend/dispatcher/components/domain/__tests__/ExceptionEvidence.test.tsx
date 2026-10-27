@@ -3,9 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { ExceptionEvidence } from '../ExceptionEvidence'
 import type { TripException } from '@shared/lib/types/exception'
 
-// ExceptionEvidence imports EvidencePhoto, whose forensic gate reaches AuthContext.
-// This component-only test never renders a photo, but the module graph still needs the
-// same minimal Supabase client used by the neighbouring dispatcher component tests.
 import { vi } from 'vitest'
 
 vi.mock('@/lib/supabase/client', () => ({

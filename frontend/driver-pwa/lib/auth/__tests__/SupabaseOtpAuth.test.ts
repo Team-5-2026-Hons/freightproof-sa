@@ -28,7 +28,6 @@ function fakeClient() {
     auth,
     unsubscribe,
     raise: (event: string, session: unknown) => callback?.(event, session),
-    // The adapter takes a structural subset of the Supabase client.
     client: { auth } as unknown as ConstructorParameters<typeof SupabaseOtpAuth>[0],
   }
 }
@@ -87,7 +86,6 @@ describe('SupabaseOtpAuth.onChange', () => {
 })
 
 describe('SupabaseOtpAuth.requestOtp', () => {
-  // shouldCreateUser: false is a security property (only provisioned drivers can sign in).
   it('asks for a WhatsApp code and never creates a user', async () => {
     const fake = fakeClient()
     fake.auth.signInWithOtp.mockResolvedValue({ error: null })

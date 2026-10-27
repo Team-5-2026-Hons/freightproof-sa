@@ -68,26 +68,18 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }, [captureResult])
   const capturePosition = useCallback(async (): Promise<DriverPosition | null> => (await captureObservation()).position, [captureObservation])
 
-  // Read through a ref inside recordHere so the callback identity doesn't change on
-  // every trip refetch — the navigation effect below depends on it, and a new identity
-  // each render would re-fire the effect and ping on renders rather than on moves.
   const tripIdRef = useRef(tripId)
   useEffect(() => { tripIdRef.current = tripId }, [tripId])
 
   const recordHere = useCallback((context: string): void => {
     const currentTripId = tripIdRef.current
-    // No trip open means nothing to attach a position to, and no reason to hold one.
     if (currentTripId === null || IS_DEMO_MODE) return
-    // Taken at the moment the driver acted, before the GPS wait.
     const custody = captureCustody(currentTripId)
     const lease = captureActorLease()
     if (lease === null) return
 
     void (async () => {
       const position = await capturePosition()
-      // A failed fix is normal (a warehouse roof, a revoked permission) and is simply
-      // not recorded. It must never surface as an error: the driver did not ask for
-      // this and cannot act on it.
       if (position === null) return
 
       const ping: LocationPingBody = {
@@ -97,7 +89,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         context,
         recorded_at: new Date().toISOString(),
       }
-      // Retain the original actor/period even when A signs back in before GPS returns.
       if (!isActorLeaseCurrent(lease)) {
         enqueueLocation(currentTripId, [ping], custody)
         return
@@ -105,15 +96,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       try {
         await recordLocations(currentTripId, [ping], custody.custodySequence)
       } catch (err: unknown) {
-        // Offline or a 5xx: the queue replays it later with its device timestamp
-        // intact. Anything else (a 4xx — closed trip, reassigned driver) is terminal
-        // and dropped, because retrying it can only fail the same way forever.
         if (isQueueableFailure(err)) {
           enqueueLocation(currentTripId, [ping], custody)
           return
         }
-        // Exception to the drop: a custody conflict means the fix belongs to a period
-        // the driver held, so it is kept for review (late evidence) rather than lost.
         const failure = classifyLiveWriteFailure(err)
         if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
           enqueueLocation(currentTripId, [ping], custody, failure.attention)
@@ -124,13 +110,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     })()
   }, [capturePosition, enqueueLocation])
 
-  // "Whenever the driver does anything" — every screen they open while a trip is live.
-  // Navigation is the signal, not a timer: it means the driver acted, so a fix taken
-  // here is anchored to something a dispute can reason about ("they opened the seal
-  // step here"), and the app never wakes the GPS while the phone sits in a cradle.
   useEffect(() => {
-    // This page is also the outgoing driver's notification. Only an explicit
-    // takeover submission may capture a location here, through captureObservation.
     if (tripId === null || pathname === SUBSTITUTION_PATH) return
     recordHere(pathname)
   }, [pathname, tripId, recordHere])

@@ -14,7 +14,6 @@ export interface PPWaybillSummary {
   manifest_number: number | null
   is_delivered: boolean
   has_delivery_failure: boolean
-  // Set to the owning trip's reference when already linked — checked FreightProof-side.
   already_assigned_to_trip: string | null
 }
 

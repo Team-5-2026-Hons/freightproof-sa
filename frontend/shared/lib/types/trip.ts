@@ -12,18 +12,10 @@ import type { CustodyIntegrityRead, DriverAccess, SubstitutionRequestRead, Compl
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
-// Mirrors backend TripType enum (app/db/models/enums.py) — a trip either carries
-// PP consignments ("loaded") or is a deadhead/repositioning move ("empty_leg").
 export type TripType = 'loaded' | 'empty_leg'
 
-// Mirrors backend TripStatus. Position in the lifecycle comes from the phase ledger, so
-// this is a plain description — nothing may branch on it for order. Defined in ./phase.ts
-// and aliased here since `status` is the trip's own field. The resulting trip <-> phase
-// cycle is TYPE-ONLY and must stay that way.
 export type { CoarseTripStatus as TripStatus } from './phase'
 
-// A sequenced waypoint on the trip's route. Role (origin/destination) is not stored — it
-// is derived per consignment. Mirrors backend TripStopRead.
 export interface TripStop {
   id: string
   trip_id: string
@@ -35,11 +27,6 @@ export interface TripStop {
   updated_at: string
 }
 
-// Structural row contract shared by the active-trip list and terminal-trip history.
-// Includes only what ChecklistRow renders, so the history endpoint need not disclose a
-// driver's contact/licence details or a vehicle's full record to paint one row.
-// A trip's unreviewed exceptions split by severity and by claim (GET /trips). A claimed
-// exception still needs review, so critical + warning + info === needs_review_count.
 export interface TripAttention {
   critical: number
   warning: number
@@ -50,11 +37,7 @@ export interface TripAttention {
 export interface TripChecklistItem {
   id: TripId
   trip_reference: string
-  // The PP manifest this trip carries (FP-281), or null for empty legs and trips created
-  // without one. It replaces the order number, which FreightProof no longer captures.
   pp_manifest: PPManifestRef | null
-  // Sent on active-list rows (TripSummary). History rows do not carry it, so a row with no
-  // manifest cannot be proven to be an empty leg (see lib/format/manifest.ts).
   trip_type?: TripType
   status: CoarseTripStatus
   driver: { full_name: string }
@@ -62,8 +45,6 @@ export interface TripChecklistItem {
   origin_precinct_id: string | null
   destination_precinct_id: string | null
   needs_review_count: number
-  // Sent on active-list rows (TripSummary) only, like trip_type. History rows have no use for
-  // the split: a closed trip is not ranked against the live ones.
   attention?: TripAttention
   created_at: string
   current_phase: PhaseType | null
@@ -72,16 +53,10 @@ export interface TripChecklistItem {
   phase_completed: number
 }
 
-// Purpose-specific response from GET /trips/history. Terminal ordering and date
-// filtering use closed_at; created_at stays separate for when the row shows creation time.
 export interface TripHistoryListItem extends TripChecklistItem {
   closed_at: string
 }
 
-// Lightweight shape for list views (GET /trips), nesting full driver/horse/trailers.
-// needs_review_count counts every unreviewed exception on the trip, whatever its severity:
-// since FP-280 every exception starts needs_review. (The driver's own trip list counts
-// critical rows only — see DriverTripSummary.)
 export interface TripSummary extends TripChecklistItem {
   id: TripId
   trip_reference: string
@@ -100,22 +75,16 @@ export interface TripSummary extends TripChecklistItem {
   needs_review_count: number
   created_at: string
   updated_at: string
-  // Denormalised position cache, read-path only — the only way a list row can show
-  // plan-driven progress without carrying the whole plan. phase_total is the plan's own
-  // length; never assume 6 or 7.
   current_phase: PhaseType | null
   current_stop: number | null
   phase_total: number
   phase_completed: number
 }
 
-// One PP waybill booked onto a trip. Mirrors backend ConsignmentRead (schemas/trips.py).
 export interface ConsignmentRead {
   id: string
   trip_id: string | null
   parcel_perfect_reference: string
-  // Nullable: resolved from the PP accnum at sync time — an unmapped accnum leaves this
-  // null (creation warning, not an error).
   client_organization_id: string | null
   origin_precinct_id: string | null
   destination_precinct_id: string | null
@@ -127,24 +96,17 @@ export interface ConsignmentRead {
   pickup_stop_id: string | null
   delivery_stop_id: string | null
   load_priority: number | null
-  // Consolidated-unit (pallet) grain — dispatcher-entered, distinct from parcel grain.
   unit_count_expected: number | null
   pp_manifest_number: number | null
-  // Live scan progress, recomputed per request — NOT the stamped parcel_count_origin /
-  // parcel_count_destination on the phase rows, which are written once and are the evidence.
   scanned_out_count: number
   scanned_in_count: number
   created_at: string
   updated_at: string
 }
 
-// Full trip detail used by useTrip() — GET /trips/{id}.
-// Does NOT include the parcel manifest; that is fetched separately.
 export interface Trip {
   id: TripId
   trip_reference: string
-  // The PP manifest this trip carries (FP-281), or null. The snapshot of it is not here:
-  // it is dispatcher-only, on GET /trips/{id}/manifest (spec §7.3).
   pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
@@ -164,39 +126,25 @@ export interface Trip {
   horse: Vehicle | null
   trailers: Vehicle[]
   phases: PhaseDescriptor[]
-  // Caches of the derivation in `phases` above. The detail view must derive the active
-  // phase from `phases` and must not read these — if the cache diverges, the derived view wins.
   current_phase: PhaseType | null
   current_stop: number | null
   exceptions: TripException[]
   blockchain_receipts: BlockchainReceipt[]
-  // Creation-transient (e.g. PP sync degraded-mode warnings). Always [] on GET — never persisted.
   warnings: string[]
-  // FP-83 driver substitution (docs/contracts/driver-substitution-v1.md "Existing reads").
-  // `driver` above becomes the DERIVED CURRENT driver; the original never changes. Optional
-  // ONLY until every Trip fixture (including driver-pwa's, owned by another dev) carries
-  // them — the server will send all of them on dispatcher detail, so ordinary trips use the
-  // defaults in the shared mocks: sequence 0, no amendments, flag off.
   original_driver?: Driver | null
   driver_substitutions?: SubstitutionRequestRead[]
   completed_driver_substitutions?: CompletedSubstitutionSummary[]
   pending_driver_substitution?: SubstitutionRequestRead | null
   custody_sequence?: number
-  // Dispatcher reads only.
   custody_integrity?: CustodyIntegrityRead | null
   driver_substitutions_enabled?: boolean
-  // Populated on current-driver reads, null on dispatcher reads.
   driver_access?: DriverAccess | null
   created_at: string
   updated_at: string
 }
 
-// BlockchainReceipt moved to the canonical blockchain types file.
-// Re-exported here so existing imports from './trip' continue to resolve.
 export type { BlockchainReceipt } from './blockchain'
 
-// Pagination envelope for GET /trips — key names match the backend response exactly,
-// do not rename.
 export interface PaginatedList<T> {
   items: T[]
   total: number
@@ -204,8 +152,6 @@ export interface PaginatedList<T> {
   page_size: number
 }
 
-// Trip creation payload types — mirrors backend TripConsignmentInput / TripCreateRequest
-// (backend/app/schemas/trips.py).
 export interface TripConsignmentInput {
   pp_reference: string
   unit_count_expected: number

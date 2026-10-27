@@ -19,23 +19,14 @@ import {
 
 export type ExceptionSendOutcome =
   | { kind: 'acknowledged' }
-  /** Network/5xx/429/unknown: everything kept, retry later. */
   | { kind: 'transient'; retryAfterMs: number | null }
-  /** Terminal 4xx (including 409): needs attention, nothing discarded. */
   | { kind: 'rejected'; reason: string; photoId: string | null; status: number; attention: RetainedAttention }
-  /** Another caller already holds this report. */
   | { kind: 'busy' }
-  /**
-   * Captured by a different account than the one signed in now (or by an unknown one).
-   * Nothing is sent: replaying A's report with B's token would file it as B's.
-   */
   | { kind: 'not-yours' }
 
 export interface ExceptionSendOptions {
-  /** False when the store refused the envelope: progress is kept in memory only. */
   durable: boolean
   post: (artifactIds: string[]) => Promise<unknown>
-  /** True when the caller already holds this report's lock (see tryReportLock). */
   lockHeld?: boolean
   onProgress?: (uploaded: number, total: number) => void
 }
@@ -46,17 +37,12 @@ const DATA_URL_SEPARATOR = ','
 const BASE64_MARKER = ';base64'
 const DEFAULT_MIME = 'application/octet-stream'
 
-// A report must never be saved or sent by two callers at once. Page submit, background
-// flush and a re-enqueue all share this lock: without it an older send could acknowledge
-// and delete a newer saved draft (new photos included), or upload one photo twice.
-// Module-level because every caller shares it; waiters are served in arrival order.
 const held = new Set<string>()
 const waiters = new Map<string, Array<() => void>>()
 
 function releaseReportLock(id: string): void {
   const next = waiters.get(id)?.shift()
   if (next) {
-    // Hand over without ever clearing `held`, so a third caller cannot slip in between.
     next()
     return
   }
@@ -82,10 +68,6 @@ export function waitReportLock(id: string): Promise<() => void> {
   })
 }
 
-// Artifact ids uploaded this session, per report and photo. Kept for EVERY report, durable
-// or not: if recording an id in IndexedDB fails, the id is still known here, so the next
-// attempt resumes instead of uploading the photo again. Lost on reload by design; cleared
-// when the server acknowledges the report.
 const volatileIds = new Map<string, Map<string, string>>()
 
 export function __resetExceptionSyncForTests(): void {
@@ -106,8 +88,6 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
-// Synchronous (atob, no fetch) so the one-shot localStorage migration needs no network
-// stack and cannot be failed by a service worker intercepting data: URLs.
 export function dataUrlToBlob(dataUrl: string): Blob {
   const separator = dataUrl.indexOf(DATA_URL_SEPARATOR)
   if (!dataUrl.startsWith('data:') || separator === -1) throw new Error('Malformed data URL')
@@ -125,9 +105,6 @@ type Failure =
   | { kind: 'duplicate' }
   | { kind: 'rejected'; reason: string; status: number; attention: RetainedAttention }
 
-// Only a definite refusal is terminal; 429 and anything unknown are retried, since treating
-// an unrecognised failure as terminal could strand a valid report. A proven actor-bound
-// duplicate (EVIDENCE_ALREADY_RECORDED) is the one refusal that means "already filed".
 function classify(error: unknown): Failure {
   const failure = classifyLiveWriteFailure(error)
   if (failure.kind === 'transient') return failure
@@ -154,8 +131,6 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
   const { durable, post, onProgress } = options
   const id = envelope.clientReportId
   const lease = captureActorLease()
-  // Only the capturing account may send. A legacy envelope (no actor) is quarantined
-  // by the migration and never reaches here; this guards a report from a previous sign-in.
   if (envelope.status === 'quarantined' || lease === null || envelope.actorId !== lease.actorId) {
     return { kind: 'not-yours' }
   }
@@ -163,7 +138,6 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
   const memory = volatileIds.get(id) ?? new Map<string, string>()
   volatileIds.set(id, memory)
 
-  // Working copy: ids already known from the envelope or from this session's memory.
   const ids = envelope.photos.map((p) => p.uploadedArtifactId ?? memory.get(p.id) ?? null)
   let uploaded = ids.filter((v) => v !== null).length
 
@@ -192,8 +166,6 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
     } catch (err) {
       const failure = classify(err)
       if (failure.kind === 'transient') return failure
-      // A photo upload has no actor-bound duplicate of its own: anything but transient is
-      // kept for the driver, with the server's coded reason.
       const attention = failure.kind === 'rejected'
         ? failure.attention
         : retainedAttention(null, 0, 'The photo could not be stored on the server.')
@@ -201,12 +173,10 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
       return { kind: 'rejected', reason: attention.reason, status: attention.status, attention, photoId: item.id }
     }
     uploaded += 1
-    // Persist BEFORE the next upload: this is what makes a crash here cost nothing.
     if (durable) {
       try {
         await recordPhotoUploaded(id, item.id, artifact.id)
       } catch (err) {
-        // The id stays in `memory` (kept across attempts), so a retry will not re-upload.
         console.warn('Could not persist uploaded photo id; continuing in memory', err)
       }
     }
@@ -220,12 +190,9 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
     const failure = classify(err)
     if (failure.kind === 'transient') return failure
     if (failure.kind === 'rejected') {
-      // 409 included: a conflicting report is for the driver to see, never auto-discarded.
       await markAttention(envelope, durable, failure.reason, null, failure.attention)
       return { ...failure, photoId: null }
     }
-    // EVIDENCE_ALREADY_RECORDED for this exact report id: the server holds it, so clear it
-    // exactly as an acknowledgement would.
   }
 
   volatileIds.delete(id)
@@ -233,7 +200,6 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
     try {
       await removeExceptionEnvelope(id)
     } catch (err) {
-      // Safe to leave: replay by client_report_id returns the original exception.
       console.warn('Could not remove acknowledged exception report', err)
     }
   }

@@ -9,7 +9,6 @@ vi.mock('@/lib/supabase/client', () => ({
   getAccessToken: vi.fn(),
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => nav, useSearchParams: () => new URLSearchParams(nav.search) }))
-// TopBar mounts ForensicControls, which needs ForensicModeProvider, which reads the user.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: null }) }))
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => toast }))
 vi.mock('@/lib/hooks/useDrivers', () => ({ useDrivers: vi.fn() }))
@@ -44,7 +43,7 @@ import type { Trip } from '@shared/lib/types/trip'
 
 const CTA = 'Create Trip + Lock to Blockchain'
 const CONFIRM = 'Yes, create and lock trip'
-const created = (id: string): Trip => ({ id }) as Trip   // the page reads only the id
+const created = (id: string): Trip => ({ id }) as Trip
 const DRIVER_ID = mockDrivers[0].id
 const HORSE_ID = mockHorses[0].id
 
@@ -55,7 +54,6 @@ beforeEach(() => {
     horses: mockHorses, trailers: [], all: mockHorses, isLoading: false, error: null, refetch: vi.fn(),
   })
   vi.mocked(usePrecincts).mockReturnValue({ precincts: mockPrecincts, isLoading: false, error: null, refetch: vi.fn() })
-  // Nobody busy unless a test says otherwise (FP-142).
   vi.mocked(getCrewAvailability).mockImplementation(async (start, end) => ({ start, end, busy: [] }))
 })
 
@@ -108,7 +106,7 @@ describe('Create Trip: from a manifest', () => {
       driver_id: DRIVER_ID,
       horse_id: HORSE_ID,
       trailer_ids: [],
-      planned_departure_at: null,   // untouched manifest times are never sent back (D2)
+      planned_departure_at: null,
       planned_arrival_at: null,
       origin_precinct_id: null,
       destination_precinct_id: null,
@@ -132,10 +130,8 @@ describe('Create Trip: from a manifest', () => {
 
     expect(await screen.findByText('Choose the precinct for hub DUR.')).toBeInTheDocument()
     expect(screen.getByText('Enter a planned departure.')).toBeInTheDocument()
-    // Required even when the manifest has none (FP-139): the availability check needs an end.
     expect(screen.getByText('Enter a planned arrival.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: CONFIRM })).not.toBeInTheDocument()
-    // The CTA is in the sticky summary: the dispatcher is taken to the first field to fix.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Destination precinct' })).toHaveFocus())
 
     pick('Destination precinct', /Courier Guy JHB/)
@@ -191,7 +187,6 @@ describe('Create Trip: from a manifest', () => {
 
   it('shows the new summary when the manifest changed before create, and keeps the crew', async () => {
     vi.mocked(previewPPManifest).mockResolvedValue(makePreview())
-    // The client moved the departure in PP between preview and create.
     const fresh = makePreview({
       snapshot_sha256: 'b'.repeat(64), client_reference: 'PO-CGY-0081-REV', planned_departure_at: '2026-10-02T17:00:00Z',
     })
@@ -207,7 +202,6 @@ describe('Create Trip: from a manifest', () => {
 
     expect(await screen.findByText(/The manifest changed since you looked it up/)).toBeInTheDocument()
     expect(screen.getByText('PO-CGY-0081-REV')).toBeInTheDocument()
-    // The untouched departure follows the new manifest; it was never the dispatcher's own.
     expect(screen.getByLabelText(/Planned departure/)).toHaveValue(isoToSastInput('2026-10-02T17:00:00Z'))
 
     await create()
@@ -492,7 +486,6 @@ describe('Create Trip: filled in by the assistant (assistant spec §7.3)', () =>
   })
 
   it('fills in after a click inside the app, while the address bar still shows the previous page (B39)', async () => {
-    // Next.js renders the new page first and updates the address bar after: only useSearchParams has the link yet.
     window.history.pushState(null, '', '/fleet/drivers')
     nav.search = `mode=empty_leg&driver=${DRIVER_ID}&departure=2026-11-02T17:00`
 

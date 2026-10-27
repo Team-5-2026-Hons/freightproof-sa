@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 MAX_FILE_SIZE_BYTES = MAX_EVIDENCE_FILE_SIZE_BYTES
 
-# Declared on EvidenceArtifact; named here to tell a deduplication race from any other conflict.
 _DEDUP_INDEX = "uq_evidence_artifacts_phase_role_hash"
 
 
@@ -62,7 +61,6 @@ async def create_artifact(
     if len(file_bytes) > MAX_FILE_SIZE_BYTES:
         raise ValueError(f"File exceeds the {MAX_FILE_SIZE_BYTES} byte limit.")
 
-    # Before the trip lookup: an unsupported file is rejected without spending a query.
     verified_mime_type = resolve_mime_type(file_bytes, mime_type)
 
     async def authorise(*, lock: bool) -> Trip:
@@ -76,9 +74,6 @@ async def create_artifact(
         )
         return trip
 
-    # Unlocked first, so a stranger or former driver is refused before any bytes move; locked
-    # again after the upload (below), because the Storage round trip is far too long to hold
-    # the trip lock across and the unlocked answer may be stale by the time it returns.
     trip = await authorise(lock=False)
     if attribution is not None:
         await validate_driver_attribution(db, trip_id=trip_id, attribution=attribution)
@@ -173,10 +168,6 @@ async def _persist_artifact(
         captured_lat=captured_lat,
         captured_lng=captured_lng,
         captured_at=captured_at,
-        # The column default is now(), which Postgres fixes at the transaction's start: before
-        # this upload began. Stamped here, after Storage returned, so "received" means the file
-        # was stored and the record created (not commit time), on the same API-server clock that
-        # stamps completed_at and trips.closed_at. Rows from other writers keep the default.
         created_at=datetime.now(UTC),
         phase_event_id=attribution.phase_event_id if attribution else None,
         evidence_role=attribution.role if attribution else None,
@@ -293,7 +284,6 @@ async def create_receiver_artifact(
     if len(file_bytes) > MAX_FILE_SIZE_BYTES:
         raise ValueError(f"File exceeds the {MAX_FILE_SIZE_BYTES} byte limit.")
 
-    # Before the trip lookup: an unsupported file is rejected without spending a query.
     verified_mime_type = resolve_mime_type(file_bytes, mime_type)
 
     trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
@@ -341,8 +331,6 @@ async def list_artifacts_for_trip(
             s3_key=artifact.s3_key,
             ttl_seconds=settings.EVIDENCE_SIGNED_URL_TTL_SECONDS,
         )
-        # model_copy rather than a model_validate(update=...) kwarg: model_validate has no
-        # such parameter in Pydantic v2, and signed_url is not an ORM attribute to read.
         out.append(
             EvidenceArtifactWithUrl.model_validate(artifact).model_copy(
                 update={"signed_url": signed_url}

@@ -38,11 +38,6 @@ from app.orchestration.evidence.geofence import (
     evaluate_geofence,
 )
 
-# The seeded demo geofence: 200 m radius (scripts/seed_demo.py) and the 50 m default
-# tolerance (settings.GPS_TOLERANCE_METRES). Stated explicitly rather than read from
-# config so this file asserts the values the waypoints were DESIGNED against — if
-# someone widens the tolerance, these tests should fail and make them re-check the
-# marginal waypoints rather than silently agreeing with the new number.
 _SEEDED_RADIUS_METRES = 200
 _SEEDED_TOLERANCE_METRES = 50
 
@@ -58,15 +53,10 @@ class _FakePrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
-        # A circle precinct: evaluate_geofence reads this to choose the shape.
         self.geofence_polygon = None
 
 
 def _anchor_precinct() -> Precinct:
-    # cast, not a real Precinct row: _FakePrecinct is structurally complete for the
-    # three attributes evaluate_geofence reads (see its docstring above), and building
-    # an actual ORM instance here would reintroduce the DB coupling this fake exists
-    # to avoid. The cast tells mypy what every call site already relies on at runtime.
     return cast(
         Precinct,
         _FakePrecinct(DEMO_ANCHOR_LATITUDE, DEMO_ANCHOR_LONGITUDE, _SEEDED_RADIUS_METRES),

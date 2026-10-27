@@ -10,43 +10,26 @@ const STORE_NAME = 'reports'
 const KEY_PATH = 'clientReportId'
 const QUOTA_ERROR_NAME = 'QuotaExceededError'
 
-// 'quarantined': a report stored before this app recorded who captured it. Kept with
-// its photos, never sent automatically and never attributed to whoever is signed in now.
 export type ExceptionReportStatus = 'pending' | 'needs-attention' | 'quarantined'
 
-// Everything on RaiseExceptionBody except the photo ids, which live on the photos.
 export type ExceptionReportBody = Omit<RaiseExceptionBody, 'supporting_artifact_id' | 'supporting_artifact_ids'>
 
 export interface ExceptionPhotoRecord {
-  /** Local id, stable across retakes of other slots. */
   id: string
-  /** Null only for legacy photos whose bytes were already uploaded and dropped. */
   blob: Blob | null
-  /** ISO time the driver took it. */
   capturedAt: string
-  /** Persisted immediately after each upload so a crash never re-uploads. */
   uploadedArtifactId: string | null
 }
 
 export interface ExceptionEnvelope {
-  /** Store key; one per report draft, never regenerated. */
   clientReportId: string
   tripId: string
   body: ExceptionReportBody
-  /** ORDER = display order = order of supporting_artifact_ids. */
   photos: ExceptionPhotoRecord[]
   status: ExceptionReportStatus
-  /** Set together with status 'needs-attention'. */
   attentionReason: string | null
-  /** Which photo the server rejected, when it was a photo. */
   attentionPhotoId: string | null
-  /**
-   * The account that captured this report. `undefined` only on envelopes written
-   * before this field existed — the migration quarantines those rather than guessing.
-   * Its custody period travels inside `body.custody_sequence`, stamped at capture.
-   */
   actorId?: string | null
-  /** The coded refusal behind a needs-attention status, when the server gave one. */
   attention?: RetainedAttention | null
   createdAt: string
   updatedAt: string
@@ -82,7 +65,6 @@ function classify(error: unknown, fallback: string): ExceptionStoreError {
   if (error instanceof ExceptionStoreError) return error
   const name = error instanceof DOMException ? error.name : ''
   const message = error instanceof Error ? error.message : fallback
-  // Quota is split out because the caller's recovery differs: free space vs. nothing to do.
   return new ExceptionStoreError(name === QUOTA_ERROR_NAME ? 'quota' : 'other', message || fallback)
 }
 
@@ -108,7 +90,6 @@ function openDatabase(): Promise<IDBDatabase> {
     }
     request.onsuccess = () => {
       const db = request.result
-      // A closed/upgraded connection must not be reused; reopen lazily next call.
       db.onclose = () => {
         connection = null
       }
@@ -119,15 +100,12 @@ function openDatabase(): Promise<IDBDatabase> {
     }
   })
   connection = opening
-  // A failed open must not be cached, or one blocked attempt would poison the session.
   opening.catch(() => {
     if (connection === opening) connection = null
   })
   return opening
 }
 
-// Runs `work` inside ONE transaction and resolves with what it reports once the
-// transaction has committed (not merely when the request succeeded).
 async function transact<T>(
   mode: IDBTransactionMode,
   work: (store: IDBObjectStore, done: (value: T) => void) => void,
@@ -160,8 +138,6 @@ async function transact<T>(
   })
 }
 
-// Keeps ids already recorded for a photo when the incoming copy hasn't heard of them:
-// a stale in-memory envelope must never make us re-upload (and duplicate) a photo.
 function mergePhotos(existing: ExceptionPhotoRecord[], incoming: ExceptionPhotoRecord[]): ExceptionPhotoRecord[] {
   const known = new Map(existing.map((p) => [p.id, p.uploadedArtifactId]))
   return incoming.map((p) => {
@@ -212,11 +188,9 @@ export async function listExceptionEnvelopes(): Promise<ExceptionEnvelope[]> {
     },
     [],
   )
-  // ISO strings sort lexically; oldest first so reports flush in the order they happened.
   return [...all].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
-// Read-modify-write in one transaction so two writers can't overwrite each other's field.
 function update(clientReportId: string, change: (current: ExceptionEnvelope) => ExceptionEnvelope | null): Promise<void> {
   return transact<void>(
     'readwrite',

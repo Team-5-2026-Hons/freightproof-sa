@@ -63,18 +63,13 @@ from app.schemas.assistant import MAX_TURN_CHARS, AssistantAnswer, AssistantRequ
 from app.schemas.people import UserRead
 
 DEFAULT_QUESTIONS = Path(__file__).resolve().parents[1] / "tests" / "eval" / "assistant_questions.json"
-# Spaces the questions out so a burst never trips a per-minute limit; a question makes two or three calls.
 DEFAULT_PAUSE_SECONDS = 10.0
-# The run stops before the next question once this much is spent (Tom's allowance for a run, Stage 7).
 DEFAULT_MAX_USD = 1.0
-# For the estimate only: a typical question is up to three model calls of ~9k prompt (menu ~6k, rules ~2.2k,
-# the question and results) and ~400 output tokens. Cached prompt tokens cost less, so this errs high.
 _ESTIMATE_CALLS, _ESTIMATE_PROMPT, _ESTIMATE_OUTPUT = 3, 9_000, 400
 MICRO_USD_PER_USD = 1_000_000
 STATUSES = ("PASS", "FAIL", "REVIEW", "SKIP", "ERROR")
 DAYS_PER_WEEK = 7
 
-# Which reply kinds each expected kind accepts. "point" (it names the page) and "any" accept all three.
 _KINDS: dict[str, set[str]] = {
     "answer": {"answer"},
     "follow_up": {"follow_up"},
@@ -104,8 +99,6 @@ class Asked:
     error: str | None = None
 
 
-# ── Questions ────────────────────────────────────────────────────────────────
-
 
 def _day(day: date) -> str:
     return f"{day.day} {day.strftime('%b')}"
@@ -131,8 +124,6 @@ def chain(items: Sequence[dict[str, Any]], wanted: Sequence[str]) -> list[dict[s
             current = by_id[current].get("after")
     return [item for item in items if item["id"] in needed]
 
-
-# ── Grading ──────────────────────────────────────────────────────────────────
 
 
 def _same(expected: object, actual: object) -> bool:
@@ -178,14 +169,12 @@ def _actions_reasons(expect: Mapping[str, Any], answer: AssistantAnswer) -> list
 
 
 def _normalise(text: str) -> str:
-    # Gemini sometimes writes a narrow no-break space inside "21 Oct" or "05:00".
     return re.sub(r"[  ]", " ", text).lower()
 
 
 def _text_reasons(item: Mapping[str, Any], text: str, today: date) -> list[str]:
     reasons: list[str] = []
     said = _normalise(text)
-    # Each entry is a fact the page showed: a string, or a list of ways to write it (any one will do).
     for fact in item.get("must_mention", []):
         spellings = [fill(s, today) for s in ([fact] if isinstance(fact, str) else fact)]
         if not any(_normalise(spelling) in said for spelling in spellings):
@@ -207,8 +196,6 @@ def grade(item: Mapping[str, Any], asked: Asked, today: date) -> Grade:
     status = "FAIL" if reasons else ("REVIEW" if item.get("review") else "PASS")
     return Grade(status=status, reasons=reasons, unmatched_numbers=unmatched_numbers(answer.answer, [*asked.tool_texts, *typed]))
 
-
-# ── Running ──────────────────────────────────────────────────────────────────
 
 
 class RecordingProvider:
@@ -254,8 +241,7 @@ async def ask_one(question: str, history: list[AssistantTurn], user: UserRead) -
         except (ChatCreditError, ChatQuotaError, ChatProviderFailedError, AiProviderError) as exc:
             return Asked(None, recorder.calls, recorder.tool_texts, history, recorder.cost_micro_usd, f"provider failed: {exc}")
         finally:
-            await db.rollback()  # the eval only reads; never leave anything behind
-    # As the browser keeps it: the reply's text (capped like any turn) and the records its cards showed.
+            await db.rollback()
     turns = [
         AssistantTurn(role="user", text=question),
         AssistantTurn(role="assistant", text=answer.answer[:MAX_TURN_CHARS], refs=answer.refs),
@@ -329,7 +315,6 @@ async def run(args: argparse.Namespace) -> None:
         try:
             asked = await ask_one(fill(item["question"], today), histories.get(item.get("after") or "", []), user)
         except BudgetSpentError as exc:
-            # The shared cap is reached or Redis is down: every later question would fail the same way.
             print(f"Stopped: {exc}")
             break
         histories[item["id"]] = asked.history

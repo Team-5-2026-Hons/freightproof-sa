@@ -19,7 +19,6 @@ import {
 } from '@/lib/format/driver-transfer'
 import { INTEGRITY_CHIP, problemText } from './DriverSubstitutionPanel'
 
-// The skeleton mirrors the loaded layout: a header, then Arrangement, a driver's check, Identity and Record integrity.
 const SKELETON_GROUPS = 4
 const SKELETON_ROWS = 3
 
@@ -36,7 +35,6 @@ export function DriverTransferDetail({ trip, substitutionId, onChanged }: Props)
     id === data.outgoing.id ? data.outgoing.full_name : id === data.incoming.id ? data.incoming.full_name : null
   const registrations = vehicleRegistrations(trip)
   const vehicle = (id: string): string => registrations.get(id) ?? UNKNOWN_VEHICLE
-  // The identity the incoming driver had when the request was made; only a request carries it.
   const identity = trip.driver_substitutions?.find(request => request.id === data.request_id)?.identity.status
   const completion = data.completion
   const completedBy = completion?.completed_by_name ?? driverName(completion?.completed_by_driver_id)
@@ -164,7 +162,6 @@ function ClarificationForm({ tripId, substitutionId, onAdded }: { tripId: string
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  // One key per intentional submission, so a retried request cannot add the clarification twice.
   const [key, setKey] = useState(newClientRequestId)
 
   function start(): void {

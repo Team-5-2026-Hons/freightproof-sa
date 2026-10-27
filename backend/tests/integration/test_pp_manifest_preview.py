@@ -119,7 +119,6 @@ async def test_unknown_manifest_404_body_names_the_manifest(client: AsyncClient,
 
 
 async def test_overlong_manifest_number_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
-    # trips.pp_manifest_number is a Postgres integer: one past its range is not a manifest.
     world = await build_manifest_world(db_session)
 
     resp = await client.get(
@@ -188,7 +187,7 @@ async def test_unlinked_client_blocks(client: AsyncClient, db_session: AsyncSess
 
     assert _codes(body)["CLIENT_NOT_LINKED"] is True
     assert body["client_organization_id"] is None
-    assert body["client_name"] == MOCK_CLIENT_NAME  # the issuer name from PP
+    assert body["client_name"] == MOCK_CLIENT_NAME
 
 
 async def test_mixed_client_manifest_blocks(client: AsyncClient, db_session: AsyncSession) -> None:
@@ -255,7 +254,7 @@ async def test_unlinked_origin_prompts_without_blocking(client: AsyncClient, db_
 async def test_unlinked_destination_prompts_without_blocking(client: AsyncClient, db_session: AsyncSession) -> None:
     world = await build_manifest_world(db_session)
 
-    body = await preview(client, world, 69)  # JNB → DUR; DUR has no precinct
+    body = await preview(client, world, 69)
 
     assert _codes(body) == {"DESTINATION_HUB_UNLINKED": False}
 

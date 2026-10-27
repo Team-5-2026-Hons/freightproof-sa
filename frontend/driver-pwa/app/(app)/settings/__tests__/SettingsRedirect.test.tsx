@@ -14,7 +14,6 @@ describe('/settings', () => {
     const { container } = render(<SettingsPage />)
 
     expect(mockReplace).toHaveBeenCalledWith(ROUTES.profile)
-    // A tab-style swap, not a push: Profile must not slide in from the right.
     expect(peekTransition()).toBe('none')
     expect(container).toBeEmptyDOMElement()
   })

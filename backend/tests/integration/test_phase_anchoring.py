@@ -81,22 +81,12 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
-        # an unscheduled trip is deliberately unstartable, so this fixture books itself for
-        # today — what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
         created_by_user_id=user.id,
     )
     db_session.add(trip)
     await db_session.flush()
 
-    # Hand-built single-leg phase plan, mirroring what create_trip's plan
-    # generator writes at trip creation — every PhaseEvent row a
-    # driver will ever complete already exists, `pending`, before any endpoint
-    # call. IN_TRANSIT (P4) is included and stays PENDING like every other
-    # driver-facing row: it is opened by advance_departure and closed by the
-    # driver's own arrival submission — see advance_in_transit's docstring in
-    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -158,14 +148,10 @@ async def _complete_activation(client: AsyncClient, db_session, trip, token) -> 
 
 
 def _loading_payload() -> dict:
-    # The legacy count field is accepted but ignored so an older offline entry can
-    # still drain; loading no longer captures a driver-entered count.
     return {"phase_type": "loading", "driver_visual_count": 42, "idempotency_key": str(uuid.uuid4())}
 
 
 def _departure_payload(waybill_id: str, seal_photo_id: str, **overrides: object) -> dict:
-    # The seal (waybill photo, seal number, seal photo) is applied at
-    # departure now, not loading.
     payload = {
         "phase_type": "departure",
         "waybill_photo_artifact_id": waybill_id,
@@ -298,13 +284,8 @@ async def test_departure_complete_hedera_failure_still_returns_200_fail_open(
     body = resp.json()
     departure = next(h for h in body["phases"] if h["phase_type"] == "departure")
     assert departure["status"] == "completed"
-    assert departure["blockchain_receipt_id"] is None  # retry owed, not raised
-    # Read the trip's advancement straight off the response body rather than
-    # re-querying via db_session — expire_all() followed by a synchronous
-    # attribute read on an already-loaded ORM instance (trip.id) is a known
-    # sharp edge in this test suite's async session (see the identical hazard
-    # in test_vehicles_validation.py::test_update_vehicle_invalid_vin_leaves_db_state_unchanged).
-    assert body["status"] == "active"  # departure still advanced the trip, even on a failed anchor
+    assert departure["blockchain_receipt_id"] is None
+    assert body["status"] == "active"
 
 
 async def test_trip_detail_lists_departure_receipt_for_dispatcher(
@@ -315,9 +296,6 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     PHASE_EVENT receipt in blockchain_receipts. resource_service.get_trip_detail
     used to filter subject_type == TRIP only, silently hiding every
     driver-anchored receipt from the dispatcher's per-trip evidence view."""
-    # Every phase anchors now, so activation and loading
-    # (completed via the two helpers below) queue their own receipts alongside
-    # departure's — this test isolates departure's own receipt among them.
     trip, driver = seed_trip
     driver_token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, db_session, trip, driver_token)
@@ -334,15 +312,11 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
             headers=auth_header(driver_token),
         )
         assert departure_resp.status_code == 200
-        # The worker's half, run inside the same patch: without it there is no receipt
-        # for the dispatcher to see, and outside the patch it would hit the real SDK.
         await _drain_anchors(db_session, captured_anchor_dispatches)
     departure_id_str = next(
         h["phase_event_id"] for h in departure_resp.json()["phases"] if h["phase_type"] == "departure"
     )
 
-    # Receipts are role-gated (FP-115): only admin_dispatcher sees the full list,
-    # so the read side authenticates as an admin in the trip's operator org.
     admin = User(
         id=uuid.uuid4(), organization_id=trip.operator_organization_id,
         email="admin@test.co.za", full_name="Admin",
@@ -359,8 +333,6 @@ async def test_trip_detail_lists_departure_receipt_for_dispatcher(
     assert detail_resp.status_code == 200
     receipts = detail_resp.json()["blockchain_receipts"]
     phase_receipts = [r for r in receipts if r["subject_type"] == "phase_event"]
-    # Activation and loading anchored too — three phase receipts total — but only one
-    # of them is departure's own.
     assert len(phase_receipts) == 3
     departure_receipts = [r for r in phase_receipts if r["subject_id"] == departure_id_str]
     assert len(departure_receipts) == 1
@@ -437,9 +409,6 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
             assert receiver_artifact.file_hash == hashlib.sha256(signature_bytes).hexdigest()
         else:
             signature_id = await upload("signature")
-            # Completion rejects a driver's own upload as the receiver confirmation (D8b), so
-            # this case models an image with no driver id, as a pre-attribution receiver image
-            # is. What it exercises is anchoring and verification, not who produced the image.
             legacy_signature = await db_session.get(EvidenceArtifact, uuid.UUID(signature_id))
             legacy_signature.captured_by_driver_id = None
             await db_session.flush()
@@ -453,7 +422,6 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
     await _drain_anchors(db_session, captured_anchor_dispatches)
     event = await db_session.get(PhaseEvent, uuid.UUID(event_id))
     receipt = await db_session.get(BlockchainReceipt, event.blockchain_receipt_id)
-    # Driver-performed, so the v2 evidence payload sits inside the v4 actor envelope.
     assert receipt.payload_json["payload_version"] == 4
     assert receipt.payload_json["evidence"]["payload_version"] == 2
     assert receipt.payload_json["actor_sha256"] == driver_actor_sha256(event.performed_by_driver_id)
@@ -488,7 +456,7 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
     assert changed.json()["status"] == "db_mismatch"
     assert changed.json()["evidence_verified"] is False
     assert artifact.file_hash == original_hash
-    assert mirror.call_count == 1  # Local mismatch never spends a Hedera read.
+    assert mirror.call_count == 1
 
     storage.respond(503)
     unavailable = await client.post("/api/v1/blockchain/verify", headers=headers, json=body)

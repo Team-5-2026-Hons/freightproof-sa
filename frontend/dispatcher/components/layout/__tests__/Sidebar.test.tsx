@@ -6,9 +6,6 @@ import { SidebarCollapseProvider } from '@/lib/context/SidebarCollapseContext'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { ROUTES } from '@/lib/constants/routes'
 
-// The collapse behaviour is route-driven (auto-collapse on trip detail), so
-// usePathname is mocked at the module boundary with a controllable return value —
-// the same approach ConfirmationDetail.test.tsx uses for useAuth.
 const mockUsePathname = vi.fn((): string => ROUTES.home)
 const mockSignOut = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const mockAuth = vi.hoisted(() => ({
@@ -35,10 +32,6 @@ vi.mock('@/lib/hooks/useAuth', () => ({
   }),
 }))
 
-// LiveBadge pulls in RealtimeProvider, whose module graph reaches the real Supabase
-// client (lib/api/client -> lib/supabase/client), which throws at import time without
-// env vars configured for the test runner. Mock it at the module boundary — this suite
-// is about sidebar collapse behaviour, not the realtime connection status.
 vi.mock('@/lib/realtime/RealtimeProvider', () => ({
   useRealtimeStatus: () => 'live',
 }))
@@ -187,7 +180,6 @@ describe('Sidebar forensic indicator', () => {
 
     const row = screen.getByRole('link', { name: 'Settings' })
     expect(row).toHaveAttribute('href', ROUTES.settings)
-    // Anchors cannot nest, so the pill is a sibling of the row, not inside it.
     expect(row).not.toContainElement(screen.getByRole('link', { name: PILL }))
   })
 
@@ -199,7 +191,6 @@ describe('Sidebar forensic indicator', () => {
   })
 
   it('shows no pill to a regular dispatcher even with a stale stored switch', () => {
-    // A demoted admin keeps `fp.forensicOn` in their browser; the mode is no longer theirs.
     window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
     renderSidebar()
 
@@ -223,8 +214,6 @@ describe('Sidebar forensic indicator', () => {
 
 describe('Sidebar navigation', () => {
   it('links a regular dispatcher to analytics', () => {
-    // The analytics endpoints take any dispatcher (get_current_dispatcher, not
-    // require_admin_dispatcher), so this entry is never hidden.
     renderSidebar()
 
     expect(screen.getByRole('link', { name: 'Analytics' }))
@@ -232,9 +221,6 @@ describe('Sidebar navigation', () => {
   })
 
   it('links to the exceptions queue', () => {
-    // Hidden in 6071ab2 as "not yet live", when the page was mock data behind a route.
-    // It is live now — FP-146 gave it a real org-scoped list, detail and resolve — and a
-    // triage queue a dispatcher cannot reach from the nav is a queue nobody works.
     renderSidebar()
 
     expect(screen.getByRole('link', { name: 'Exceptions' }))
@@ -242,8 +228,6 @@ describe('Sidebar navigation', () => {
   })
 
   it('keeps the exceptions link reachable from the collapsed rail', async () => {
-    // NavLink carries an aria-label so the icon-only rail stays navigable. Asserted
-    // because this is the one nav entry a dispatcher reaches for mid-incident.
     const user = userEvent.setup()
     renderSidebar()
 
@@ -325,7 +309,6 @@ describe('Sidebar collapse', () => {
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBeNull()
 
-    // Navigating away reverts to the untouched (default expanded) preference.
     mockUsePathname.mockReturnValue(ROUTES.home)
     rerender(
       <ForensicModeProvider>

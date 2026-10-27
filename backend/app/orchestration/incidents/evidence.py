@@ -74,15 +74,10 @@ async def get_incident_evidence(
     if row is None:
         raise ResourceNotFoundError("Incident", str(incident_id))
     incident, trip = row
-    # The dispatcher's own operator data, so the trail is included; nothing here leaves the
-    # organisation (an issued pack makes its own POPIA choices).
     manifest = await build_audit_manifest(
         db, trip_id=trip.id, operator_organization_id=organization_id,
         options=AuditPackOptions(include_location_trail=True, include_full_driver_id=False),
     )
-    # Which incident holds each exception comes from the investigations the manifest already
-    # loaded. This pack is unscoped, so none is cut, and an exception belongs to at most one
-    # incident (uq_incident_exceptions_exception): the same map the table would give.
     holders = {
         exception_id: record.incident_id
         for record in manifest.investigations for exception_id in record.exception_ids

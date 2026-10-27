@@ -32,19 +32,12 @@ from app.integrations.routing import RoutePoint, RoutingError, RoutingNotConfigu
 
 logger = logging.getLogger(__name__)
 
-# Versioned so a change to what's stored can't be misread as metres.
 _CACHE_KEY_PREFIX = "lane_km:v1"
 
-# Thirty days: a road distance between two depots is stable, but roads do change (a new
-# bypass, a closed bridge), so each leg is measured again about once a month.
 CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
 
-# At most this many legs are routed per page load. The rest use the straight-line fallback
-# this time and are routed on later loads, so the first load of a long period stays quick,
-# and a burst stays under ORS's free-tier limit of 40 directions requests a minute.
 ROUTE_LOOKUPS_PER_REQUEST = 10
 
-# Concurrent ORS requests: enough to overlap their latency, few enough to be polite.
 ROUTE_LOOKUP_CONCURRENCY = 3
 
 
@@ -65,8 +58,6 @@ class LegEnds:
 
     @property
     def cache_key(self) -> str:
-        # Coordinates are part of the key, so moving a precinct's pin gets a fresh lookup.
-        # Direction matters (one-way roads, different on-ramps): A->B and B->A are separate.
         return (
             f"{_CACHE_KEY_PREFIX}:{self.from_id}:{self.to_id}:"
             f"{self.from_lat},{self.from_lng}:{self.to_lat},{self.to_lng}"
@@ -130,7 +121,6 @@ async def leg_distances(
     distances: dict[tuple[uuid.UUID, uuid.UUID], LegDistance] = {}
     to_look_up: list[LegEnds] = []
     for leg in legs:
-        # Two consecutive stops at the same depot: no distance to measure, and that is exact.
         if leg.from_id == leg.to_id:
             distances[leg.key] = LegDistance(km=Decimal(0), routed=True)
         else:
@@ -138,7 +128,6 @@ async def leg_distances(
     if not to_look_up:
         return distances
 
-    # Sorted so which legs fall inside the budget is the same on every load.
     to_look_up.sort(key=lambda leg: leg.cache_key)
     misses: list[LegEnds] = []
     for leg, cached in zip(to_look_up, await _cached_metres(to_look_up)):
@@ -149,7 +138,6 @@ async def leg_distances(
             distances[leg.key] = LegDistance(km=metres / METRES_PER_KM, routed=True)
 
     if not settings.ORS_API_KEY:
-        # An expected state on a fresh dev machine, not an outage: no warning per leg.
         if misses:
             logger.info("ORS_API_KEY is not set; %d legs use the straight-line estimate.", len(misses))
         routed: list[LegDistance] = []

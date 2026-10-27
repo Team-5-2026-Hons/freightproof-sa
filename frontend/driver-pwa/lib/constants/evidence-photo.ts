@@ -8,6 +8,4 @@
 // documents legible at a fraction of the size.
 export const EVIDENCE_PHOTO_MAX_EDGE_PX = 1600
 
-// Single JPEG quality constant for every path — Capacitor's `quality` option is 0–100,
-// canvas.toDataURL takes 0–1; both derive from this so the paths can't drift apart.
 export const EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT = 70

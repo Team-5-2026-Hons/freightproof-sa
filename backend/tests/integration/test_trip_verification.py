@@ -53,7 +53,6 @@ def _empty_leg(world: ManifestWorld, *, planned_departure_at: str) -> dict:
         "destination_precinct_id": str(world.johannesburg.id),
         "trip_type": "empty_leg",
         "planned_departure_at": planned_departure_at,
-        # Arrival is required at creation (FP-139); a fixed length after the given departure.
         "planned_arrival_at": (datetime.fromisoformat(planned_departure_at) + timedelta(hours=10)).isoformat(),
     }
 
@@ -68,7 +67,6 @@ async def _create(client: AsyncClient, world: ManifestWorld, departure: str) -> 
 
 
 async def _verify(db_session: AsyncSession, trip_id: uuid.UUID) -> VerifyStatus:
-    # Read back from Postgres, not the identity map — that is what verification meets.
     db_session.expire_all()
     outcome = await verify_subject(
         db_session, subject_type=SubjectType.TRIP, subject_id=trip_id,
@@ -216,8 +214,6 @@ async def test_v1_receipt_still_verifies(client: AsyncClient, db_session: AsyncS
 
     assert status == VerifyStatus.VERIFIED
 
-
-# ── FP-290: what the journey lock does and does not commit about cargo ────────
 
 async def test_non_manifest_lock_carries_no_cargo_commitment_and_later_cargo_does_not_move_it(
     client: AsyncClient, db_session: AsyncSession,

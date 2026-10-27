@@ -36,7 +36,6 @@ from app.schemas.driver_substitutions import SubstitutionRole
 logger = logging.getLogger(__name__)
 
 TRANSFER_REVIEW_SEVERITY = ExceptionSeverity.WARNING
-# The proximity verdict that means "the phone and the tracker could not be compared".
 UNVERIFIED_PROXIMITY = "unverified"
 
 REASON_IDENTITY = "incoming identity not verified"
@@ -90,8 +89,6 @@ async def raise_transfer_review(db: AsyncSession, *, trip: Trip, row: DriverSubs
                 select(Driver.id, Driver.full_name).where(Driver.id.in_({outgoing_id, incoming_id}))
             )).tuples().all())
             exception_id = uuid.uuid4()
-            # phase_event_id stays None: a handover is not a phase. exception_id on the substitution row is
-            # legacy and frozen into an anchored commitment, so it is not set here.
             await register_exception(db, TripException(
                 id=exception_id, trip_id=trip.id, exception_type=ExceptionType.DRIVER_SUBSTITUTION,
                 source=ExceptionSource.SYSTEM, severity=TRANSFER_REVIEW_SEVERITY,
@@ -102,8 +99,6 @@ async def raise_transfer_review(db: AsyncSession, *, trip: Trip, row: DriverSubs
             ))
             await db.flush()
     except Exception:
-        # A finding must never condition custody: the transfer is already recorded and stands.
-        # Broad on purpose: any failure here, not only a DB one, would otherwise fail the handover.
         logger.exception("Driver transfer review exception not recorded for substitution=%s", row.id)
         return None
     enqueue_event(db, trip.operator_organization_id, TripEvent(

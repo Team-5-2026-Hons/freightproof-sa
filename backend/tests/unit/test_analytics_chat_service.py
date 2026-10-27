@@ -59,12 +59,10 @@ from app.schemas.analytics_chat import (
 from app.schemas.people import UserRead
 from tests.fake_ai_provider import FAKE_USAGE, FakeProvider, text_reply, tool_reply
 
-# 10:00 SAST on Monday 19 Oct 2026.
 _NOW = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
 _ON_TIME_ARGS: Mapping[str, object] = {"preset": "last_12_months", "start": None, "end": None, "grain": "month"}
 _PERIOD = Period(start=date(2025, 11, 1), end=date(2026, 10, 19), grain=Grain.MONTH)
 _SPEND = SpendStatus(spent_usd=0.5, budget_usd=20.0, available=True)
-# 3000×1.50 + 3000×0.15 + 300×7.50 micro-dollars on gemini-3.8-flash.
 _FAKE_CALL_COST = 7_200
 _SECRET_QUESTION = "How late was Sipho Dlamini's truck on the N3?"
 
@@ -107,7 +105,6 @@ def tool_runs(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         if tool is None:
             return ToolOutcome(tool=None, result=None, error=f"Unknown tool: {name}", period=None)
         if not tool.gives_figures:
-            # The page guide: no period, and only the guide's own numbers (a cost rate here).
             return ToolOutcome(tool=tool, result={"guide": [], "current_rates": {"fuel_per_km": 17.64}}, error=None, period=None)
         return ToolOutcome(tool=tool, result={"figure": 42}, error=None, period=_PERIOD)
 
@@ -133,8 +130,6 @@ def _request(question: str = "How did delays change over the past year?", histor
 async def _ask(provider: FakeProvider, user: UserRead, request: ChatRequest | None = None) -> ChatAnswer:
     return await ask(object(), user=user, request=request or _request(), provider=provider, now=_NOW)  # type: ignore[arg-type]
 
-
-# ── Answers, follow-ups, declines ────────────────────────────────────────────
 
 
 async def test_ask_tool_then_answer_returns_answer_with_basis(user: UserRead, tool_runs: AsyncMock) -> None:
@@ -174,7 +169,6 @@ async def test_ask_follow_up_question_has_no_basis(user: UserRead, tool_runs: As
 
 
 async def test_ask_question_back_after_a_lookup_shows_no_figures_used(user: UserRead) -> None:
-    # What gemini-3.5-flash-lite did on 20 Oct: looked up All time, then asked which period.
     provider = FakeProvider([tool_reply(("cost", _ON_TIME_ARGS)), text_reply("For which period: all time, or this year?")])
 
     result = await _ask(provider, user, _request("Which lane costs the most to run?"))
@@ -237,8 +231,6 @@ async def test_ask_empty_cut_off_answer_gets_a_message(user: UserRead) -> None:
     assert "ran too long" in result.answer
 
 
-# ── Tools in one turn, errors, caps ──────────────────────────────────────────
-
 
 async def test_ask_two_tools_in_one_turn_run_both_and_reply_once(user: UserRead, tool_runs: AsyncMock) -> None:
     provider = FakeProvider([
@@ -252,7 +244,6 @@ async def test_ask_two_tools_in_one_turn_run_both_and_reply_once(user: UserRead,
     results = provider.sent[1].messages[-1]
     assert isinstance(results, ToolResults)
     assert len(results.results) == 2
-    # Same tab and period (the fake resolves both to _PERIOD): one Based on line, not two.
     assert len(result.basis) == 1
 
 
@@ -276,12 +267,9 @@ async def test_ask_stops_past_the_tool_call_cap(user: UserRead, tool_runs: Async
     result = await _ask(provider, user)
 
     assert result.answer == TOOL_CAP_MESSAGE
-    # It states no figures, so no "Based on" lines (eval run 4, q23 showed four under it).
     assert (result.kind, result.basis) == ("declined", [])
     assert tool_runs.await_count == 3
 
-
-# ── "No tool, no figures" (eval run 4, q16) ──────────────────────────────────
 
 _INVENTED = "I can't predict that, but this year: Total trips: 2,752; on-time arrivals 60.1% (1,652 of 2,750)."
 
@@ -329,7 +317,6 @@ async def test_ask_decline_repeating_the_questions_numbers_is_not_flagged(user: 
 
 
 async def test_ask_never_makes_more_than_the_model_call_cap(user: UserRead) -> None:
-    # One tool per reply: the tool cap (4) stops it on the 5th reply, never a 6th call.
     provider = FakeProvider([tool_reply(("on_time", _ON_TIME_ARGS)) for _ in range(MAX_MODEL_CALLS + 1)])
 
     result = await _ask(provider, user)
@@ -337,8 +324,6 @@ async def test_ask_never_makes_more_than_the_model_call_cap(user: UserRead) -> N
     assert result.answer == TOOL_CAP_MESSAGE
     assert len(provider.sent) <= MAX_MODEL_CALLS
 
-
-# ── Budget, provider failures, switch ────────────────────────────────────────
 
 
 async def test_ask_records_each_calls_cost(user: UserRead, spend: dict[str, AsyncMock]) -> None:
@@ -349,7 +334,7 @@ async def test_ask_records_each_calls_cost(user: UserRead, spend: dict[str, Asyn
     assert [call.args for call in spend["record"].await_args_list] == [
         (user.organization_id, _FAKE_CALL_COST), (user.organization_id, _FAKE_CALL_COST),
     ]
-    assert FAKE_USAGE.output_tokens == 300  # the cost above assumes the fake's usage
+    assert FAKE_USAGE.output_tokens == 300
 
 
 async def test_ask_checks_the_budget_before_every_model_call(user: UserRead, spend: dict[str, AsyncMock]) -> None:
@@ -387,7 +372,7 @@ async def test_ask_provider_error_becomes_a_chat_error(user: UserRead) -> None:
     ("setting", "value"),
     [
         ("AI_CHAT_ENABLED", False), ("GEMINI_API_KEY", ""), ("AI_CHAT_MODEL", "gemini-imaginary-9"),
-        ("AI_CHAT_PROVIDER", "openai"), ("AI_CHAT_PROVIDER", "anthropic"),  # the last: no Anthropic key set
+        ("AI_CHAT_PROVIDER", "openai"), ("AI_CHAT_PROVIDER", "anthropic"),
     ],
 )
 async def test_ask_switched_off_raises_before_any_call(
@@ -401,8 +386,6 @@ async def test_ask_switched_off_raises_before_any_call(
 
     assert provider.sent == []
 
-
-# ── What is sent, and what is never logged ───────────────────────────────────
 
 
 async def test_ask_sends_the_fixed_prompt_todays_date_and_all_tools(user: UserRead) -> None:
@@ -434,7 +417,6 @@ async def test_ask_past_month_is_asked_back_and_its_30_is_not_taken_for_an_inven
     result = await _ask(provider, user, _request("How many problems have we had in the past month"))
 
     assert "Call no tool" in provider.sent[0].context
-    # One call only: the guard didn't send it back for the "30" and "2026" the hint itself offered.
     assert len(provider.sent) == 1
     assert (result.answer, result.kind, result.basis) == (ask_back, "follow_up", [])
 
@@ -453,7 +435,6 @@ async def test_ask_last_year_is_asked_back_and_its_numbers_are_not_taken_for_inv
 def test_prompt_asks_back_when_a_question_has_two_readings_and_not_when_it_is_clear() -> None:
     assert "could reasonably mean two different things that would give different figures" in SYSTEM_PROMPT
     assert "Don't ask when the question, the server's note" in SYSTEM_PROMPT
-    # "Last year" is asked back by the server now, so it is no longer mapped to 12 months here.
     assert '"last year"' not in SYSTEM_PROMPT
 
 
@@ -483,7 +464,6 @@ async def test_ask_sends_history_as_text_and_drops_a_leading_answer(user: UserRe
 async def test_ask_logs_numbers_no_tool_returned_but_never_the_text(
     user: UserRead, caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # The fake tool returns {"figure": 42}; 97 is invented.
     provider = FakeProvider([tool_reply(("on_time", _ON_TIME_ARGS)), text_reply("Sipho's lane had 42 late trips, and 97 more were early.")])
 
     await _ask(provider, user)
@@ -512,8 +492,6 @@ async def test_ask_never_logs_the_question_or_answer(user: UserRead, caplog: pyt
     assert "Sipho" not in caplog.text
 
 
-# ── Which provider ───────────────────────────────────────────────────────────
-
 
 def test_build_provider_gemini_by_default() -> None:
     provider = build_provider()
@@ -532,8 +510,6 @@ def test_build_provider_anthropic_when_chosen(monkeypatch: pytest.MonkeyPatch) -
     assert isinstance(provider, AnthropicProvider)
     assert provider.model == "claude-sonnet-5-5"
 
-
-# ── Explaining the page (B45) ────────────────────────────────────────────────
 
 
 async def test_ask_explanation_from_the_guide_is_labelled_and_has_no_based_on(user: UserRead) -> None:
@@ -555,7 +531,6 @@ async def test_ask_explanation_may_quote_the_guides_numbers_without_being_sent_b
 
     result = await _ask(provider, user, _request("How is fuel costed?"))
 
-    # One answer, no "No tool, no figures" correction: 17.64 came from the guide's rates.
     assert len(provider.sent) == 2
     assert result.answer == "Fuel is costed at R 17.64 per km from your current rates."
 
@@ -596,8 +571,6 @@ async def test_ask_tells_the_model_an_explanation_needs_no_period(user: UserRead
 
     assert "call `explain` for its topic (no period is needed)" in provider.sent[0].context
 
-
-# ── What's on screen (B45, Stage 4b) ─────────────────────────────────────────
 
 
 async def test_ask_tells_the_model_what_is_on_screen(user: UserRead) -> None:

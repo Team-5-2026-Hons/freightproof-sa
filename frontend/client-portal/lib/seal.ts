@@ -15,8 +15,8 @@ export interface SealPayload {
 }
 
 export type SealPayloadRead =
-  | { state: 'absent' } //     the pack was issued without a seal receipt
-  | { state: 'unreadable' } // a receipt exists but its payload is not a JSON object
+  | { state: 'absent' }
+  | { state: 'unreadable' }
   | { state: 'ok'; payload: SealPayload }
 
 export function readSealPayload(seal: PublicPackSeal): SealPayloadRead {

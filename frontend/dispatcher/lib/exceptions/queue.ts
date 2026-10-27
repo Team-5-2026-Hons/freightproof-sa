@@ -6,8 +6,6 @@ import { compareText, sortRows, type Sort, type SortValue } from '@/lib/sort/sor
 
 export interface QueueFilters { q?: string; severity?: TripExceptionListItem['severity'] | ''; fromDate?: string; toDate?: string }
 
-// Newest first. sortRows puts an unparseable timestamp (NaN, so "no data") last in both directions,
-// which is what stops an invalid date from implying recency.
 const NEWEST_FIRST: Sort<'raised'> = { key: 'raised', dir: 'desc' }
 
 /** Newest first, ties by id. Invalid timestamps cannot imply recency. Sort a copy so live hook data
@@ -18,7 +16,6 @@ export function sortQueueChronologically<T extends { id: string; created_at: str
 
 export type ExceptionSortKey = 'incident' | 'trip' | 'crew' | 'raised' | 'status'
 export type ExceptionSort = Sort<ExceptionSortKey>
-/** Newest first, the queue's confirmed default (see the redesign plan). */
 export const DEFAULT_EXCEPTION_SORT: ExceptionSort = { key: 'raised', dir: 'desc' }
 export const EXCEPTION_SORT_KEYS: readonly ExceptionSortKey[] = ['incident', 'trip', 'crew', 'raised', 'status']
 
@@ -26,8 +23,6 @@ export const EXCEPTION_SORT_KEYS: readonly ExceptionSortKey[] = ['incident', 'tr
 /** A value the column can order by; null means "no data" and always sorts last. */
 function sortValue(item: TripExceptionListItem, key: ExceptionSortKey): SortValue {
   switch (key) {
-    // Severity first (most severe first when ascending, so the first click on Incident surfaces what
-    // matters), then the title the dispatcher reads, so equal severities group by type.
     case 'incident': return [SEVERITY_RANK[item.severity], fmtExceptionType(item.exception_type)]
     case 'trip': return item.trip_reference
     case 'crew': return item.driver_name
@@ -84,7 +79,6 @@ export function groupQueueByTrip(items: readonly TripExceptionListItem[]): Excep
   const byTrip = new Map<string, ExceptionTripGroup>()
   const seen = new Set<string>()
 
-  // Newest first, so the first readable timestamp in a group is its newest and the last is its oldest.
   for (const item of sortQueueChronologically(items)) {
     if (seen.has(item.id)) continue
     seen.add(item.id)

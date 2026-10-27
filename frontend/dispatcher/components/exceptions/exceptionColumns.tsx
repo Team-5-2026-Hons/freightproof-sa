@@ -13,9 +13,6 @@ import { reviewState } from '@/lib/format/review-state'
 import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 
-// Container width below which the crew column folds into the trip cell: under this the five
-// columns no longer fit side by side without a horizontal scrollbar. Equal to the five base
-// widths below (250 + 190 + 170 + 120 + 170), so the table never scrolls just to show a column.
 const CREW_HIDE_BELOW_PX = 900
 const INITIALS_MAX = 2
 
@@ -74,13 +71,10 @@ export function buildExceptionColumns({ meId, now, hrefFor, onOpen }: ColumnOpti
         return <>
           <div className="flex flex-wrap items-center gap-2">
             <Chip type={severity.chipType} label={severity.label} />
-            {/* The only link in the row; its ::after covers the whole <tr> so the row is one target
-                without nesting interactive elements inside each other. */}
             <Link href={hrefFor(item.id)} data-exception-id={item.id} aria-label={`${title} · ${exceptionReference(item.id)} · ${item.trip_reference}`} onClick={() => onOpen(item.id)}
               className="font-semibold text-on-surf after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-sec">{title}</Link>
           </div>
           <p className="mt-1.5 line-clamp-2 break-words leading-relaxed text-on-surf-v">{exceptionDescriptionText(item)}</p>
-          {/* The reference leads so two identical incidents on the same trip and phase still read differently. */}
           <p className="mt-1 text-xs text-on-surf-v"><ExceptionRef id={item.id} />{phaseStop && ` · ${phaseStop}`}</p>
         </>
       },
@@ -95,8 +89,6 @@ export function buildExceptionColumns({ meId, now, hrefFor, onOpen }: ColumnOpti
       render: (item, { hidden }) => <>
         <p className="text-xs font-semibold tabular-nums text-on-surf">{item.trip_reference}</p>
         <p className="mt-1 leading-snug text-on-surf-v" title={fmtExceptionRoute(item.origin_name, item.destination_name)}>{fmtExceptionRoute(item.origin_name, item.destination_name, true)}</p>
-        {/* The crew column's content moves here while that column is hidden, so a narrow screen
-            loses a column, not information. */}
         {hidden.has('crew') && <p className="mt-1 text-xs text-on-surf-v">{[item.driver_name ?? 'Driver not recorded', vehiclesOf(item)].filter(Boolean).join(' · ')}</p>}
       </>,
     },

@@ -26,8 +26,6 @@ def matching_associations(organization_id: UUID, barcode: str) -> Subquery:
         .join(Trip, Consignment.trip_id == Trip.id)
         .where(Parcel.barcode == barcode, Trip.operator_organization_id == organization_id)
     )
-    # Old/cancelled trips can retain their cargo only in the committed H0 snapshot.
-    # Guard legacy JSON shapes before expanding; never expose the raw PP/contact payload.
     waybills = case(
         (func.jsonb_typeof(PhaseEvent.parcel_manifest_snapshot["waybills"]) == "array",
          PhaseEvent.parcel_manifest_snapshot["waybills"]),
@@ -46,7 +44,6 @@ def matching_associations(organization_id: UUID, barcode: str) -> Subquery:
             reference.is_not(None), reference != "",
         )
     )
-    # A current row and its own creation snapshot represent the same association.
     return union(current, historical).subquery("parcel_associations")
 
 

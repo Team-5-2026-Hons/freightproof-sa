@@ -29,7 +29,6 @@ const BLOCKERS: readonly SubstitutionCompletionBlocker[] = [
   'identity_not_verified',
 ]
 
-// The contract's "Tim's fixture pack" paragraph, state by state.
 const REQUIRED_STATES = [
   'noSubstitution',
   'outgoingPending',
@@ -59,7 +58,6 @@ function isRequestRead(value: unknown): value is SubstitutionRequestRead {
   return typeof value === 'object' && value !== null && 'permitted_actions' in value && 'missing_confirmations' in value
 }
 
-// Every SubstitutionRequestRead anywhere in the pack, however it is nested.
 function collectRequests(value: unknown, found: SubstitutionRequestRead[] = []): SubstitutionRequestRead[] {
   if (isRequestRead(value)) found.push(value)
   if (Array.isArray(value)) value.forEach(item => collectRequests(item, found))
@@ -79,8 +77,6 @@ describe('fixture pack coverage', () => {
   })
 
   it('exposes no identity number, licence number or verification vendor data to the other party', () => {
-    // Dispatcher fleet records (Driver) legitimately carry licence data; the contract's
-    // driver-facing shapes must not. Scan exactly those: contacts, context and history.
     const driverFacing = JSON.stringify([
       collectRequests(pack).map(request => [request.outgoing, request.incoming, request.identity]),
       pack.contextWithFindings,

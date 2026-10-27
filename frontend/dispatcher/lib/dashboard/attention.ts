@@ -12,16 +12,12 @@ import type { Precinct } from '@shared/lib/types/precinct'
 import type { TripSummary } from '@shared/lib/types/trip'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 
-/** Rows each dashboard panel shows; the full page behind "View all" holds the rest. */
 export const PANEL_ROW_LIMIT = 5
 
-/** Trips the dashboard's trips panel shows; the Active Trips page holds the rest. */
 export const DASHBOARD_TRIP_LIMIT = 8
 
 const SEVERITY_FIRST: Sort<'severity'> = { key: 'severity', dir: 'asc' }
 
-// A critical raised yesterday must outrank five infos raised today, so severity leads and recency
-// only orders within a severity. An unparseable timestamp sorts last rather than implying recency.
 const newestThenId = (a: TripExceptionListItem, b: TripExceptionListItem): number =>
   (Number.isFinite(Date.parse(b.created_at)) ? Date.parse(b.created_at) : -Infinity)
   - (Number.isFinite(Date.parse(a.created_at)) ? Date.parse(a.created_at) : -Infinity)

@@ -8,7 +8,6 @@ import { acknowledgeLateEvidence, listLateEvidence } from '@/lib/api/driverSubst
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { LateDriverEvidencePanel } from './LateDriverEvidencePanel'
 
-// The API client builds a Supabase client at import time — mocked like the other panel tests.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -37,25 +36,19 @@ beforeEach(() => {
 
 describe('LateDriverEvidencePanel', () => {
   it('renders nothing when there is no late evidence', async () => {
-    // Arrange
     vi.mocked(listLateEvidence).mockResolvedValue([])
 
-    // Act
     renderPanel()
 
-    // Assert
     await waitFor(() => expect(listLateEvidence).toHaveBeenCalledWith(TRIP_ID))
     expect(screen.queryByRole('heading', { name: 'Late driver evidence' })).not.toBeInTheDocument()
   })
 
   it('lists the driver, kind, custody period and awaiting-review status', async () => {
-    // Arrange
     vi.mocked(listLateEvidence).mockResolvedValue([item])
 
-    // Act
     renderPanel()
 
-    // Assert
     expect(await screen.findByText('Fixture Driver Outgoing · checkpoint · custody period 0')).toBeInTheDocument()
     expect(screen.getByText('Awaiting review')).toBeInTheDocument()
     expect(screen.getByText('b'.repeat(64))).toBeInTheDocument()
@@ -80,18 +73,15 @@ describe('LateDriverEvidencePanel', () => {
   })
 
   it('requires a note, then acknowledges and refetches', async () => {
-    // Arrange
     vi.mocked(listLateEvidence).mockResolvedValue([item])
     vi.mocked(acknowledgeLateEvidence).mockResolvedValue(lateEvidence.acknowledged)
     renderPanel()
     await userEvent.click(await screen.findByRole('button', { name: 'Acknowledge' }))
     expect(screen.getByRole('button', { name: 'Record review' })).toBeDisabled()
 
-    // Act
     fireEvent.change(screen.getByLabelText('Review note'), { target: { value: '  Photo matches.  ' } })
     await userEvent.click(screen.getByRole('button', { name: 'Record review' }))
 
-    // Assert
     await waitFor(() => expect(acknowledgeLateEvidence).toHaveBeenCalledWith(TRIP_ID, item.id, {
       client_request_id: expect.any(String), note: 'Photo matches.',
     }))
@@ -99,7 +89,6 @@ describe('LateDriverEvidencePanel', () => {
   })
 
   it('says another dispatcher already reviewed it on SUBSTITUTION_VERSION_CHANGED', async () => {
-    // Arrange
     const { body } = substitutionErrorFixtures.SUBSTITUTION_VERSION_CHANGED
     vi.mocked(listLateEvidence).mockResolvedValue([item])
     vi.mocked(acknowledgeLateEvidence).mockRejectedValue(new ApiError(409, body.detail.message, body.detail))
@@ -107,10 +96,8 @@ describe('LateDriverEvidencePanel', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Acknowledge' }))
     fireEvent.change(screen.getByLabelText('Review note'), { target: { value: 'Photo matches.' } })
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Record review' }))
 
-    // Assert
     expect(await screen.findByRole('alert')).toHaveTextContent('Another dispatcher already reviewed this.')
     await waitFor(() => expect(listLateEvidence).toHaveBeenCalledTimes(2))
   })
@@ -136,18 +123,15 @@ it('new_receipt_appears_after_event_or_refocus', async () => {
 })
 
 it('keeps a half-typed review note when the window regains focus or becomes visible', async () => {
-  // Arrange
   vi.mocked(listLateEvidence).mockResolvedValue([item])
   renderPanel()
   await userEvent.click(await screen.findByRole('button', { name: 'Acknowledge' }))
   fireEvent.change(screen.getByLabelText('Review note'), { target: { value: 'Half-typed note' } })
 
-  // Act
   fireEvent(window, new Event('focus'))
   fireEvent(document, new Event('visibilitychange'))
   await waitFor(() => expect(listLateEvidence).toHaveBeenCalledTimes(2))
 
-  // Assert
   expect(screen.getByLabelText('Review note')).toHaveValue('Half-typed note')
   expect(screen.getByRole('heading', { name: 'Late driver evidence' })).toBeInTheDocument()
 })

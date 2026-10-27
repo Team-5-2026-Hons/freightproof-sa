@@ -6,12 +6,8 @@ import { Modal } from '@/components/ui/Modal'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
-// Retry reads as a link next to the sentence that says what failed, not as an unstyled button
-// at body size. One string, because both failure states below offer it.
 const RETRY_CLASS = 'ml-2 min-h-11 text-meta font-semibold text-sec underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec disabled:opacity-50'
 const ACTION_CLASS = 'shrink-0 inline-flex items-center rounded px-[6px] py-[2px] text-[9px] font-[600] bg-surf-high text-on-surf-v border border-outline-v/30 hover:bg-outline-v/20 transition-colors'
-// Browsers render a PDF natively in a frame, so it can be read in place; any other file type
-// (the receiver's signed attestation) can only be opened in a new tab.
 const PDF_MIME = 'application/pdf'
 
 interface Props {
@@ -62,7 +58,6 @@ export function EvidenceDocument({ label, artifact, artifactId, loading = false,
       </div>
       {artifact.signed_url && artifact.mime_type === PDF_MIME && (
         <Modal open={viewing} onClose={() => setViewing(false)} title={label} size="xl">
-          {/* Mounted only while open so a closed modal never fetches the PDF behind the panel. */}
           {viewing && <iframe src={artifact.signed_url} title={label} className="w-full h-[75dvh] rounded-md border border-outline-v/30" />}
         </Modal>
       )}

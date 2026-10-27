@@ -4,15 +4,12 @@ import { POPOVER_ANCHOR_END } from '@/components/ui/popoverAnchor'
 import { TRIP_HELP, type TripHelpEntry, type TripHelpTopic } from './trip-help-copy'
 import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
 
-// A long panel scrolls inside itself instead of running off the bottom of the screen.
 const SCROLLING_PANEL = '[&_[role=region]]:overflow-y-auto'
 const DEFAULT_MAX_HEIGHT = '[&_[role=region]]:max-h-[70vh]'
 
 interface Props {
   topic: TripHelpTopic
-  /** Placement of the icon, for a caller whose row cannot simply be `relative` (e.g. an icon lifted into padding). */
   className?: string
-  /** Replaces the default height cap with a full `[&_[role=region]]:max-h-[…]` class, for a panel that opens inside a smaller scroll area. */
   maxHeight?: string
 }
 

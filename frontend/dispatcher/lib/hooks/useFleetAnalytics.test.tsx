@@ -100,7 +100,6 @@ describe('useFleetQuery', () => {
 
     act(() => result.current.refetchSilent())
 
-    // The whole point: the previous answer stays and nothing reports itself as busy.
     expect(result.current.data).toEqual({ value: 1 })
     expect(result.current.isRefreshing).toBe(false)
     expect(result.current.isLoading).toBe(false)

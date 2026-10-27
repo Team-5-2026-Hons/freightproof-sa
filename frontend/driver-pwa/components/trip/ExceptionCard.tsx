@@ -36,7 +36,6 @@ export function ExceptionCard({ exception }: ExceptionCardProps) {
         <Icon className={cn('size-5', note ? 'text-surface-on' : 'text-attention')} strokeWidth={1.9} />
       </span>
       <span className="min-w-0 flex-1 pt-0.5">
-        {/* capitalize only for the snake_case type names; the note's title is already cased. */}
         <span className={cn('block text-headline', !note && 'capitalize')}>{title}</span>
         <span className={cn('block text-subhead', note ? 'text-surface-on-variant' : 'text-attention-ink', !expanded && 'line-clamp-1')}>
           {exception.description}

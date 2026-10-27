@@ -44,15 +44,9 @@ export const NO_OVERRIDES: ScheduleOverrides = { departure: null, arrival: null 
 export const NO_PICKS: RoutePicks = { originId: '', destinationId: '' }
 export const NO_TIMES: TimeInputs = { departure: '', arrival: '' }
 
-// Mirrors the backend's MINIMUM_TRIP_DURATION (core/constants.py). The create endpoints
-// refuse a shorter declared trip, so the form says so under the field instead of after a
-// round trip.
 const MINIMUM_TRIP_MINUTES = 15
 const MS_PER_MINUTE = 60_000
 
-// A positive whole number of at most nine significant digits, which keeps every value
-// inside a Postgres integer (trips.pp_manifest_number). Leading zeros are allowed: a printed
-// manifest may pad its number, and 081 is manifest 81.
 const MANIFEST_NUMBER = /^0*[1-9]\d{0,8}$/
 
 /** The typed manifest number, or null when the input is not one. */
@@ -61,8 +55,6 @@ export function parseManifestNumber(input: string): number | null {
   return MANIFEST_NUMBER.test(trimmed) ? Number(trimmed) : null
 }
 
-// Numeric fields and h23 so the parts can be joined without any locale wording, and midnight
-// reads "00", not "24".
 const SAST_INPUT_FORMAT = new Intl.DateTimeFormat('en-GB', {
   timeZone: OPERATIONS_TIMEZONE,
   year: 'numeric',
@@ -123,18 +115,12 @@ export function validateCrew(crew: CrewValues, trailersValid: boolean): FieldErr
 /** shown: what the fields display. source: what the manifest supplies ('' for none). */
 export function validateSchedule(shown: TimeInputs, source: TimeInputs): FieldErrors {
   const errors: FieldErrors = {}
-  // A trip with no planned departure can never be activated (spec §10.2 step 3).
   if (!shown.departure) errors.departure = 'Enter a planned departure.'
   if (!shown.arrival && source.arrival) {
-    // A null override means "keep the manifest's", so an emptied field would still lock
-    // the manifest's arrival. Refuse rather than show one thing and lock another.
     errors.arrival = 'The manifest sets an expected arrival, so it cannot be removed. Change it, or use the manifest time.'
   } else if (!shown.arrival) {
-    // Required (FP-139): without an end time, nobody can say when the crew is free again.
     errors.arrival = 'Enter a planned arrival.'
   } else if (shown.departure) {
-    // Both go through the same SAST reading as the payload, so the check judges the instants that
-    // will actually be sent.
     const minutes = (
       new Date(sastInputToIso(shown.arrival)).getTime() - new Date(sastInputToIso(shown.departure)).getTime()
     ) / MS_PER_MINUTE
@@ -156,7 +142,6 @@ export function validateManifestRoute(preview: PPManifestPreview, picks: RoutePi
   const origin = gaps.origin ? picks.originId : preview.origin.precinct_id
   const destination = gaps.destination ? picks.destinationId : preview.destination.precinct_id
   if (origin && origin === destination) {
-    // Blame the end the dispatcher chose: the manifest's own end is not theirs to change.
     errors[gaps.destination ? 'destination' : 'origin'] = 'Origin and destination must be different precincts.'
   }
   return errors
@@ -195,7 +180,6 @@ export function buildFromManifestPayload(
     trailer_ids: crew.trailerIds,
     planned_departure_at: overrideToIso(overrides.departure, source.departure),
     planned_arrival_at: overrideToIso(overrides.arrival, source.arrival),
-    // A pick for a linked hub is ignored by the server, so it is not sent at all.
     origin_precinct_id: gaps.origin ? picks.originId : null,
     destination_precinct_id: gaps.destination ? picks.destinationId : null,
   }

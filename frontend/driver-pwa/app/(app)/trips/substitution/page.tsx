@@ -7,7 +7,6 @@ import { Suspense } from 'react'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import SubstitutionPageClient from './SubstitutionPageClient'
 
-// useSearchParams() requires Suspense for the output: 'export' build.
 export default function SubstitutionPage() {
   return (
     <Suspense fallback={<LoadingScreen label="Loading handover" />}>

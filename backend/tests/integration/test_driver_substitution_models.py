@@ -84,7 +84,6 @@ async def _chain(db: AsyncSession, world: World, drivers: list[uuid.UUID]) -> li
         row = _completed(
             world, sequence=index, outgoing=drivers[index - 1], incoming=drivers[index],
             previous=rows[-1].id if rows else None, request_id=request.id,
-            # Identical instants: only sequence_number can order these.
             at=_NOW,
         )
         db.add(row)
@@ -103,8 +102,6 @@ async def _violates(db: AsyncSession, *objects: Any) -> str:
         return str(error)
     raise AssertionError("the database accepted a row it must reject")
 
-
-# ── custody derivation against the database ──────────────────────────────────
 
 
 async def test_no_amendments_resolve_the_original_driver(db_session: AsyncSession) -> None:
@@ -157,7 +154,7 @@ async def test_sql_helpers_agree_with_the_pure_derivation_on_a_returning_driver(
     assert from_db == pure
     assert (pure.driver_id, pure.sequence, pure.substitution_id) == (world.driver_id, 3, rows[2].id)
     assert expression == pure.driver_id
-    assert world.trip.driver_id == world.driver_id  # the original lock never moved
+    assert world.trip.driver_id == world.driver_id
 
 
 async def test_current_driver_expression_is_scoped_per_trip(db_session: AsyncSession) -> None:
@@ -199,7 +196,6 @@ async def test_a_broken_stored_chain_raises_instead_of_resolving(db_session: Asy
     request = _request(world, stranger.id, c.id, state="completed")
     db_session.add(request)
     await db_session.flush()
-    # Link 2's outgoing driver is not link 1's incoming driver.
     db_session.add(_completed(
         world, sequence=2, outgoing=stranger.id, incoming=c.id, previous=rows[0].id, request_id=request.id,
     ))
@@ -208,8 +204,6 @@ async def test_a_broken_stored_chain_raises_instead_of_resolving(db_session: Asy
     with pytest.raises(CustodyChainError, match="outgoing"):
         await get_current_custody(db_session, trip=world.trip)
 
-
-# ── constraints ──────────────────────────────────────────────────────────────
 
 
 async def test_only_one_pending_request_per_trip(db_session: AsyncSession) -> None:
@@ -255,7 +249,6 @@ async def test_sequence_number_is_positive_and_unique_per_trip(db_session: Async
     await db_session.flush()
 
     duplicate = _completed(world, sequence=1, outgoing=b.id, incoming=c.id, previous=None, request_id=request.id)
-    # A non-null previous link keeps ck_..._previous_link satisfied so only positivity is tested.
     zero = _completed(world, sequence=0, outgoing=b.id, incoming=c.id, previous=first.id, request_id=request.id)
 
     assert "uq_driver_substitutions_trip_sequence" in await _violates(db_session, duplicate)
@@ -490,8 +483,6 @@ async def test_a_correction_cannot_claim_an_anchor_without_a_receipt(db_session:
 
     assert "ck_dsub_corrections_anchored_has_receipt" in await _violates(db_session, correction)
 
-
-# ── new actor columns on existing tables ─────────────────────────────────────
 
 
 async def test_phase_events_and_exceptions_carry_nullable_actor_and_sequence(db_session: AsyncSession) -> None:

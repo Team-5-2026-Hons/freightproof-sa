@@ -68,7 +68,6 @@ from tests.conftest import FakeMockStateStore
 
 _OUTBOX_KEY = "realtime_outbox"
 
-# The full single-leg plan, in sequence order — mirrors what create_trip writes.
 _PLAN = [
     ("trip_creation", PhaseType.TRIP_CREATION, 0, None),
     ("activation", PhaseType.ACTIVATION, 1, 0),
@@ -143,7 +142,6 @@ def _outbox(db_session) -> list:
 
 async def test_finishing_a_non_final_phase_enqueues_phase_completed(db_session):
     trip, _driver, phases = await _seed_trip(db_session)
-    # Activation done, everything after it still pending → the trip stays open.
     phases["activation"].status = PhaseStatus.COMPLETED
     await db_session.flush()
 
@@ -162,7 +160,6 @@ async def test_finishing_a_non_final_phase_enqueues_phase_completed(db_session):
 
 async def test_finishing_the_last_phase_enqueues_trip_closed(db_session):
     trip, _driver, phases = await _seed_trip(db_session)
-    # Every phase resolved → recompute_position closes the trip, so the ping is trip_closed.
     for phase in phases.values():
         phase.status = PhaseStatus.COMPLETED
     await db_session.flush()
@@ -171,7 +168,7 @@ async def test_finishing_the_last_phase_enqueues_trip_closed(db_session):
         db_session, trip=trip, event=phases["confirmation"], idempotency_key=str(uuid.uuid4()),
     )
 
-    assert trip.status == TripStatus.CLOSED  # guards the branch's precondition
+    assert trip.status == TripStatus.CLOSED
     outbox = _outbox(db_session)
     assert len(outbox) == 1
     org_id, event = outbox[0]
@@ -263,9 +260,6 @@ async def test_phase_override_enqueues_exception_raised_and_phase_completed(
     db_session: AsyncSession,
 ) -> None:
     trip, _driver, phases = await _seed_trip(db_session, suffix="override")
-    # dispatcher_override_user_id is a real FK to users — a bare uuid4() would
-    # violate it, unlike operator_organization_id/driver_id above which are read
-    # straight off the already-seeded trip/phase rows.
     dispatcher = User(
         id=uuid.uuid4(), organization_id=trip.operator_organization_id,
         email="override-dispatcher@test.co.za", full_name="Override Dispatcher",
@@ -349,26 +343,6 @@ async def test_first_exception_review_enqueues_exception_reviewed_at_info(
     assert event.kind == RealtimeKind.EXCEPTION_REVIEWED
     assert event.severity == EventSeverity.INFO
 
-
-# ── FP-147: system-detected exceptions ───────────────────────────────────────
-#
-# Site inventory (grep "TripException(" app/orchestration/ — note that scan_service
-# assigns before adding, so a "db.add(TripException(" grep misses it):
-#
-#   phases         advance_departure     departure seal mismatch    CRITICAL
-#   phases         advance_arrival       seal continuity            WARNING|CRITICAL
-#   phases         advance_arrival       destination seal mismatch  CRITICAL
-#   phases         advance_confirmation  waybill count mismatch     WARNING
-#   phases         advance_loading       scan shortfall backstop    WARNING
-#   scan_service   ingest_scans          scan discrepancy           WARNING
-#
-# advance_departure's site has no test here, and deliberately. Both of its entry
-# conditions are dead from any current client: the driver app sends neither
-# seal_number_confirmed nor guard_verified_seal (driver-pwa/lib/api/phases.ts:50),
-# the guard re-entry step having been removed on 2026-08-05. The fields survive only
-# so an offline-queued departure from an older build can replay instead of 422-ing
-# forever. Contorting a test to drive a path no client can reach would test the
-# contortion, not the behaviour.
 
 
 async def _make_artifact(db_session, trip_id) -> uuid.UUID:
@@ -466,15 +440,12 @@ async def test_destination_seal_mismatch_enqueues_critical_severity(db_session):
 
     await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="ZZ-9999")
 
-    assert phases["arrival"].status == PhaseStatus.EXCEPTION  # the branch really ran
+    assert phases["arrival"].status == PhaseStatus.EXCEPTION
     outbox = _outbox(db_session)
     org_id, event = outbox[0]
     assert org_id == trip.operator_organization_id
     assert event.id == trip.id
     assert event.severity == EventSeverity.CRITICAL
-    # _finish_phase's own PHASE_COMPLETED rides along. Accepted and asserted rather
-    # than suppressed: hiding a completion to keep the outbox tidy would be a lie
-    # about what the trip did. It rides as INFO — progress, not an alarm.
     assert _kinds(db_session) == [RealtimeKind.EXCEPTION_RAISED, RealtimeKind.PHASE_COMPLETED]
     assert _severities(db_session) == [EventSeverity.CRITICAL, EventSeverity.INFO]
 
@@ -524,13 +495,11 @@ async def test_matching_seals_enqueue_no_exception_event(db_session):
     trip, driver, phases = await _seed_trip(db_session, suffix="seal-match")
     await _ready_for_arrival(db_session, phases, departure_seal="AB-1234")
 
-    await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="ab-1234")  # case-normalised
+    await _inspect_seal(db_session, trip, driver, phases, seal_at_arrival="ab-1234")
 
     assert phases["arrival"].status == PhaseStatus.COMPLETED
     assert _kinds(db_session) == [RealtimeKind.PHASE_COMPLETED]
 
-
-# ── Sites that need a manifest: the scan-backed three ─────────────────────────
 
 
 @pytest.fixture
@@ -609,7 +578,7 @@ async def test_scan_discrepancy_at_ingest_enqueues_exception_raised(db_session, 
     await feed.stage_scans(
         consignment_reference=consignment.parcel_perfect_reference,
         stop_reference=str(stop.id), direction=ScanDirection.OUT,
-        barcodes=_BARCODES[:2],  # one parcel never scanned
+        barcodes=_BARCODES[:2],
     )
 
     await ingest_scans(
@@ -619,8 +588,6 @@ async def test_scan_discrepancy_at_ingest_enqueues_exception_raised(db_session, 
     org_id, event = _outbox(db_session)[0]
     assert org_id == trip.operator_organization_id
     assert event.id == trip.id
-    # WARNING, not CRITICAL: a short scan is a discrepancy to work through, not a
-    # tamper signal, and must not compete with one for the dispatcher's attention.
     assert _kinds(db_session) == [RealtimeKind.EXCEPTION_RAISED]
     assert _severities(db_session) == [EventSeverity.WARNING]
 
@@ -645,7 +612,7 @@ async def test_repeat_ingest_of_an_unchanged_feed_enqueues_nothing(db_session, s
     await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
-    db_session.info.pop(_OUTBOX_KEY, None)  # drain, as after_commit would
+    db_session.info.pop(_OUTBOX_KEY, None)
 
     await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
@@ -667,11 +634,10 @@ async def test_loading_shortfall_backstop_enqueues_exception_raised(db_session, 
     await db_session.flush()
 
     feed = MockScanFeed()
-    # Nothing staged, then closed: the warehouse said "done" having scanned zero.
     await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
-    assert _kinds(db_session) == []  # scan_service really did stay silent
+    assert _kinds(db_session) == []
     await _close_session(feed, consignment, stop, ScanDirection.OUT)
 
     await advance_loading(
@@ -700,9 +666,6 @@ async def test_waybill_count_change_in_transit_enqueues_exception_raised(db_sess
     )).scalar_one()
     consignment = await _seed_manifest(db_session, trip, dest_stop, reference="WAY-EMIT-004")
 
-    # Stamped directly rather than driven through two ingests: this site compares
-    # scanned_out against scanned_in, and the counts are what it reads. Three left
-    # the origin, two arrived.
     parcels = list((await db_session.execute(
         select(Parcel).where(Parcel.consignment_id == consignment.id).order_by(Parcel.barcode)
     )).scalars().all())
@@ -734,13 +697,9 @@ async def test_waybill_count_change_in_transit_enqueues_exception_raised(db_sess
         select(TripException).where(TripException.trip_id == trip.id)
     )).scalars().all()
     assert [e.exception_type for e in raised] == [ExceptionType.WAYBILL_COUNT_MISMATCH]
-    # TRIP_CLOSED, not PHASE_COMPLETED: confirmation is the last phase in the plan, so
-    # _finish_phase closes the trip. The discrepancy still gets its own event first.
     assert _kinds(db_session) == [RealtimeKind.EXCEPTION_RAISED, RealtimeKind.TRIP_CLOSED]
     assert _severities(db_session) == [EventSeverity.WARNING, EventSeverity.INFO]
 
-
-# ── The tripwire ─────────────────────────────────────────────────────────────
 
 
 def test_every_trip_exception_write_site_is_accounted_for():
@@ -766,8 +725,6 @@ def test_every_trip_exception_write_site_is_accounted_for():
     actual = {
         path.relative_to(root).as_posix(): len(constructor.findall(path.read_text()))
         for path in sorted((root / "app").rglob("*.py"))
-        # The model's own `class TripException(Base):` matches the pattern; it is the
-        # definition, not a write.
         if "app/db/models/" not in path.as_posix()
     }
     actual = {path: count for path, count in actual.items() if count}
@@ -791,10 +748,6 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "realtime event and route its review state through review_policy."
     )
 
-    # FP-280: every site decides its review state through review_policy — either the
-    # inbox (initial_review_status) or, for a dispatcher's own note, author-reviewed
-    # (dispatcher_authored_review). A site that hard-codes a status, or relies on the
-    # column default, is one the next policy change breaks silently.
     routing = re.compile(r"review_status=initial_review_status\(|\*\*dispatcher_authored_review\(")
     routed = {path: len(routing.findall((root / path).read_text())) for path in expected_sites}
     assert routed == expected_sites, (
@@ -802,11 +755,6 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "review_policy (initial_review_status or dispatcher_authored_review)."
     )
 
-
-# ── C0R: outbox ownership across SAVEPOINT boundaries ─────────────────────────
-# Real SQLAlchemy transaction callbacks on a throwaway in-memory SQLite Session; only the
-# publisher (_schedule_publish) is replaced. The PostgreSQL equivalents, through the
-# async session the app uses, are in tests/integration/test_realtime_transactions.py.
 
 
 @pytest.fixture
@@ -826,7 +774,7 @@ def hooked_session():
 
     engine = create_engine("sqlite://")
     with Session(engine) as session:
-        session.execute(text("SELECT 1"))  # autobegin so begin_nested() has a parent transaction
+        session.execute(text("SELECT 1"))
         yield session
     engine.dispose()
 

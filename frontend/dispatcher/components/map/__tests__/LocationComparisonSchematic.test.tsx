@@ -90,7 +90,6 @@ describe('LocationComparisonSchematic', () => {
     const scaleLabel = screen.getByTestId('schematic-scale-label').textContent
     expect(scaleLabel).toMatch(/^\d+(\.\d+)? m$/)
     const scaleMetres = Number(scaleLabel?.replace(' m', ''))
-    // "Nice" means a 1/2/5 * power-of-ten step, per niceScaleMetres: never zero here.
     expect(scaleMetres).toBeGreaterThan(0)
   })
 
@@ -116,11 +115,8 @@ describe('LocationComparisonSchematic', () => {
     const evidence = makeEvidence({ separationMetres: null })
     const { container } = render(<LocationComparisonSchematic evidence={evidence} />)
 
-    // The line between two present, non-coincident fixes may still be drawn...
     const line = screen.getByTestId('separation-line')
     expect(line).toBeInTheDocument()
-    // ...but no distance text is fabricated: the line's group has no accompanying <text>,
-    // and "0 m" (the fallback this finding caught) never appears anywhere in the markup.
     expect(line.parentElement?.querySelector('text')).not.toBeInTheDocument()
     expect(screen.queryByText('0 m')).not.toBeInTheDocument()
     expect(container.innerHTML).not.toContain('>0 m<')
@@ -137,13 +133,7 @@ describe('LocationComparisonSchematic', () => {
     expect(svg.getAttribute('aria-label')).toMatch(/Horse tracker/)
   })
 
-  // Labels used to sit directly under/over their marker regardless of where the other
-  // fix was, so a mostly-horizontal separation put both labels on a collision course
-  // with the dashed line running between them. Steering each label away from the OTHER
-  // marker means its text-anchor has to flip depending on which side "away" is.
   it('flips each label\'s text-anchor to the side away from the other marker', () => {
-    // Driver west of tracker, same latitude: a purely horizontal separation, so the
-    // "away from the other marker" direction is unambiguously along x.
     const evidence = makeEvidence({
       driverFix: {
         source: 'driver_phone',
@@ -166,10 +156,7 @@ describe('LocationComparisonSchematic', () => {
     const driverLabel = screen.getByText('Driver phone')
     const trackerLabel = screen.getByText('Horse tracker')
 
-    // Driver sits west of tracker, so "away from tracker" points further west: the label
-    // text should extend leftwards from its anchor point, i.e. anchor="end".
     expect(driverLabel.getAttribute('text-anchor')).toBe('end')
-    // Tracker sits east of driver: label extends rightwards, i.e. anchor="start".
     expect(trackerLabel.getAttribute('text-anchor')).toBe('start')
   })
 
@@ -198,11 +185,6 @@ describe('LocationComparisonSchematic', () => {
   })
 
   it('keeps the boundary caption\'s x position within the viewBox even near the frame edge', () => {
-    // Boundary offset east of both fixes (which share a longitude), so ITS centre (not
-    // either fix) becomes the extent's eastmost point and lands near the viewBox's
-    // right edge once everything is fitted to frame. This used to anchor the caption
-    // straight over the (unclamped) circle centre, running the estimated text box past
-    // the viewBox edge.
     const evidence = makeEvidence({
       boundary: {
         coords: { lat: -33.9255, lng: 18.4341 },
@@ -216,13 +198,10 @@ describe('LocationComparisonSchematic', () => {
     const caption = screen.getByText('Current precinct boundary (reference only)')
     const x = Number(caption.getAttribute('x'))
     expect(x).toBeGreaterThanOrEqual(0)
-    expect(x).toBeLessThanOrEqual(320) // VIEWBOX_WIDTH
+    expect(x).toBeLessThanOrEqual(320)
   })
 
   it('draws the boundary circle without a caption when the circle is too small to read', () => {
-    // A boundary far smaller than the extent needed to fit both fixes (300 km apart)
-    // scales down to a sub-6px circle: too small for its own label without the text
-    // swallowing the circle.
     const evidence = makeEvidence({
       trackerFix: {
         source: 'horse_tracker',
@@ -245,10 +224,6 @@ describe('LocationComparisonSchematic', () => {
     expect(screen.queryByText('Current precinct boundary (reference only)')).not.toBeInTheDocument()
   })
   it(`leaves out a boundary farther than ${BOUNDARY_NEARBY_METRES} m from every fix, so the fixes stay readable`, () => {
-    // The brief's case with tiles down: fixes ~120 m apart, precinct ~1,400 km away. Had
-    // the far boundary been fitted, both fixes would land on the same pixel and the
-    // separation line would vanish (the coincident branch), so the fallback would show
-    // less than the live map's default frame, which excludes exactly this boundary.
     const evidence = makeEvidence({
       boundary: {
         coords: { lat: DRIVER_COORDS.lat + 12.6, lng: DRIVER_COORDS.lng },

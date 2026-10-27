@@ -16,7 +16,6 @@ interface TrackerButton {
   body: RigScenarioRequest
 }
 
-// Stages at which the truck is at a stop, so "at / 3 km from the stop" make sense.
 const AT_STOP_KINDS: readonly DemoStageKind[] = ['before_departure', 'arrived', 'unloading', 'confirming']
 
 /** The simulated trackers for this moment of the trip. Each press stages the whole rig
@@ -38,7 +37,6 @@ export function TrackerActions({ tripId, stage, vehicles, busy, onScenario, onCh
     }))
     buttons.push(...silentHorse)
     if (stage.nextStop) {
-      // So the driver's arrival on the phone passes its location check.
       buttons.push({
         label: `Truck reaches ${stage.nextStop.precinct_name}`,
         body: { trip_id: tripId, scenario: 'at_stop', trip_stop_id: stage.nextStop.trip_stop_id },

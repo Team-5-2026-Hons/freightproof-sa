@@ -21,7 +21,6 @@ export interface TripPanelChange {
  */
 export function buildTripPanelQuery(current: string, change: TripPanelChange): string {
   const query = new URLSearchParams(current)
-  // Keep the old value readable on arrival, but never propagate it into new navigation.
   const panel = change.panel === LEGACY_AUDIT_PANEL ? TRIP_PANELS.information : change.panel
   if (panel) query.set('panel', panel)
   else query.delete('panel')

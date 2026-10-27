@@ -22,13 +22,8 @@ const THEME_OPTIONS: Record<ThemePreference, ThemeOption> = {
   dark:   { label: 'Dark' },
 }
 
-// Radio group name — one control per screen, but the attribute is what makes the three
-// inputs a single arrow-key-navigable group rather than three unrelated radios.
 const THEME_RADIO_NAME = 'theme-preference'
 
-// localStorage isn't readable during the static export's server render;
-// useSyncExternalStore hydrates against the server snapshot and re-syncs to the stored
-// value without a setState-in-effect (same pattern as the tap-to-confirm toggle).
 function useThemePref(): ThemePreference {
   return useSyncExternalStore(subscribeThemePref, getThemePref, () => DEFAULT_THEME_PREFERENCE)
 }
@@ -62,9 +57,6 @@ export function ThemeSelect() {
                 onChange={() => setThemePref(pref)}
                 className="peer sr-only"
               />
-              {/* The preview. Literal light/dark faces, not tokens: it shows what each
-                  choice LOOKS like, so it must not itself change with the current theme.
-                  peer-focus-visible because the input is sr-only. */}
               <span
                 aria-hidden
                 className={cn(

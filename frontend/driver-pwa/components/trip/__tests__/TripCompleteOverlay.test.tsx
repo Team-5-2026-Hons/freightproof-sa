@@ -73,8 +73,6 @@ describe('TripCompleteOverlay', () => {
     expect(screen.getByText(/Closing in 7s/)).toBeInTheDocument()
   })
 
-  // A phase whose receipt has not landed must not be dressed up as anchored: the trip is
-  // complete, the evidence chain is still catching up, and the screen says so.
   it('still shows a pending anchor as anchoring, not as done', () => {
     renderWith({
       ...COMPLETED,

@@ -11,7 +11,6 @@ export interface TripListView {
 
 const DEFAULT_TAB: TripTab = 'all'
 
-// A hand-edited or outdated link must land on a working list, not an empty one.
 function parseTab(value: string | null): TripTab {
   return TRIP_TABS.find(tab => tab === value) ?? DEFAULT_TAB
 }

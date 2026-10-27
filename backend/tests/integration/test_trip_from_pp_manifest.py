@@ -54,7 +54,7 @@ def pp_mock(monkeypatch: MonkeyPatch) -> FakeMockStateStore:
 async def _verify(db_session: AsyncSession, trip_id: uuid.UUID) -> VerifyStatus:
     mirror = MagicMock()
     mirror.verify_hash.return_value = True
-    db_session.expire_all()  # read back from Postgres (Review Focus 1)
+    db_session.expire_all()
     outcome = await verify_subject(
         db_session, subject_type=SubjectType.TRIP, subject_id=trip_id, hedera_service=mirror,
     )
@@ -108,7 +108,7 @@ async def test_created_trip_verifies_and_an_edited_snapshot_does_not(client: Asy
     ))).scalar_one()
     assert h0.parcel_manifest_snapshot is not None
     edited = dict(h0.parcel_manifest_snapshot)
-    edited["waybills"] = edited["waybills"][1:]  # quietly drop a waybill
+    edited["waybills"] = edited["waybills"][1:]
     h0.parcel_manifest_snapshot = edited
     await db_session.flush()
 
@@ -197,7 +197,7 @@ async def test_naive_datetime_is_rejected(client: AsyncClient, db_session: Async
 @pytest.mark.parametrize(("number", "code"), [
     (70, "WAYBILL_CLIENT_MISMATCH"),
     (MANIFEST_NO_WAYBILLS, "NO_WAYBILLS"),
-    (69, "PRECINCT_REQUIRED"),               # DUR unlinked and no precinct chosen
+    (69, "PRECINCT_REQUIRED"),
     (MANIFEST_OPEN_NO_TIMES, "NO_PLANNED_DEPARTURE"),
 ])
 async def test_unusable_manifest_is_422(client: AsyncClient, db_session: AsyncSession, number: int, code: str) -> None:

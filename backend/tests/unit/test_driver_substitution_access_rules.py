@@ -32,7 +32,6 @@ def test_matching_sequence_is_accepted():
 
 @pytest.mark.parametrize(("current", "claimed"), [(2, 0), (1, 0), (0, 1)])
 def test_a_different_sequence_is_a_changed_context(current: int, claimed: int):
-    # (2, 0) is A -> B -> A: A is current again, but the capture belongs to A's first period.
     assert isinstance(check_custody_sequence(_custody(current), claimed), CustodyContextChangedError)
 
 
@@ -44,7 +43,6 @@ def test_reservation_runs_from_the_exchange_to_the_planned_end():
 
 @pytest.mark.parametrize("planned_end", [None, _BASE + _HOUR, _BASE + 4 * _HOUR])
 def test_reservation_with_no_usable_end_stays_open(planned_end: datetime | None):
-    # None: no promised end. 1h: the trip has already overrun it. 4h: it does not follow the exchange.
     window = reservation_window(expected_at=_BASE + 4 * _HOUR, planned_end=planned_end, now=_BASE + 2 * _HOUR)
 
     assert window == (_BASE + 4 * _HOUR, None)

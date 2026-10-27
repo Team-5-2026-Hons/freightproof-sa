@@ -23,11 +23,9 @@ async def get_waybill_summary(waybill_number: str) -> PPWaybillSummary:
     try:
         waybill = await get_pp_client().get_single_waybill(waybill_number)
     except PPWaybillNotFoundError as exc:
-        # The endpoint sits above this layer and must not import the integration's types.
         raise WaybillNotFoundError(exc.waybill_number) from exc
     return _to_summary(waybill)
 
 
 def get_capabilities() -> PPCapabilities:
-    # Deliberately sync — reads a class attribute off the client, no I/O involved.
     return PPCapabilities(manifest_lookup=get_pp_client().supports_manifest_lookup)

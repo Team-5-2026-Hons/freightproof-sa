@@ -2,7 +2,6 @@ import { Button } from '@/components/ui/Button'
 import { fmtTime } from '@shared/lib/utils/datetime'
 
 interface Props {
-  /** When the rows still on screen were last read successfully. */
   loadedAt: Date
   onRetry: () => void
 }

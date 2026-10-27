@@ -60,7 +60,6 @@ async def lock_incident(db: AsyncSession, *, incident_id: uuid.UUID, organizatio
         .join(Trip, Trip.id == Incident.trip_id)
         .where(Incident.id == incident_id, Trip.operator_organization_id == organization_id)
         .with_for_update(of=Incident)
-        # Re-read under the lock even if this session already holds the row.
         .execution_options(populate_existing=True)
     )).tuples().one_or_none()
     if row is None:

@@ -14,22 +14,12 @@ import { DEFAULT_COUNTRY_CODE, type CountryCode } from '@/lib/constants/country-
 import { groupNationalNumber } from '@/lib/utils/format-phone'
 
 
-// Supabase's error message when shouldCreateUser: false blocks an unregistered
-// phone number — matched case-insensitively to surface a driver-friendly message.
 const UNREGISTERED_PHONE_ERROR_FRAGMENT = 'signups not allowed'
 
-// Loose E.164 check on the combined number: + then 7-15 digits.
 const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/
 
-// The number field's flex-basis. It is what decides whether the field still fits beside the
-// country selector: 9rem is ~10 digits plus the field's padding at body size. rem, not px,
-// so it grows with Dynamic Type exactly as the selector does. At accessibility text sizes
-// the pair no longer fit side by side, the row wraps, and the field takes a full-width line
-// of its own instead of being squeezed to a single digit.
 const NUMBER_FIELD_BASIS = 'basis-36'
 
-// Drivers type the national format with a leading trunk '0' (e.g. 0810463076)
-// — strip exactly one so it isn't duplicated alongside the dial code.
 function toE164(dialCode: string, localNumber: string): string {
   return dialCode + localNumber.replace(/^0/, '')
 }
@@ -44,13 +34,9 @@ export default function PhoneLoginPage() {
   const [error, setError] = useState<string | null>(null)
 
   function handleLocalNumberChange(e: React.ChangeEvent<HTMLInputElement>) {
-    // type="tel" doesn't restrict input — strip non-digits as the driver types.
     setLocalNumber(e.target.value.replace(/\D/g, ''))
   }
 
-  // Continue only validates and asks "is this you?" — nothing is sent yet. A WhatsApp
-  // code fired at a mistyped number is a wasted send, a cooldown, and a driver stuck at
-  // the gate; one look at their own number, large, catches the typo first.
   function handleContinue(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -64,8 +50,6 @@ export default function PhoneLoginPage() {
   }
 
   async function handleConfirm() {
-    // The sheet steps aside and the spinner moves into Continue: the screen the driver
-    // returns to says what is happening, rather than a sheet sitting over a busy page.
     setConfirming(false)
     setLoading(true)
 
@@ -94,14 +78,10 @@ export default function PhoneLoginPage() {
 
       <form onSubmit={handleContinue} className="mt-8 flex flex-col gap-4">
         <div className="flex flex-col gap-2">
-          {/* Visually hidden, not removed: the fields are self-evident on sight (flag,
-              dial code, a number-shaped placeholder), but VoiceOver needs the name. */}
           <label htmlFor="phone-local-number" className="sr-only">
             Phone number
           </label>
           <div className="flex flex-wrap gap-2">
-            {/* shrink-0: the selector keeps its own width and the number field is the one
-                that wraps, never the other way round. */}
             <CountryCodeSelect value={country} onChange={setCountry} className="shrink-0" />
             <input
               id="phone-local-number"
@@ -113,8 +93,6 @@ export default function PhoneLoginPage() {
               onChange={handleLocalNumberChange}
               required
               className={[
-                // text-body is 1rem = 16px at default Dynamic Type: at or above the size
-                // below which iOS zooms the page on focus (see components/ui/Input.tsx).
                 'h-14 min-w-0 flex-1 rounded-2xl px-5 text-body tabular-nums text-surface-on',
                 NUMBER_FIELD_BASIS,
                 'bg-surface-container-high',
@@ -131,8 +109,6 @@ export default function PhoneLoginPage() {
           )}
         </div>
 
-        {/* "Continue", not "Send Code": tapping it sends nothing until the number is
-            confirmed. While sending, the label says what is actually happening. */}
         <Button
           type="submit"
           size="lg"

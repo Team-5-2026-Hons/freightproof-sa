@@ -21,8 +21,6 @@ from tests.integration.test_driver_substitution_concurrency import (
     _handover, sessionmaker as committed_sessions, world as committed_world,
 )
 
-# Local aliases keep the committed fixtures available when their defining module
-# has already been collected as a test module in the full suite.
 sessionmaker = committed_sessions
 world = committed_world
 

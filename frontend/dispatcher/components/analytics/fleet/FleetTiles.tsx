@@ -17,9 +17,7 @@ import { cn } from '@shared/lib/utils/cn'
 import { FLEET_COPY } from './copy'
 
 const COPY = FLEET_COPY.tiles
-// Enough registrations to act on without the tile growing taller than its neighbours.
 const MAX_LISTED_REGISTRATIONS = 3
-// Parcels complete and Receipts owed were removed, leaving four.
 const TILE_COUNT = 4
 
 const EXPIRY_BAND_ORDER: readonly (keyof ExpiryBands)[] = [
@@ -30,9 +28,7 @@ interface FleetTileProps {
   label: string
   value?: string
   sub?: ReactNode
-  /** The whole tile becomes one link. Omit when the tile holds its own links. */
   href?: string
-  /** Something to act on: warn colour AND an icon with a text label, never colour alone. */
   warn?: boolean
   className?: string
   children?: ReactNode
@@ -145,11 +141,9 @@ interface FleetTilesProps {
   isLoading: boolean
   error: string | null
   onRetry: () => void
-  /** Injectable so ages are testable; defaults to this moment. */
   now?: Date
 }
 
-// Five columns at xl: three single tiles plus the two-wide licence table, all on one row.
 const GRID = 'grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5'
 
 /** The four headline tiles, with one Source line under the row.

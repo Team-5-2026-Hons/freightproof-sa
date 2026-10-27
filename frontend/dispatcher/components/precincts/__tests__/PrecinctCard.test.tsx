@@ -4,8 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { PrecinctCard } from '../PrecinctCard'
 import type { Precinct, PrecinctId, OrganizationId } from '@shared/lib/types/precinct'
 
-// Branded IDs are string-only at runtime — this cast mirrors the pattern used in
-// frontend/shared/lib/mocks/precincts.ts, not a workaround specific to this test.
 const precinctId = (v: string): PrecinctId => v as unknown as PrecinctId
 const orgId = (v: string): OrganizationId => v as unknown as OrganizationId
 
@@ -40,8 +38,6 @@ describe('PrecinctCard', () => {
   it('shows a Shared chip when the precinct is not owned', () => {
     render(<PrecinctCard precinct={makePrecinct()} isOwned={false} onClick={vi.fn()} />)
 
-    // Exact match distinguishes the chip label ("Shared") from the Sharing
-    // InfoRow's value ("Shared with you"), which also renders in this state.
     expect(screen.getByText('Shared', { exact: true })).toBeInTheDocument()
   })
 

@@ -12,12 +12,9 @@ interface GoogleGeocodeResponse {
 export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
-  // No key set — expected, not a failure worth warning about.
   if (!apiKey) return null
 
   try {
-    // URLSearchParams handles encoding for us — defense-in-depth against malformed
-    // or unexpectedly-charactered coordinates/keys reaching the query string raw.
     const params = new URLSearchParams({ latlng: `${lat},${lng}`, key: apiKey })
     const resp = await fetch(`${GOOGLE_GEOCODE_URL}?${params}`)
 
@@ -35,8 +32,6 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
 
     return data.results[0].formatted_address
   } catch (err) {
-    // Network failure, JSON parse failure, etc. — display-only feature, degrade silently
-    // to the UI but still surface a warning for diagnosis.
     console.warn('reverseGeocode: fetch/parse failed', err)
     return null
   }

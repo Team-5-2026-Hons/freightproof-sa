@@ -19,14 +19,10 @@ vi.mock('@/components/phase/CameraCapture', () => ({
   ),
 }))
 
-// WarehouseWaitCard reads useTrip, which throws outside its provider; only the unblocked
-// branch renders here, so a bare stub is enough.
 vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => ({ refreshQuietly: vi.fn(), isRefreshing: false, lastRefreshedAt: null }),
 }))
 
-// The hook is the seam under test here: what matters is the phase id and role this step
-// hands it, not the upload itself (lib/hooks/__tests__/useArtifactUpload.test.ts).
 const { mockUseArtifactUpload, mockUploadNow } = vi.hoisted(() => ({
   mockUseArtifactUpload: vi.fn(),
   mockUploadNow: vi.fn().mockResolvedValue(null),

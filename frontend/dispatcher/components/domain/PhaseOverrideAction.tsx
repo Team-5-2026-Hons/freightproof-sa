@@ -15,20 +15,12 @@ interface Props {
   phase: PhaseDescriptor
   tripId: string
   tripStatus: Trip['status']
-  // Runs after a successful override; the caller re-syncs the trip and
-  // PhaseOverrideSection picks up the resulting note/user from the refreshed phase.
   onOverridden: () => void
 }
 
-// Mirrors the backend's gate in override_phase (phase_service.py): a completed/
-// exception/overridden row is resolved evidence and must never look rewritable.
 const OVERRIDABLE_STATUSES: readonly PhaseDescriptor['status'][] = ['pending', 'in_progress']
 
-// A terminal trip is not overridable either — mirrors CancelTripAction's TERMINAL_STATUSES.
 const TERMINAL_TRIP_STATUSES: readonly Trip['status'][] = ['closed', 'cancelled']
-
-// Deliberate asymmetry: activation is never overridable from this UI (even though the
-// backend permits it) — the honest action for a trip never activated is to CANCEL it.
 
 /**
  * The dispatcher's entry point for recording that the driver physically could not
@@ -62,7 +54,6 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
       setNote('')
       onOverridden()
     } catch (err) {
-      // 404/409 carry the backend's own accurate reason (str(exc) in trip_admin.py).
       const title =
         err instanceof ApiError && (err.status === 404 || err.status === 409) ? err.message
         : err instanceof ApiError && err.status === 422 ? 'A note is required.'
@@ -99,8 +90,6 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
               </div>
             </div>
 
-            {/* No autoFocus: it runs before Modal's showModal(), so a browser drops it (see
-                CancelTripAction). */}
             <TextArea
               label="Note"
               placeholder="Why couldn't the driver complete this phase?"

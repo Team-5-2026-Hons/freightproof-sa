@@ -62,8 +62,6 @@ def clear_dep_overrides():
     app.dependency_overrides.clear()
 
 
-# ── GET /blockchain/receipts ──────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_receipts_returns_403_for_dispatcher() -> None:
@@ -87,9 +85,6 @@ async def test_receipts_passes_role_check_for_admin() -> None:
     """Admin dispatcher passes the role gate; unknown subject yields 404 from visibility check."""
     app.dependency_overrides[get_current_dispatcher] = lambda: _ADMIN_USER
 
-    # Patch assert_subject_visible where list_receipts_for_subject actually calls it
-    # (anchor_service's own import binding, not the endpoints module's) — avoids needing
-    # a DB and confirms the admin passed the role gate before reaching the visibility check.
     with patch(
         "app.blockchain.anchor_service.assert_subject_visible",
         new_callable=AsyncMock,
@@ -104,11 +99,8 @@ async def test_receipts_passes_role_check_for_admin() -> None:
                 headers={"Authorization": "Bearer dummy"},
             )
 
-    # 404 confirms the admin passed the role check and reached the visibility check
     assert resp.status_code == 404
 
-
-# ── GET /blockchain/receipts/lookup ───────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -279,8 +271,6 @@ async def test_receipt_lookup_returns_422_for_invalid_query(
     assert resp.status_code == 422
     lookup_mock.assert_not_awaited()
 
-
-# ── POST /blockchain/verify ───────────────────────────────────────────────────
 
 
 def _fake_outcome_with_hashes() -> VerifyOutcome:

@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { DivIcon, LayerGroup, Map as LeafletMap, Marker } from 'leaflet'
 
-// A static side-effect import, exactly as GeofenceMap does it: it touches no `window`, and
-// Next inlines it into this component's chunk. Leaflet's JS is loaded dynamically below.
 import 'leaflet/dist/leaflet.css'
 
 import { attachTileFailureTracking } from '@/components/map/GeofenceMap'
@@ -21,22 +19,15 @@ import { FLEET_COPY } from '../copy'
 
 const COPY = FLEET_COPY.routes.incidents
 
-/** Tall enough to read a province, short enough to keep the table twin on screen. */
 export const INCIDENT_MAP_HEIGHT = 360
 const PIN_SIZE_PX = 22
 const FIT_PADDING_PX = 32
 const SINGLE_PIN_ZOOM = 12
-// Close enough to read the streets around a pin chosen from the table.
 const SELECTED_PIN_ZOOM = 15
-// South Africa as a whole, until pins arrive.
 const DEFAULT_CENTER: [number, number] = [-29, 25]
 const DEFAULT_ZOOM = 5
-// MouseEvent.button for an ordinary left-click.
 const PRIMARY_BUTTON = 0
 
-/** Pin styling by severity, on the app's own tokens rather than hex (eslint's no-raw-hex rule,
- *  and one source of truth): warning is the light amber warn-c, critical the err red.
- *  Each carries a glyph, so severity never rests on colour alone. */
 export const PIN_STYLE: Record<ExceptionSeverity, { className: string; glyph: string }> = {
   info: { className: 'bg-surf-high text-on-surf', glyph: 'i' },
   warning: { className: 'bg-warn-c text-warn-onc', glyph: '!' },
@@ -99,7 +90,6 @@ export function pinSignature(pins: readonly IncidentPin[]): string {
 function pinIcon(L: typeof import('leaflet'), severity: ExceptionSeverity): DivIcon {
   const style = PIN_STYLE[severity]
   return L.divIcon({
-    // Empty, to suppress Leaflet's default white .leaflet-div-icon box.
     className: '',
     html:
       `<div style="width:${PIN_SIZE_PX}px;height:${PIN_SIZE_PX}px" ` +
@@ -112,9 +102,7 @@ function pinIcon(L: typeof import('leaflet'), severity: ExceptionSeverity): DivI
 
 interface IncidentMapProps {
   pins: readonly IncidentPin[]
-  /** The pin chosen from the table under the map: the map flies to it and opens its popup. */
   selection?: PinSelection | null
-  /** Where the report's Back button should return to. */
   returnTo?: string
 }
 
@@ -125,7 +113,6 @@ interface IncidentMapProps {
  *  the map (in the card) lists every pin, for keyboard and screen-reader users. */
 export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapProps) {
   const router = useRouter()
-  // Taller inside the zoom modal. The zoomed map is its own Leaflet instance.
   const height = useChartHeight(INCIDENT_MAP_HEIGHT)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<LeafletMap | null>(null)
@@ -142,14 +129,9 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
       try {
         const L = await import('leaflet')
         if (cancelled || containerRef.current === null || mapRef.current !== null) return
-        // Scroll-wheel zoom starts off, so the page scrolls past the map instead of zooming it on
-        // the way by. It switches on once the dispatcher clicks into the map, so they can zoom in
-        // further, and off again when the pointer leaves.
         const map = L.map(containerRef.current, { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, scrollWheelZoom: false })
         map.on('click', () => map.scrollWheelZoom.enable())
         map.on('mouseout', () => map.scrollWheelZoom.disable())
-        // Street, not satellite: this map is for reading where along a route problems cluster.
-        // Its maxZoom (street level) is the map's own limit.
         const tiles = L.tileLayer(TILE_SOURCES.street.url, {
           attribution: TILE_SOURCES.street.attribution, maxZoom: TILE_SOURCES.street.maxZoom,
         }).addTo(map)
@@ -162,7 +144,6 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
         mapRef.current = map
         setReady(true)
       } catch {
-        // Leaflet's chunk unreachable: say so; the table below still lists every pin.
         if (!cancelled) setFailed(true)
       }
     }
@@ -180,9 +161,6 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
     }
   }, [])
 
-  // Read inside the pin effect, which runs on the signature rather than the array: a silent
-  // refetch hands over a new array every time, and depending on it directly would redraw and
-  // refit the map on every live event. Same ref-to-latest pattern as useLiveResource.
   const pinsRef = useRef(pins)
   useEffect(() => { pinsRef.current = pins }, [pins])
 
@@ -223,8 +201,6 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
     return () => { cancelled = true }
   }, [signature, ready, returnTo, router])
 
-  // A row chosen in the table: bring the map into view, fly to that pin and open its popup, as
-  // if it had been clicked on the map itself.
   useEffect(() => {
     const map = mapRef.current
     if (!ready || map === null || selection === null) return
@@ -241,8 +217,6 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
     map.flyTo(target, zoom)
   }, [selection, ready])
 
-  // `isolate` gives Leaflet's panes (z-index 400+) their own stacking context, so they can
-  // never cover the chart cards' "i" popovers.
   return (
     <div className="relative isolate">
       <div ref={containerRef} style={{ height }} className="w-full overflow-hidden rounded-lg" />

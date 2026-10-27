@@ -102,9 +102,6 @@ from app.orchestration.phases import scheduling
 from app.orchestration.trips import creation
 from tests.conftest import auth_header, make_token
 
-# Two callers, released together. Named rather than inlined because both tests
-# depend on the party count matching the number of racing tasks exactly — a
-# mismatch hangs the test rather than failing it.
 _RACERS = 2
 
 
@@ -158,10 +155,6 @@ class _BarrierPPClient:
 
     async def get_single_waybill(self, waybill_number: str) -> PPWaybillResponse:
         await self._barrier.wait()
-        # Serves whatever reference is asked for. The order-number race needs the two
-        # callers to cite DIFFERENT waybills, so that the waybill constraint (FP-138)
-        # cannot be what refuses the loser — otherwise the test would pass without the
-        # order-number guard existing at all.
         return _make_waybill(waybill_number)
 
 
@@ -212,9 +205,6 @@ async def racing_world(test_engine, monkeypatch):
         session.add_all(trips)
         await session.commit()
 
-    # One client over one barrier, shared by both callers. Building it inside the
-    # lambda instead would hand each caller a private barrier of two parties, and
-    # both would wait forever for a partner that never arrives.
     pp_client = _BarrierPPClient(asyncio.Barrier(_RACERS))
     monkeypatch.setattr(
         "app.orchestration.consignments.sync.get_pp_client", lambda: pp_client
@@ -337,8 +327,6 @@ async def test_concurrent_claims_on_unassigned_consignment_yield_one_owner(racin
     )
 
 
-# ── FP-172: the same race through the real endpoint ──────────────────────────
-
 
 @pytest_asyncio.fixture
 async def racing_api_world(test_engine, monkeypatch):
@@ -360,12 +348,6 @@ async def racing_api_world(test_engine, monkeypatch):
     principal = Organization(
         id=uuid.uuid4(), name=f"Client {suffix}", org_type=OrganizationType.PRINCIPAL
     )
-    # Two dispatchers, not one on two tabs. Authentication stamps a UserSession row
-    # per request and sweeps that user's older rows on a new session
-    # (auth/sessions.py), so two concurrent requests from ONE user contend on those
-    # rows: the first holds them while parked at the barrier, the second blocks in
-    # Postgres and can never reach it. Two users removes that entirely — and it is
-    # the scenario the ticket actually describes.
     user = User(
         id=uuid.uuid4(), organization_id=operator.id,
         email=f"api-dispatcher-a-{suffix}@test.co.za", full_name="Dispatcher A", is_active=True,
@@ -374,8 +356,6 @@ async def racing_api_world(test_engine, monkeypatch):
         id=uuid.uuid4(), organization_id=operator.id,
         email=f"api-dispatcher-b-{suffix}@test.co.za", full_name="Dispatcher B", is_active=True,
     )
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
         is_shared=True,
         id=uuid.uuid4(), name=f"Origin {suffix}", principal_organization_id=principal.id,
@@ -399,9 +379,6 @@ async def racing_api_world(test_engine, monkeypatch):
         id=uuid.uuid4(), organization_id=operator.id, vehicle_type=VehicleType.TRAILER,
         registration=f"T{suffix.upper()}", pulsit_device_id=f"PUL-T-{suffix}",
     )
-    # A second, separate crew. A race about a waybill or an order must not also be a race
-    # about one horse (FP-139): the crew lock would then decide it, and a barrier placed after
-    # that lock would hang the test instead of failing it.
     driver_b = Driver(
         id=uuid.uuid4(), organization_id=operator.id, full_name="Driver B",
         id_number=f"80010151{suffix[:5]}", phone_number=f"+2783{suffix[:7]}",
@@ -459,7 +436,6 @@ async def racing_api_world(test_engine, monkeypatch):
             "origin_precinct_id": str(origin.id),
             "destination_precinct_id": str(destination.id),
             "planned_departure_at": datetime.now(UTC).isoformat(),
-            # Arrival is required at creation (FP-139).
             "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
             "consignments": [{"pp_reference": pp_reference, "unit_count_expected": 2}],
         },
@@ -473,7 +449,6 @@ async def racing_api_world(test_engine, monkeypatch):
                 select(Trip.id).where(Trip.operator_organization_id == operator.id)
             )
         ).scalars().all()
-        # Match every waybill owned by this run, including the manifest race.
         consignment_ids = (
             await session.execute(
                 select(Consignment.id).where(
@@ -487,9 +462,6 @@ async def racing_api_world(test_engine, monkeypatch):
             )
             await session.execute(delete(Consignment).where(Consignment.id.in_(consignment_ids)))
         if trip_ids:
-            # Exceptions first: activation can raise one (e.g. a phone/tracker mismatch), and
-            # it points at its phase row. Then PhaseEvent before BlockchainReceipt: phase rows
-            # carry an FK to the receipt that anchored them.
             await session.execute(delete(TripException).where(TripException.trip_id.in_(trip_ids)))
             await session.execute(delete(PhaseEvent).where(PhaseEvent.trip_id.in_(trip_ids)))
             await session.execute(
@@ -501,12 +473,8 @@ async def racing_api_world(test_engine, monkeypatch):
         await session.execute(
             delete(Vehicle).where(Vehicle.id.in_([horse.id, trailer.id, horse_b.id, trailer_b.id]))
         )
-        # A driver who authenticated (the activation race) leaves a DriverSession row behind.
         await session.execute(delete(DriverSession).where(DriverSession.driver_id.in_([driver.id, driver_b.id])))
         await session.execute(delete(Driver).where(Driver.id.in_([driver.id, driver_b.id])))
-        # Authenticating stamps a UserSession row per dispatcher (auth/sessions.py),
-        # and it outlives the request that created it — so it has to go before the
-        # users it points at.
         await session.execute(
             delete(UserSession).where(UserSession.user_id.in_([user.id, user_b.id]))
         )
@@ -552,7 +520,6 @@ async def test_concurrent_trip_creation_anchors_one_journey_lock(
         first, second = await asyncio.gather(
             client.post("/api/v1/trips", json=_payload(f"ORD-{world['pp_reference']}-A"),
                         headers=headers_a),
-            # Its own crew, so the waybill (FP-138) is the only thing the two contend for.
             client.post("/api/v1/trips", json=_payload(f"ORD-{world['pp_reference']}-B", world["crew_b"]),
                         headers=headers_b),
         )
@@ -596,8 +563,6 @@ async def test_concurrent_trip_creation_anchors_one_journey_lock(
             "the ledger now carries contradictory evidence"
         )
 
-
-# ── The manifest race: same PP manifest, two dispatchers, same instant ────────
 
 
 class _ManifestPPClient:
@@ -681,8 +646,6 @@ async def test_concurrent_creation_from_one_manifest_creates_one_trip(
     assert len(trips) == 1
 
 
-# ── The crew race: one horse, two dispatchers, same instant (FP-139) ──────────
-
 
 async def test_concurrent_creation_on_one_horse_creates_one_trip(
     client: AsyncClient, racing_api_world: dict[str, Any], monkeypatch: MonkeyPatch
@@ -696,8 +659,6 @@ async def test_concurrent_creation_on_one_horse_creates_one_trip(
     CREW_UNAVAILABLE. One 201, one 409, one trip.
     """
     world = racing_api_world
-    # No PP barrier: the loser waits inside Postgres on the crew lock, so a barrier after it
-    # (the default client's) would never fill.
     monkeypatch.setattr(
         "app.orchestration.consignments.sync.get_pp_client", lambda: _BarrierPPClient(asyncio.Barrier(1))
     )
@@ -745,8 +706,6 @@ async def test_concurrent_creation_on_one_horse_creates_one_trip(
     assert len(trips) == 1, f"{len(trips)} trips on one horse at once"
 
 
-# ── The activation race: two drivers, one horse, same instant (FP-139) ────────
-
 
 async def test_concurrent_activation_on_one_horse_starts_one_trip(
     client: AsyncClient, racing_api_world: dict[str, Any], monkeypatch: MonkeyPatch
@@ -773,7 +732,6 @@ async def test_concurrent_activation_on_one_horse_starts_one_trip(
         }
 
     crew_a = {key: world["payload_base"][key] for key in ("driver_id", "horse_id", "trailer_ids")}
-    # Trip B: driver B and trailer B, but horse A, booked to end before trip A begins.
     horse_shared = {**crew_b, "horse_id": crew_a["horse_id"]}
     dispatcher = auth_header(make_token(sub=str(world["user"].id), role="dispatcher", org_id=str(world["org"].id)))
     fake_receipt = HederaReceipt(

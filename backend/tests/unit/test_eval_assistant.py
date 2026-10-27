@@ -44,7 +44,6 @@ def test_questions_file_has_63_unique_questions_naming_real_tools() -> None:
         for name in (call["tool"] if isinstance(call["tool"], list) else [call["tool"]])
     }
     assert named <= set(TOOLS_BY_NAME)
-    # A follow-up names a question asked before it.
     assert all(ids.index(item["after"]) < ids.index(item["id"]) for item in items if item.get("after"))
 
 

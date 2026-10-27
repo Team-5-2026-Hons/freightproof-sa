@@ -54,7 +54,6 @@ def test_testing_batch_has_fifty_waybills() -> None:
 
 
 def test_testing_batch_references_collide_with_no_other_fixture() -> None:
-    # MOCK_WAYBILLS is a dict, so a clash would overwrite rather than fail.
     others = set(SEEDED_WAYBILLS) | set(UNASSIGNED_WAYBILLS) | set(MANIFEST_DEMO_WAYBILLS)
 
     assert not others & set(TESTING_BATCH_WAYBILLS)

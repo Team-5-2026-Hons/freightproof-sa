@@ -31,9 +31,6 @@ Create Date: 2026-08-26
 """
 from alembic import op
 
-# Keep revision ids under 32 characters: alembic_version.version_num is
-# varchar(32), and a longer id lets the DDL succeed and then fails on the
-# version bump, rolling the whole migration back with a confusing error.
 revision = "ciaran_uniq_waybill_ref"
 down_revision = "tim_user_sessions"
 branch_labels = None

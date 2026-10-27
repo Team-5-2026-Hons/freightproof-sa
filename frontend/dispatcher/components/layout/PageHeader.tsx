@@ -10,11 +10,8 @@ interface Breadcrumb {
 
 interface PageHeaderProps {
   title: string
-  /** Status chip or other inline element shown next to the title */
   badge?: ReactNode
-  /** Breadcrumb trail — each entry becomes a link except the current page (shown as title) */
   breadcrumbs?: Breadcrumb[]
-  /** Action buttons on the right side of the header */
   actions?: ReactNode
   className?: string
 }
@@ -22,7 +19,6 @@ interface PageHeaderProps {
 export function PageHeader({ title, badge, breadcrumbs, actions, className }: PageHeaderProps) {
   return (
     <header className={cn('flex flex-col gap-1 mb-6', className)}>
-      {/* Breadcrumb */}
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-surface-on-variant">
           {breadcrumbs.map((crumb, i) => (
@@ -41,7 +37,6 @@ export function PageHeader({ title, badge, breadcrumbs, actions, className }: Pa
         </nav>
       )}
 
-      {/* Title row */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="text-[32px] font-extrabold text-surface-on leading-tight truncate">

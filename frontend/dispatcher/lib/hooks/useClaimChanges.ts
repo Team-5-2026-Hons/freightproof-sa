@@ -4,16 +4,12 @@ import { useEffect, useState } from 'react'
 import { fmtExceptionType } from '@/lib/format/exception'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 
-// Long enough to catch the eye of a dispatcher glancing back at the list, short enough not
-// to look like a persistent state.
 export const CLAIM_HIGHLIGHT_MS = 3000
 
 type ClaimItem = Pick<TripExceptionListItem, 'id' | 'exception_type' | 'claimed_by_user_id' | 'claimed_by_name'>
 
 interface ClaimChanges {
-  /** Exception ids whose claim holder changed in the last few seconds. */
   highlighted: ReadonlySet<string>
-  /** Text for a polite live region: who took or released which exception. */
   announcement: string
 }
 
@@ -37,8 +33,6 @@ function describe(item: ClaimItem): string {
 export function useClaimChanges(items: readonly ClaimItem[]): ClaimChanges {
   const [state, setState] = useState<State>(() => ({ source: items, claims: claimsOf(items), highlighted: new Set(), announcement: '' }))
 
-  // Derived while rendering rather than in an effect, so the highlight is in the same paint as
-  // the new data instead of one frame behind it.
   if (items !== state.source) {
     const changed = items.filter(item => state.claims.has(item.id) && state.claims.get(item.id) !== item.claimed_by_user_id)
     setState({

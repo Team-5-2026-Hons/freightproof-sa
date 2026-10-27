@@ -12,7 +12,6 @@ export function groupNationalNumber(nationalNumber: string): string {
   return [digits.slice(0, 2), digits.slice(2, 5), digits.slice(5)].filter(Boolean).join(' ')
 }
 
-// Longest dial code first, so +1 never claims a +12… number that belongs to a longer code.
 const DIAL_CODES_LONGEST_FIRST = [...new Set(COUNTRY_CODES.map((c) => c.dialCode))]
   .sort((a, b) => b.length - a.length)
 

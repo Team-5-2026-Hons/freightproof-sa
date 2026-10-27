@@ -1,11 +1,7 @@
 import { ROUTES } from '@/lib/constants/routes'
 
-/** localStorage key for the dispatcher's display preferences, one JSON object. Versioned
- *  so a future shape change can ignore old values instead of misreading them. */
 const PREFERENCES_STORAGE_KEY = 'fp.preferences.v1'
 
-/** Where sign-in lands when there is no saved return path. The sidebar's Dashboard link
- *  also points at `/`, so this is applied at sign-in only, never as a redirect from `/`. */
 export const LANDING_OPTIONS = [
   { id: 'dashboard', label: 'Dashboard', href: ROUTES.home },
   { id: 'exceptions', label: 'Exceptions', href: ROUTES.exceptions },
@@ -14,7 +10,6 @@ export const LANDING_OPTIONS = [
 
 export type LandingPageId = (typeof LANDING_OPTIONS)[number]['id']
 
-/** The backend caps `limit` at 100 on both history endpoints, so 100 is the ceiling. */
 export const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
 export type RowsPerPage = (typeof ROWS_PER_PAGE_OPTIONS)[number]
@@ -24,7 +19,6 @@ export interface Preferences {
   rowsPerPage: RowsPerPage
 }
 
-// 25 matches the backend's own default page size.
 export const DEFAULT_PREFERENCES: Preferences = { landingPage: 'dashboard', rowsPerPage: 25 }
 
 function isLandingPageId(value: unknown): value is LandingPageId {

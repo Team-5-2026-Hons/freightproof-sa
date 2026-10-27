@@ -31,12 +31,8 @@ from app.main import app
 
 from tests.conftest import auth_header, make_token
 
-# A SHA-256 rendered as hex. Named so the assertion below reads as "this is a digest and
-# nothing else" rather than as an unexplained 64.
 _SHA256_HEX_LENGTH = 64
 
-
-# ── DB override ───────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
@@ -48,8 +44,6 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
     yield
     app.dependency_overrides.pop(get_db, None)
 
-
-# ── Seed fixtures ─────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def seed_org(db_session: AsyncSession):
@@ -91,8 +85,6 @@ async def seed_driver(db_session: AsyncSession, seed_org) -> Driver:
     return driver
 
 
-# ── Test ──────────────────────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_create_driver_does_not_anchor_pii(
     client: AsyncClient, db_session: AsyncSession, seed_org
@@ -112,9 +104,6 @@ async def test_create_driver_does_not_anchor_pii(
         consensus_timestamp=None,
         transaction_id="0.0.12345@1715865602.0",
     )
-    # create_driver calls create_driver_auth_user (Supabase Admin API) before
-    # inserting the Driver row. Patch it to return a stable UUID so no real
-    # HTTP request is made and the FK constraint is satisfied.
     fake_driver_id = uuid.uuid4()
 
     with (
@@ -144,15 +133,6 @@ async def test_create_driver_does_not_anchor_pii(
     body = detail_resp.json()
     assert body["receipts"], "driver creation recorded no blockchain receipt at all"
 
-    # The anchored payload is read from the DB, not from the API response.
-    #
-    # This test used to scan str(body["receipts"]) for PII, which could not fail: the API
-    # shape (BlockchainReceiptRead) carries receipt metadata and data_hash and has no
-    # payload_json field at all, so the payload it was policing was never in the string
-    # being searched. Every PII assertion passed vacuously, and the one honest assertion —
-    # that the licence hash IS recorded — failed for the same reason, because that hash
-    # only ever lived in the payload. Reading the row is what makes both halves mean
-    # something.
     receipt = (
         await db_session.execute(
             select(BlockchainReceipt).where(BlockchainReceipt.id == uuid.UUID(body["receipts"][0]["id"]))
@@ -165,29 +145,14 @@ async def test_create_driver_does_not_anchor_pii(
             f"{field} found in the anchored payload — POPIA violation"
         )
 
-    # The SHA-256 of the licence number IS permitted, and must be there: a payload that
-    # contained no PII because it contained nothing useful would pass the checks above
-    # while anchoring evidence of nothing.
     expected_hash = hashlib.sha256(driver_payload["license_number"].encode()).hexdigest()
     assert expected_hash in anchored, "licence-number SHA-256 not found in the anchored payload"
 
-    # The boundary that POPIA actually turns on: what crossed to Hedera. Only the digest
-    # of the payload is ever submitted — the payload itself stays in Postgres, in
-    # af-south-1. Asserting the argument is exactly one 64-character hex digest is the
-    # strongest form of that guarantee available here, and no amount of PII appearing in
-    # payload_json could sneak past it.
     MockService.return_value.submit_hash.assert_called_once()
     (submitted,) = MockService.return_value.submit_hash.call_args.args
     assert submitted == receipt.data_hash
     assert len(submitted) == _SHA256_HEX_LENGTH and set(submitted) <= set("0123456789abcdef")
 
-
-# ── C1: Hedera failures map to 504/502, not a bare 500 ─────────────────────────
-#
-# create_driver/update_driver call anchor_subject() -> HederaService.submit_hash()
-# synchronously inside the request. A stalled or rejecting Hedera call must not
-# surface as an opaque 500 — the driver-pwa/dispatcher need to know whether a
-# retry might help (504) or the anchor itself was rejected (502).
 
 @pytest.mark.asyncio
 async def test_create_driver_hedera_timeout_returns_504(

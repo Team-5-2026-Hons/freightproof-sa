@@ -10,24 +10,15 @@ import { backTarget } from '@/lib/navigation/back-stack'
 import { markTransition } from '@/lib/navigation/transition-direction'
 
 interface WarehouseWaitCardProps {
-  /** What the warehouse is doing, as the screen's title ("Loading in progress"). */
   title: string
-  // Phase-specific body sentence — each caller says something different; this component
-  // owns only the shell, never the wording.
   children: ReactNode
 }
 
-// Shared shell for the three gated-phase "waiting" screens, including the
-// Check-now affordance for TripContext's auto-refresh (lib/hooks/useTripAutoRefresh.ts).
-// It replaces the step's own title and body: while blocked, "Check the linehaul sheet" is
-// not what is happening, so the screen says what is. Reads useTrip() itself so call sites
-// stay dumb.
 export function WarehouseWaitCard({ title, children }: WarehouseWaitCardProps) {
   const { refreshQuietly, isRefreshing, lastRefreshedAt } = useTrip()
 
   return (
     <div className="flex flex-1 flex-col items-center px-3 pt-16 text-center">
-      {/* Amber, not red: nothing is wrong, the driver is simply early. */}
       <span className="relative flex size-24 items-center justify-center rounded-full bg-attention-tint text-attention-ink">
         <span aria-hidden className="absolute -inset-2 rounded-full ring-2 ring-inset ring-attention/30" />
         <Package className="size-10" strokeWidth={1.7} aria-hidden />
@@ -73,7 +64,6 @@ export function WarehouseWaitAction() {
 
 function lastCheckedLabel(lastRefreshedAt: string | null): string {
   if (lastRefreshedAt === null) return ''
-  // Absolute local time, not relative: avoids needing a ticking timer to stay honest.
   const time = new Date(lastRefreshedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return `Last checked ${time}`
 }

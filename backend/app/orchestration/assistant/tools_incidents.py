@@ -23,14 +23,12 @@ from app.schemas.assistant import IncidentListCard
 from app.schemas.incidents import IncidentListFilters, IncidentRead
 
 StatusGroup = Literal["open", "closed", "all"]
-# The IncidentType values, as a Literal: the enum would also send its docstring to the model in the schema (B36).
 IncidentKind = Literal["hijacking", "parcel_shortage", "parcel_damage"]
 _STATUSES: dict[StatusGroup, tuple[IncidentStatus, ...]] = {
     "open": (IncidentStatus.OPEN, IncidentStatus.INVESTIGATING),
     "closed": (IncidentStatus.CLOSED,),
     "all": (IncidentStatus.OPEN, IncidentStatus.INVESTIGATING, IncidentStatus.CLOSED),
 }
-# A chat answer, not the Incidents page; the total still counts every one.
 MAX_ROWS = 25
 
 

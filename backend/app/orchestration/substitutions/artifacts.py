@@ -142,7 +142,6 @@ async def _store(
         s3_key=placed.stored.s3_key, s3_bucket=placed.stored.s3_bucket,
         file_hash=placed.stored.file_hash, mime_type=placed.verified_mime, captured_by_driver_id=driver_id,
         captured_lat=upload.captured_lat, captured_lng=upload.captured_lng, captured_at=upload.captured_at,
-        # Received = stored and recorded, on the server's clock (as the ordinary route stamps it).
         created_at=datetime.now(UTC),
     )
     db.add(artifact)
@@ -151,8 +150,6 @@ async def _store(
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.EVIDENCE_UPLOADED))
     return artifact
 
-
-# ── handover uploads ─────────────────────────────────────────────────────────
 
 
 async def _named_role(
@@ -174,7 +171,6 @@ async def _require_open_role(db: AsyncSession, *, request: DriverSubstitutionReq
     """Still pending, and this role's capture not yet saved (its photos could no longer be cited)."""
     if request.request_format == IMMEDIATE_V2 and role is SubstitutionRole.OUTGOING:
         raise SubstitutionInvalidError("Outgoing driver is notified only; no declaration is requested.")
-    # An upload carries no version (contract), so only the state is checked here.
     require_pending_at(request, request.version)
     saved = (await db.execute(select(DriverSubstitutionConfirmation.id).where(
         DriverSubstitutionConfirmation.request_id == request.id, DriverSubstitutionConfirmation.role == role.value,
@@ -214,7 +210,6 @@ async def create_substitution_artifact(
             upload, purpose=PURPOSE_HANDOVER, file_hash=file_hash, role=role,
         )),
     )
-    # Unlocked peek: an exact retry costs no Storage upload. Re-checked under the lock below.
     early = await find_replay(db, key, result_type=EvidenceArtifactRead)
     if early is not None:
         return early
@@ -241,8 +236,6 @@ async def create_substitution_artifact(
     await db.flush()
     return result
 
-
-# ── late uploads ─────────────────────────────────────────────────────────────
 
 
 async def require_former_period(db: AsyncSession, *, trip: Trip, driver_id: uuid.UUID, custody_sequence: int) -> None:

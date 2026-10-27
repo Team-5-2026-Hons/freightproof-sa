@@ -13,22 +13,10 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 
 
-# A phase that has been decided one way or another: done, done with a recorded anomaly, or
-# overridden. Shared by the gate, the cached position and every progress count, so "how far
-# along" means the same thing on every screen.
 RESOLVED_PHASE_STATUSES = frozenset({PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION, PhaseStatus.OVERRIDDEN})
 
 
 def _is_resolved(status: PhaseStatus) -> bool:
-    # A phase blocks the NEXT phase only while PENDING/IN_PROGRESS. EXCEPTION is
-    # resolved for gating purposes — it already happened, the trip already moved
-    # on, and the anomaly is recorded on the row itself.
-    #
-    # No phase completion holds a trip any more: the last writer of
-    # TripStatus.EXCEPTION_HOLD (advance_unloading's seal mismatch) was removed —
-    # see the rationale on that branch. EXCEPTION_HOLD survives as a status only
-    # for a future MANUAL dispatcher hold; nothing in app/ sets it today, so the
-    # _gate_and_load check that reads it is currently unreachable.
     return status in RESOLVED_PHASE_STATUSES
 
 

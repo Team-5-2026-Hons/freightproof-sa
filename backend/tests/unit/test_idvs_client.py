@@ -226,8 +226,6 @@ def test_parse_decision_maps_an_unknown_status_to_in_progress():
     assert not decision.status.is_terminal
 
 
-# --- DiditIdvsClient against observed payloads --------------------------------
-
 
 @pytest.fixture
 def live_idvs(monkeypatch):

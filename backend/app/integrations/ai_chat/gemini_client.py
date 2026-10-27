@@ -49,21 +49,13 @@ from app.integrations.ai_chat.provider import (
 
 logger = logging.getLogger(__name__)
 
-# Gemini counts thinking against the output limit, and Google advises against a small one
-# (it truncates answers); a short chat answer plus default thinking fits well inside this.
 MAX_OUTPUT_TOKENS = 8_192
-# Per call; inside the panel's 60 s wait with room for a second model call.
 REQUEST_TIMEOUT_SECONDS = 30.0
-# Google's "busy, try later" answers. A short wait is enough for most to clear.
 RETRYABLE_STATUSES = frozenset({httpx.codes.INTERNAL_SERVER_ERROR, httpx.codes.SERVICE_UNAVAILABLE})
 RETRY_DELAY_SECONDS = 2.0
 API_KEY_HEADER = "x-goog-api-key"
-# Gemini may leave a function call's id out; ours are made up locally and never sent back.
 SYNTHETIC_CALL_ID_PREFIX = "local-call-"
 
-# Finish reasons from Google's FinishReason enum. Ones not listed here, such as
-# MALFORMED_FUNCTION_CALL or MISSING_THOUGHT_SIGNATURE, mean the call went wrong, so they
-# raise AiProviderError rather than pass a broken turn on.
 _END = frozenset({"STOP", "FINISH_REASON_UNSPECIFIED"})
 _CUT_OFF = frozenset({"MAX_TOKENS"})
 _REFUSED = frozenset({
@@ -114,7 +106,6 @@ def quota_reason(response: httpx.Response) -> str:
 
 
 def _function_response(call_id: str, name: str, content: str, is_error: bool) -> JsonObject:
-    # `response` must be an object: a tool's JSON result goes under "result", a failure under "error".
     response: JsonObject = {"error": content} if is_error else {"result": json.loads(content)}
     body: JsonObject = {"name": name, "response": response}
     if not call_id.startswith(SYNTHETIC_CALL_ID_PREFIX):
@@ -128,7 +119,6 @@ def _content(message: ProviderMessage) -> JsonObject:
     if isinstance(message, AssistantText):
         return {"role": "model", "parts": [{"text": message.text}]}
     if isinstance(message, AssistantReply):
-        # Sent back unchanged: its parts may carry thought signatures.
         raw: JsonObject = message.reply.raw  # type: ignore[assignment]
         return raw
     return {
@@ -240,15 +230,12 @@ class GeminiProvider:
             logger.warning("Gemini unreachable: %s", type(exc).__name__)
             raise AiProviderError("connection failed") from exc
         if response.status_code == httpx.codes.PAYMENT_REQUIRED:
-            # A prepaid-billing project with no credit left: every model is refused until it's topped up.
             logger.error("Gemini refused: the project's prepaid credit is used up (402). Top it up in AI Studio.")
             raise AiCreditError("credit used up")
         if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
-            # Which limit (per minute, per day, a billing cap) is the only way to know when it clears.
             logger.warning("Gemini quota used up: %s", quota_reason(response))
             raise AiQuotaError("quota used up")
         if response.status_code != httpx.codes.OK:
-            # The body names the problem (a quota, a bad schema); it holds no personal data.
             logger.warning("Gemini error: status=%s body=%s", response.status_code, response.text[:300])
             raise AiProviderError(f"status {response.status_code}")
         try:

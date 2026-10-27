@@ -21,7 +21,6 @@ from app.schemas.audit_pack import AuditPackManifest, AuditPackOptions
 
 from tests.conftest import auth_header, make_token
 
-# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
 pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 
@@ -215,7 +214,6 @@ async def test_pack_html_renders_investigation_section(client, db_session, seed)
     assert "Investigations" in html
     assert "Never loaded at origin" in html
     assert parcels[0].barcode in html
-    # The parcel's own row states the scan fact and that nothing was established — never theft.
     investigations = html[html.index('id="investigations"'):]
     row = next(line for line in investigations.splitlines() if parcels[0].barcode in line)
     assert "No scan in recorded" in row and "not established" in row and "stolen" not in row.lower()
@@ -257,6 +255,5 @@ async def test_reporter_name_never_enters_the_hashed_manifest(client, db_session
 
     [record] = manifest.investigations
     assert record.reporter_role == "tracking_company"
-    # The manifest is what gets hashed and anchored: the name must appear nowhere in it.
     assert "Thandiwe" not in manifest.model_dump_json()
     assert "Thandiwe" not in render_incident_sheet_html(manifest, verify_url=None)

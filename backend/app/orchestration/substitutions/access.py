@@ -36,7 +36,6 @@ from app.core.exceptions import (
 )
 from app.db.models.trips import DriverSubstitution, Trip
 
-# Custody period of the trip's original driver, who has no DriverSubstitution row.
 ORIGINAL_CUSTODY_SEQUENCE = 0
 
 
@@ -254,11 +253,6 @@ def custody_holders_from_links(
     return holders
 
 
-# ── the access gate ──────────────────────────────────────────────────────────
-
-# Finds the evidence record this same driver already had accepted for the request being
-# retried (bound to actor and idempotency key), or None. Called lazily, only when the request
-# would otherwise be refused, so the common path costs nothing.
 ReplayFinder = Callable[[], Awaitable[uuid.UUID | None]]
 
 

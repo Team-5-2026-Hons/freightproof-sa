@@ -16,7 +16,6 @@ import {
 } from '../polygon'
 import type { LatLngPair } from '@shared/lib/types/precinct'
 
-// ~97 m (east-west) × ~111 m (north-south) box around a Durban depot pin.
 const BOX: LatLngPair[] = [[-29.7937, 30.9815], [-29.7937, 30.9825], [-29.7947, 30.9825], [-29.7947, 30.9815]]
 const CENTRE: LatLngPair = [-29.7942, 30.982]
 const L_SHAPE: LatLngPair[] = [
@@ -57,7 +56,6 @@ describe('outline geometry', () => {
   })
 
   it('test_enclosing_radius_reaches_the_farthest_corner', () => {
-    // Half the box diagonal: sqrt(48.3² + 55.6²) ≈ 73.6 m.
     expect(enclosingRadiusMetres(BOX, CENTRE)).toBeCloseTo(73.6, 0)
   })
 })

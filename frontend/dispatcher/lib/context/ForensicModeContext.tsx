@@ -3,13 +3,10 @@
 import { createContext, useContext, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 
-/** localStorage key for the persisted forensic-mode toggle. */
 const FORENSIC_MODE_STORAGE_KEY = 'fp.forensicOn'
 
 interface ForensicModeState {
-  /** True if the current user has the admin_dispatcher role. */
   canViewForensics: boolean
-  /** Persisted toggle (localStorage), defaults to OFF. */
   forensicOn: boolean
   /** No-op when !canViewForensics. */
   toggle: () => void
@@ -17,9 +14,6 @@ interface ForensicModeState {
 
 const ForensicModeContext = createContext<ForensicModeState | null>(null)
 
-// Reads the persisted toggle on init. Guards against SSR (no `window`) and
-// unavailable storage (privacy mode, disabled storage) by defaulting OFF and
-// logging rather than throwing.
 function readPersistedForensicOn(): boolean {
   if (typeof window === 'undefined') return false
 
@@ -31,8 +25,6 @@ function readPersistedForensicOn(): boolean {
   }
 }
 
-// Persists the toggle. Guards against SSR/no-storage the same way as the
-// initial read — never throws on the caller.
 function persistForensicOn(next: boolean): void {
   if (typeof window === 'undefined') return
 

@@ -23,11 +23,6 @@ import type { SubmitPhaseResult } from '@/lib/api/phases'
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 
-// OfflineBanner mounts useOfflineQueue() itself to read queueLength/
-// attentionCount, so its mount-time flush() needs the same network mocks
-// useOfflineQueue.test.ts uses — otherwise these tests would hit a real fetch.
-// lib/api/handshakes.ts (submitHandshake) is deleted — useOfflineQueue's sendEntry
-// now calls submitPhase from lib/api/phases.ts for a 'phase'-kind queue entry.
 vi.mock('@/lib/api/phases', () => ({
   submitPhase: vi.fn().mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' }),
 }))
@@ -38,8 +33,6 @@ vi.mock('@/lib/api/checkpoints', () => ({
   submitCheckpoint: vi.fn().mockResolvedValue({ id: 'cp-1' }),
 }))
 
-// jsdom defaults navigator.onLine to true; each test overrides the getter so the
-// component's useSyncExternalStore snapshot reads the state we want.
 function setOnline(online: boolean) {
   vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(online)
 }
@@ -48,8 +41,6 @@ function seedQueue(entries: unknown[]) {
   localStorage.setItem('fp_offline_queue', JSON.stringify(entries))
 }
 
-// Shape mirrors useOfflineQueue.ts's PhaseQueueEntry — kind 'phase', addressed by
-// phaseEventId + phaseType (not a bare handshakeType), carrying its own idempotencyKey.
 const PHASE_ENTRY = {
   actorId: 'driver-1', custodySequence: null,
   kind: 'phase', id: 'entry-1', tripId: 'trip-1', phaseEventId: 'phase-event-1', phaseType: 'activation',
@@ -58,22 +49,16 @@ const PHASE_ENTRY = {
   enqueuedAt: '2026-06-12T10:00:00Z',
 }
 
-// Workstream 1: a phase submission now outlives the step screen that started it, so the
-// banner — which AppShell renders on every screen — is where its progress and its
-// terminal failures have to surface. Requests are built here rather than driven through
-// the page so these stay banner tests.
 function phaseSubmission(overrides: Partial<PhaseSubmissionRequest> = {}): PhaseSubmissionRequest {
   return {
     tripId: 'trip-1',
     phaseEventId: 'phase-event-1',
     phaseType: 'loading',
-    // loading no longer captures anything itself (the linehaul step is read-only) —
-    // capturedAt alone is a valid LoadingEvidence.
     evidence: { capturedAt: '2026-06-12T10:00:00Z' },
     idempotencyKey: 'idem-1',
     position: Promise.resolve(null),
     driverCapturedAt: '2026-06-12T10:00:00Z',
-    enqueuePhase: vi.fn(() => true), // stored, as the real queue answers when the phone has room
+    enqueuePhase: vi.fn(() => true),
     refetchTrip: vi.fn().mockResolvedValue(null),
     onOutcome: vi.fn(),
     ...overrides,
@@ -86,7 +71,6 @@ beforeEach(() => {
   __resetOfflineQueueStoreForTests()
   __resetPhaseSubmitterForTests()
   vi.clearAllMocks()
-  // A phase can be handed off only after TripContext has loaded its trip scope.
   authenticateTestDriver('trip-1', 0)
 })
 
@@ -99,7 +83,6 @@ describe('OfflineBanner', () => {
   it('renders nothing while online with an empty queue', async () => {
     const { container } = render(<OfflineBanner />)
 
-    // Let the mount-time flush (empty queue, no-op) settle before asserting.
     await waitFor(() => expect(container).toBeEmptyDOMElement())
   })
 
@@ -133,13 +116,9 @@ describe('OfflineBanner', () => {
     expect(screen.queryByText(/offline\. evidence you capture/i)).not.toBeInTheDocument()
   })
 
-  // Fix 3a: queueLength was already returned by the hook but rendered nowhere. A driver
-  // back online with a pending item had no signal that anything was still in flight.
   describe('pending-sync indicator', () => {
     it('shows a singular "item waiting to sync" message while online with one queued entry', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
-      // Transient (non-ApiError) failure — entry stays queued after the mount flush
-      // resolves, so the indicator has something stable to assert against.
       vi.mocked(submitPhase).mockRejectedValue(new Error('network down'))
       seedQueue([PHASE_ENTRY])
 
@@ -152,15 +131,6 @@ describe('OfflineBanner', () => {
     it('shows a plural "items waiting to sync" message for more than one queued entry', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
       vi.mocked(submitPhase).mockRejectedValue(new Error('network down'))
-      // Two DIFFERENT trips, and that is load-bearing rather than incidental. This is a
-      // TRANSIENT failure, and flushQueue now stalls a trip's remaining phase entries
-      // behind one that fails transiently (useOfflineQueue.ts) — two entries sharing a
-      // tripId would send once, not twice, and the wait below could never be satisfied.
-      // Two trips is also the honest fixture for "more than one queued entry": the banner
-      // counts the queue, not one trip's chain.
-      // (The dropped-entry sibling below deliberately keeps ONE tripId — a terminal 4xx
-      // disposes of the entry rather than leaving it pending, so it must NOT stall the
-      // chain, and that test passing same-trip is what proves it.)
       seedQueue([PHASE_ENTRY, { ...PHASE_ENTRY, id: 'entry-2', tripId: 'trip-2' }])
 
       render(<OfflineBanner />)
@@ -171,7 +141,6 @@ describe('OfflineBanner', () => {
 
     it('hides the pending-sync indicator once the queue empties', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
-      // Default mock resolves successfully — the seeded entry flushes away on mount.
       seedQueue([PHASE_ENTRY])
 
       render(<OfflineBanner />)
@@ -214,7 +183,6 @@ describe('OfflineBanner', () => {
     it('uses plural phrasing for more than one refused item', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
       vi.mocked(submitPhase).mockRejectedValue(new ApiError(422, 'invalid evidence'))
-      // Each trip can be attempted independently; a refusal stalls its own phase chain.
       seedQueue([PHASE_ENTRY, { ...PHASE_ENTRY, id: 'entry-2', tripId: 'trip-2' }])
       render(<OfflineBanner />)
 
@@ -223,8 +191,6 @@ describe('OfflineBanner', () => {
     })
   })
 
-  // Workstream 1: the driver is sent Home the instant they swipe, so the only place that
-  // can honestly say "this is still going" — or "this never landed" — is here.
   describe('background phase submissions', () => {
     it('hides an old custody marker and its late failure without remounting the banner', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
@@ -275,8 +241,6 @@ describe('OfflineBanner', () => {
 
     it('raises a persistent, dismissible notice when a submission fails terminally', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
-      // A 422 can never succeed on retry, so it is never queued — without this notice the
-      // driver would be on Home believing evidence was recorded when it was not.
       vi.mocked(submitPhase).mockRejectedValue(new ApiError(422, 'visual count is required.'))
 
       render(<OfflineBanner />)
@@ -301,8 +265,6 @@ describe('OfflineBanner', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
-  // Exception reports the server refused sit in IndexedDB as "needs attention". They are
-  // never auto-deleted, so the banner must say so and give the driver the two real choices.
   describe('needs-attention notice', () => {
     function attentionEnvelope(clientReportId: string): ExceptionEnvelope {
       return {

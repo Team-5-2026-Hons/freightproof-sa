@@ -13,16 +13,7 @@ import type {
   ScanTriggerResponse,
 } from '@/lib/types/dev'
 
-// AllControls takes the hook's result as a prop, so the HTTP layer is isolated by
-// passing a hand-built `controls` object — useDevTriggers itself is covered by its
-// own test. This suite is about the raw controls' derivation and gating logic only.
-
 beforeAll(() => {
-  // jsdom does not implement HTMLDialogElement.showModal/close (only the `open`
-  // reflected attribute exists — see node_modules/jsdom/lib/.../HTMLDialogElement-impl.js).
-  // Modal.tsx calls both, so a minimal polyfill is needed for any test that opens
-  // the confirmation modal. Scoped to this test file rather than vitest.setup.ts
-  // to keep the shared test config untouched.
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement): void {
     this.setAttribute('open', '')
   }
@@ -51,8 +42,6 @@ function makeStop(overrides: Partial<DevTripStop> = {}): DevTripStop {
     loading_phase_status: null,
     confirmation_phase_status: null,
     preceding_departure_status: 'completed',
-    // Arrived by default so the IN-option tests keep exercising only the condition
-    // they name. Tests for the arrival gate itself override this explicitly.
     arrival_phase_status: 'completed',
     unloading_phase_status: null,
     ...overrides,
@@ -97,9 +86,6 @@ function makeHookReturn(overrides: Partial<UseDevTriggersResult> = {}): UseDevTr
   }
 }
 
-// A successful response. The mocks elsewhere in this file resolve to null, which
-// in useDevTriggers means the call FAILED — the post-action refresh deliberately
-// does not run in that case, so any test about refreshing needs a real body.
 function makeScanResponse(overrides: Partial<ScanTriggerResponse> = {}): ScanTriggerResponse {
   return {
     trip_id: 'trip-1',
@@ -140,8 +126,6 @@ function makeMoveTruckResponse(overrides: Partial<MoveTruckResponse> = {}): Move
     geofence_confirmed: true,
     in_tolerance_band: true,
     verdict_reason: 'Within the geofence radius.',
-    // FP-197 additions. Null by default (as they are in legacy waypoint mode)
-    // — tests for scenario mode override these explicitly.
     target_trip_stop_id: null,
     target_precinct_name: null,
     target_distance_metres: null,
@@ -156,8 +140,6 @@ function renderAllControls(controls: UseDevTriggersResult, tripId: string) {
   return render(<AllControls controls={controls} tripId={tripId} />)
 }
 
-// Reads the option's real value out of the DOM rather than reconstructing the
-// panel's internal key format, so this test doesn't couple to that format.
 function selectScanOption(namePattern: RegExp): void {
   const option = screen.getByRole('option', { name: namePattern }) as HTMLOptionElement
   fireEvent.change(screen.getByLabelText("What's happening"), { target: { value: option.value } })
@@ -201,11 +183,6 @@ describe('AllControls — phase gating', () => {
     expect(screen.getByText('Confirmation is already complete at this stop.')).toBeInTheDocument()
   })
 
-  // The asymmetry: scan IN is gated by CONFIRMATION, never by unloading itself.
-  // The contract has no separate "unloading complete" field at all — a trip that
-  // has finished unloading but not yet confirmed just has confirmation_phase_status
-  // still open. Gating scan IN on unloading instead is the wrong "fix" a future
-  // reader might reach for; this test is the guard against that regression.
   it('does not disable the IN option while confirmation is still open, even though unloading has moved on', () => {
     const stop = makeStop({
       delivery_consignments: [makeConsignment({ parcel_perfect_reference: 'WB-9', barcodes: ['BC-9'] })],
@@ -223,9 +200,6 @@ describe('AllControls — phase gating', () => {
     expect(screen.getByRole('button', { name: 'Trigger scan' })).not.toBeDisabled()
   })
 
-  // The "too early" gap: a scan IN must not be triggerable until the driver has
-  // completed arrival — the seal is inspected before any door opens. A completed
-  // departure is no longer enough on its own.
   it('disables the IN option before the driver has completed arrival, with a visible reason', () => {
     const stop = makeStop({
       delivery_consignments: [makeConsignment({ parcel_perfect_reference: 'WB-9', barcodes: ['BC-9'] })],
@@ -260,8 +234,6 @@ describe('AllControls — phase gating', () => {
     expect(option.disabled).toBe(false)
   })
 
-  // Order matters: a stop that has both arrived AND finished confirmation must report
-  // the later, more definitive reason — never the arrival one, which no longer applies.
   it('reports "already complete", not "not arrived", when both conditions hold', () => {
     const stop = makeStop({
       delivery_consignments: [makeConsignment({ parcel_perfect_reference: 'WB-9', barcodes: ['BC-9'] })],
@@ -293,8 +265,6 @@ describe('AllControls — barcode picker', () => {
     renderAllControls(controls, trip.trip_id)
     selectScanOption(/Loading at Cape Town Depot/i)
 
-    // Scoped to the <p> waybill heading — 'WB-1' also appears as an <option> in
-    // the PP lifecycle waybill picker further down the panel.
     expect(screen.getByText('WB-1', { selector: 'p' })).toBeInTheDocument()
     expect(screen.getByText('WB-2', { selector: 'p' })).toBeInTheDocument()
     expect((screen.getByLabelText('BC-1') as HTMLInputElement).checked).toBe(true)
@@ -377,10 +347,6 @@ describe('AllControls — confirmation modal', () => {
   })
 })
 
-// The panel gates its options on phase statuses carried by the trip list. A scan
-// or a close-session can decide those very phases, so without a refresh the picker
-// keeps offering a stop the action just closed — the exact case the gating exists
-// to prevent.
 describe('AllControls — refresh after a state-changing action', () => {
   it('refreshes the trip list after a successful scan, without clobbering the scan summary', async () => {
     const loadTrips = vi.fn().mockResolvedValue(undefined)
@@ -418,9 +384,6 @@ describe('AllControls — refresh after a state-changing action', () => {
     expect(loadTrips).toHaveBeenLastCalledWith({ silent: true })
   })
 
-  // A failed scan changed nothing on the backend, and the error message is what the
-  // operator needs on screen — refreshing over it would replace a real failure with
-  // a fresh, unrelated request.
   it('does not refresh when the scan failed', async () => {
     const loadTrips = vi.fn().mockResolvedValue(undefined)
     const triggerScan = vi.fn().mockResolvedValue(null)
@@ -441,8 +404,6 @@ describe('AllControls — refresh after a state-changing action', () => {
 })
 
 describe('AllControls — scan everything', () => {
-  // Cancel must be a true no-op. Writing the tick state when the modal OPENS
-  // destroys a hand-built selection the moment the operator opens it to compare.
   it('leaves the existing tick selection untouched when the modal is cancelled', () => {
     const stop = makeStop({
       pickup_consignments: [makeConsignment({ barcodes: ['BC-1', 'BC-2'] })],
@@ -510,8 +471,6 @@ describe('AllControls — not-on-manifest barcodes', () => {
     expect(screen.queryByLabelText(/BC-1 \(not on manifest\)/)).not.toBeInTheDocument()
   })
 
-  // Two rows sharing a value collide on the React key, and removeExtraBarcode
-  // filters by value — so unticking one would silently delete both.
   it('rejects a duplicate extra barcode', () => {
     const stop = makeStop({ pickup_consignments: [makeConsignment()] })
     const trip = makeTrip({ stops: [stop] })
@@ -532,9 +491,6 @@ describe('AllControls — not-on-manifest barcodes', () => {
 })
 
 describe('AllControls — nothing-scanned copy', () => {
-  // The backend raises nothing for an empty stage: _reconcile_consignment guards on
-  // `if events and (missing or unexpected)`. Promising PARCEL_COUNT_MISMATCH here
-  // would tell the operator to expect an exception that never arrives.
   it('does not promise a mismatch exception when no barcode is ticked at all', () => {
     const stop = makeStop({
       pickup_consignments: [makeConsignment({ barcodes: ['BC-1', 'BC-2'] })],
@@ -571,9 +527,6 @@ describe('AllControls — nothing-scanned copy', () => {
 })
 
 describe('AllControls — Parcel Perfect waybill selection', () => {
-  // The PP select draws its options from the current stop+direction. A reference
-  // held over from the previous stop renders as a blank select while still arming
-  // the submit button against the invisible waybill.
   it('clears the selected waybill when the stop selection changes', () => {
     const stop = makeStop({
       pickup_consignments: [makeConsignment({ consignment_id: 'c1', parcel_perfect_reference: 'WB-1' })],
@@ -585,8 +538,6 @@ describe('AllControls — Parcel Perfect waybill selection', () => {
     const controls = makeHookReturn({ trips: [trip] })
 
     renderAllControls(controls, trip.trip_id)
-    // Anchored: this is the only test whose stop offers BOTH directions, so an
-    // unanchored /Loading at .../ would also match "Unloading at ...".
     selectScanOption(/^Loading at Cape Town Depot$/i)
 
     const waybillSelect = screen.getByLabelText('Waybill') as HTMLSelectElement
@@ -602,9 +553,6 @@ describe('AllControls — Parcel Perfect waybill selection', () => {
 })
 
 describe('AllControls — move the truck', () => {
-  // geofence_confirmed is null (not false) on the no_signal scenario. Rendering it
-  // as a failure would tell the operator a fix was received and rejected, when
-  // actually no fix was ever received at all.
   it('renders "no verdict" rather than a failure when the tracker has no signal', async () => {
     const moveTruck = vi.fn().mockResolvedValue(makeMoveTruckResponse({
       scenario: 'no_signal',
@@ -630,7 +578,6 @@ describe('AllControls — move the truck', () => {
   })
 })
 
-// FP-197: trip-stop-relative scenario mode.
 describe('AllControls — move relative to a trip stop', () => {
   it('builds stop options labelled by position, keyed on stop id (not name)', () => {
     const origin = makeStop({ trip_stop_id: 'stop-a', sequence: 1, precinct_name: 'Johannesburg CBD' })
@@ -723,16 +670,12 @@ describe('AllControls — move relative to a trip stop', () => {
     fireEvent.click(screen.getByRole('button', { name: 'At the stop' }))
     expect(await screen.findByText('Active')).toBeInTheDocument()
 
-    // The parent's picker changed trip: AllControls sees only the new prop.
     rerender(<AllControls controls={controls} tripId="trip-2" />)
 
     expect(screen.queryByText('Active')).not.toBeInTheDocument()
     expect((screen.getByLabelText('Trip stop') as HTMLSelectElement).value).toBe('')
   })
 
-  // Decisions doc: "stale asynchronous responses [must be] rejected by a selection
-  // key". Without the guard in AllControls.onMoveTruckScenario, a slow response
-  // for an earlier selection could land AFTER a later one and silently overwrite it.
   it('discards a stale move-truck response after the selection changed mid-flight', async () => {
     let resolveFirst: (value: MoveTruckResponse | null) => void = () => {}
     const firstPromise = new Promise<MoveTruckResponse | null>((resolve) => { resolveFirst = resolve })
@@ -748,17 +691,13 @@ describe('AllControls — move relative to a trip stop', () => {
 
     renderAllControls(controls, trip.trip_id)
     fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-a' } })
-    fireEvent.click(screen.getByRole('button', { name: 'At the stop' })) // the SLOW request
+    fireEvent.click(screen.getByRole('button', { name: 'At the stop' }))
 
-    // Before it resolves, the operator moves on to a different stop and fires again.
     fireEvent.change(screen.getByLabelText('Trip stop'), { target: { value: 'stop-b' } })
     fireEvent.click(screen.getByRole('button', { name: 'At the stop' }))
 
-    // "Simulated target — <name>" is the result panel's own wording — unlike a bare
-    // precinct name, it cannot also match the unrelated trip-picker option text.
     expect(await screen.findByText(/Simulated target: Durban Point/)).toBeInTheDocument()
 
-    // Now let the STALE first request resolve. It must not clobber the fresh result.
     resolveFirst(makeMoveTruckResponse({
       scenario: 'at_stop', target_trip_stop_id: 'stop-a', target_precinct_name: 'Johannesburg CBD',
     }))
@@ -826,7 +765,6 @@ describe('AllControls — move the phone', () => {
       placement: 'at_destination',
       trip_stop_id: undefined,
     }))
-    // The two controls are independent: placing the phone must never move the tracker.
     expect(moveTruck).not.toHaveBeenCalled()
   })
 
@@ -837,8 +775,6 @@ describe('AllControls — move the phone', () => {
     choosePhonePlacement('at_origin')
     fireEvent.click(screen.getByRole('button', { name: 'Apply to the phone' }))
 
-    // A presenter who forgets a position is staged would otherwise read the phase rows
-    // that follow as genuine captures.
     await waitFor(() => expect(
       screen.getByText(/driver_position_source = simulated/),
     ).toBeInTheDocument())

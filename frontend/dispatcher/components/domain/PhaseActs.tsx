@@ -19,21 +19,17 @@ export type { EvidenceLookup } from './EvidenceGroupRow'
 export interface PhaseActsProps {
   acts: readonly PhaseAct[]
   phase: PhaseDescriptor
-  /** The stop this phase is anchored to (for in_transit, the one it departs from). */
   stopName: string
   destinationName: string
   expectedArrivalAt: string | null
   lookup: EvidenceLookup
   exceptionsById: ReadonlyMap<string, TripException>
-  /** The exception rows within the card's cap (D33); the rest are behind "+n more". */
   visibleExceptionIds: ReadonlySet<string>
   hiddenExceptionCount: number
-  /** The phase is the live one of a running trip: only then does a new row draw the eye. */
   live: boolean
   selectedExceptionId: string | null
   highlightedExceptionId: string | null
   onOpenException: OpenException
-  /** In Transit only: where an incident or a driver transfer row leads. */
   tripEvents?: TripEventHandlers
   density?: 'compact' | 'full'
 }
@@ -81,15 +77,11 @@ export function PhaseActs(props: PhaseActsProps) {
   const moreAfter = hiddenExceptionCount > 0 ? lastVisibleExceptionIndex(shown) : -1
 
   if (shown.length === 0) return null
-  // Items that belong to the confirmation rather than to a point on the chronology: findings the
-  // confirmation raised, and evidence submitted with it that carries no capture time. They are
-  // drawn under the completion, so they only leave the chronology when a completion exists.
   const attached = shown.filter(item => item.kind === 'exception' && item.trigger !== 'event')
   const untimed = shown.filter(isUntimedSubmittedEvidence)
   const hasCompletion = shown.some(item => item.kind === 'completion')
   const underCompletion = new Set<ActItem>(hasCompletion ? [...attached, ...untimed] : [])
   const chronology = shown.filter(item => !underCompletion.has(item))
-  // The "+n more" row follows the last visible exception.
   const moreItem = moreAfter >= 0 ? shown[moreAfter] : null
 
   /** Whether the rail continues from this row into the next one. */
@@ -99,7 +91,6 @@ export function PhaseActs(props: PhaseActsProps) {
       const index = attached.indexOf(item)
       return index >= 0 && (index < attached.length - 1 || hasMore)
     }
-    // A group heading interrupts the rail, so the confirmation does not connect into its groups.
     if (item.kind === 'completion' && underCompletion.size > 0) return false
     return chronology.indexOf(item) < chronology.length - 1 || hasMore
   }
@@ -110,7 +101,6 @@ export function PhaseActs(props: PhaseActsProps) {
       more={item === moreItem ? { hiddenCount: hiddenExceptionCount, phaseId: phase.phase_event_id, onOpen: props.onOpenException } : null} />
   }
 
-  // Compact, the list owns the time, icon and detail columns that every row joins (R3).
   const rows = <ol className={compact ? COMPACT_COLUMNS : undefined}>
     {chronology.map(item => (
       <Fragment key={item.key}>
@@ -135,7 +125,6 @@ interface ConfirmationGroupProps { title: string; compact: boolean; children: Re
  * heading is flush left, in full-strength text, so it reads as a label for the rows under it
  * rather than as one more row; the rail breaks at the heading. */
 function ConfirmationGroup({ title, compact, children }: ConfirmationGroupProps) {
-  // Compact, the group passes the card's columns through, so its rows align with the rest.
   return <li role="group" aria-label={title} className={`pb-1 ${compact ? COMPACT_SUBGRID : ''}`}>
     <p className={`pb-1 pt-2 text-meta font-semibold text-on-surf ${compact ? 'col-span-full' : ''}`}>{title}</p>
     <ol className={compact ? COMPACT_SUBGRID : undefined}>{children}</ol>

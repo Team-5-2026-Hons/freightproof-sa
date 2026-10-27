@@ -8,12 +8,6 @@ export interface LiveResourceOptions {
   kinds?: readonly RealtimeKind[]
 }
 
-// Subscribe a screen to live changes for a resource. `onChange` fires on a matching
-// event, and again after any reconnection (to catch events missed while down). Typically
-// a silent refetch.
-//
-//   useLiveResource('trip', tripId, refetchSilent)   // this trip only
-//   useLiveResource('trip', 'any', refetchSilent)    // any trip (e.g. the list)
 export function useLiveResource(
   resource: RealtimeEvent['resource'],
   id: string | 'any',
@@ -22,14 +16,11 @@ export function useLiveResource(
 ): void {
   const { subscribe, reconnectNonce } = useRealtimeChannel()
 
-  // Keep the latest callback without re-subscribing on every render.
   const onChangeRef = useRef(onChange)
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
 
-  // Keep the latest selection without reconnecting the listener when a caller passes
-  // an inline array from render.
   const kindsRef = useRef(options.kinds)
   useEffect(() => {
     kindsRef.current = options.kinds
@@ -44,8 +35,6 @@ export function useLiveResource(
     })
   }, [subscribe, resource, id])
 
-  // A reconnection may have missed events; refetch to reconcile. Skip the first observed
-  // value — that's the initial connect, and the consumer already fetched on mount.
   const isFirst = useRef(true)
   useEffect(() => {
     if (isFirst.current) {

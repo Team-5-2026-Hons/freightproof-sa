@@ -9,7 +9,6 @@ import { OPERATIONS_TIMEZONE } from '@shared/lib/utils/datetime'
 const MONTHS_PER_YEAR = 12
 const MONTH_DIGITS = 2
 
-/** The default range: the current month and the two before it. */
 export const DEFAULT_RANGE_MONTHS = 3
 
 const OPERATIONS_MONTH_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -51,7 +50,6 @@ export function defaultMonthRange(now: Date = new Date()): MonthRange {
   return { start: addMonths(end, -(DEFAULT_RANGE_MONTHS - 1)), end }
 }
 
-// Fixed rather than Intl, so the label reads the same in every browser/locale.
 export const MONTH_ABBREVIATIONS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ] as const

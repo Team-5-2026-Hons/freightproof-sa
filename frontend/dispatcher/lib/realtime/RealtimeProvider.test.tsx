@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RealtimeProvider, useRealtimeChannel } from './RealtimeProvider'
 import { BACKOFF_MAX_MS, STREAM_STALL_MS } from './sse'
 
-// Stable references, as the real hooks return: a new notify each render would re-run the provider's
-// connection effect and reconnect in a loop.
 const auth = { user: { id: 'dispatcher-1' } }
 const toast = { notify: vi.fn() }
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => auth }))
@@ -13,12 +11,9 @@ vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => toast }))
 vi.mock('@/lib/supabase/client', () => ({ getAccessToken: () => 'token' }))
 vi.mock('@/lib/api/client', () => ({ BASE_URL: 'http://api.test' }))
 
-// The backend's idle interval (HEARTBEAT_SECONDS in app/api/v1/endpoints/stream.py).
 const HEARTBEAT_MS = 15_000
 const encoder = new TextEncoder()
 
-// Each fetch opens a stream the test writes to. Aborting the request errors the stream, as a real
-// fetch body does, so the provider's pending read rejects.
 let streams: ReadableStreamDefaultController<Uint8Array>[] = []
 function openStream(init: RequestInit): Promise<Response> {
   const body = new ReadableStream<Uint8Array>({
@@ -42,7 +37,6 @@ async function advance(ms: number): Promise<void> {
 }
 
 beforeEach(() => {
-  // Only the timers the provider schedules; the stream body needs real setImmediate to deliver reads.
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
   streams = []
   fetchMock.mockReset().mockImplementation(openStreamFetch)
@@ -75,7 +69,6 @@ describe('RealtimeProvider stall watchdog', () => {
     fetchMock.mockImplementation((_url: string, init: RequestInit) => {
       attempts += 1
       if (attempts > 1) return openStream(init)
-      // No response headers ever: the promise settles only when the request is aborted.
       return new Promise<Response>((_resolve, reject) => {
         init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))
       })

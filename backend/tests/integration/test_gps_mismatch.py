@@ -68,11 +68,6 @@ from app.orchestration.evidence import location_assessment as evidence_location_
 from app.schemas.action_location import ActionLocationAssessment
 from app.orchestration.phases import findings as phase_findings
 
-# Imported for their fixture side effects as much as their bodies — `override_get_db`
-# is autouse in its defining module and stays autouse here, which is what points the
-# app's get_db dependency at the test session. See the module docstring's "FIXTURE
-# ALIASING" note for why corroboration_trip/pulsit_store are imported under different
-# names.
 from tests.integration.test_phase_corroboration import (  # noqa: F401
     _HORSE_DEVICE, _OPERATOR_ORG_ID, _ORIGIN_LAT, _ORIGIN_LNG,
     _FAR_AWAY_LAT, _FAR_AWAY_LNG,
@@ -86,11 +81,6 @@ from tests.integration.test_phase_corroboration import (  # noqa: F401
 from tests.conftest import auth_header, make_token
 from app.integrations.pulsit import MockPulsitClient
 
-# 0.0075 degrees of latitude north of the origin precinct — 834 m away. Comfortably
-# outside the 200 m default radius widened by the 50 m operational tolerance, so the
-# verdict is unambiguously FALSE, while still being close enough that the separation
-# renders in metres. That combination is what makes this the fixture for the
-# sub-kilometre wording; _FAR_AWAY_* covers the kilometre-scale case.
 _NEARBY_OUTSIDE_LAT = Decimal("-33.9174")
 _NEARBY_OUTSIDE_LNG = _ORIGIN_LNG
 _NEARBY_OUTSIDE_SEPARATION = "834 m"
@@ -383,8 +373,6 @@ async def test_concurrent_separation_finding_attempts_recover_the_partial_unique
             await _delete_committed_separation_race_world(cleanup_session, ids)
 
 
-# ── A false verdict raises, and carries what the timeline needs ────────────────
-
 
 async def test_a_false_verdict_raises_exactly_one_gps_mismatch(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
@@ -402,13 +390,10 @@ async def test_a_false_verdict_raises_exactly_one_gps_mismatch(
     exc = mismatches[0]
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
     assert exc.exception_type == ExceptionType.GPS_MISMATCH
-    # SYSTEM, never DRIVER. The entire evidential weight of this finding is that a
-    # source the driver cannot influence produced it.
     assert exc.source == ExceptionSource.SYSTEM
     assert exc.severity == ExceptionSeverity.WARNING
     assert exc.phase_event_id == event.id
     assert exc.trip_stop_id == stop0.id
-    # FP-280: every exception starts needs_review.
     assert exc.review_status == ExceptionReviewStatus.NEEDS_REVIEW
 
 
@@ -430,15 +415,12 @@ async def test_the_exception_carries_both_positions_and_the_separation(
     exc = (await _load_mismatches(db_session, trip))[0]
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
 
-    # The driver's phone fix, on the exception's own columns.
     assert exc.gps_lat == _ORIGIN_LAT
     assert exc.gps_lng == _ORIGIN_LNG
-    # The tracker's fix, on the phase event the exception hangs off.
     assert event.horse_gps_lat == _NEARBY_OUTSIDE_LAT
     assert event.horse_gps_lng == _NEARBY_OUTSIDE_LNG
     assert event.driver_phone_lat == _ORIGIN_LAT
 
-    # Under a kilometre reads in metres, never "0.8 km".
     assert _NEARBY_OUTSIDE_SEPARATION in exc.description
     assert "km" not in exc.description
 
@@ -493,8 +475,6 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     trip, driver, _org, _stop = corroboration_trip
     token = make_token(sub=str(driver.id), role="driver")
 
-    # Activation happens legitimately at the origin, so it raises nothing and the
-    # loading below is the only finding on the trip.
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
     await _complete_activation(client, trip, driver, token=token)
 
@@ -503,8 +483,6 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        # Within skew of the staged fix's default "now" — this test is about
-        # the missing PHONE fix, not about the corroboration timing gate.
         json={
             "phase_type": "loading", "idempotency_key": f"idem-{uuid.uuid4()}",
             "driver_captured_at": datetime.now(UTC).isoformat(),
@@ -517,12 +495,9 @@ async def test_a_handshake_with_no_driver_phone_fix_says_so_rather_than_inventin
 
     exc = mismatches[0]
     assert "could not be measured" in exc.description
-    # No phone fix to attach, and none invented.
     assert exc.gps_lat is None
     assert exc.gps_lng is None
 
-
-# ── NULL never raises — the central rule these tests enforce. ──────────────────
 
 
 async def test_a_true_verdict_raises_nothing(
@@ -657,8 +632,6 @@ async def test_in_transit_never_raises_even_from_far_away(
         {"phase_type": "departure",
          "seal_number": "AB-1234", "seal_photo_artifact_id": seal_photo_id},
     ]
-    # departure anchors to Hedera; patched so this walk exercises the raise wiring
-    # rather than the network.
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
         for body in bodies:
@@ -670,8 +643,6 @@ async def test_in_transit_never_raises_even_from_far_away(
             )
             assert resp.status_code == 200, (body["phase_type"], resp.text)
 
-    # The horse is still at the origin, which for in_transit's own stop is "inside" —
-    # but no verdict is recorded either way, so nothing can be raised from it.
     phase_event_id = await _phase_id(client, trip.id, token, "in_transit")
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
@@ -685,8 +656,6 @@ async def test_in_transit_never_raises_even_from_far_away(
     assert [e for e in await _load_mismatches(db_session, trip)
             if e.phase_event_id == event.id] == []
 
-
-# ── The offline queue re-syncs. One exception per event, always. ───────────────
 
 
 async def test_a_resynced_handshake_raises_no_second_exception(
@@ -754,8 +723,6 @@ async def test_a_resolved_finding_does_not_reappear_on_the_next_resync(
 
     assert len(await _load_mismatches(db_session, trip)) == 1
 
-
-# ── A failed raise never fails a handshake ─────────────────────────────────────
 
 
 async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(

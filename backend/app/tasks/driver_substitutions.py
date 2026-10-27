@@ -23,7 +23,6 @@ from app.tasks.evidence_anchors import (
 
 logger = logging.getLogger(__name__)
 
-# The evidence sweep's cadence and bounds, reused so the sweeps cannot drift apart.
 CUSTODY_ANCHOR_RECOVERY_INTERVAL_SECONDS = EVIDENCE_ANCHOR_RECOVERY_INTERVAL_SECONDS
 
 

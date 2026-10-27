@@ -25,8 +25,6 @@ type Props = {
 
 function describeEvent(e: Event): string {
   const t = e.event_type
-  // 'created' and 'cosmetic_update' are shared across all three entity types, so both
-  // discriminate on the id field rather than on the event type alone.
   const isPrecinct = 'precinct_id' in e
   if (t === 'created') return isPrecinct ? 'Precinct mapped' : 'Created'
   if (t === 'license_plate_changed') return 'Licence plate changed'
@@ -71,7 +69,6 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
         const changeRows = describeChange(e.changed_fields)
         return (
           <li key={e.id} className="rounded-lg bg-surf-low p-[12px_14px]">
-            {/* Title row: event name left, timestamp right — visible to all dispatchers */}
             <div className="flex items-start justify-between gap-3">
               <div className="text-[13px] font-[600] text-on-surf">{describeEvent(e)}</div>
               <div className="shrink-0 flex items-center gap-[4px] text-[12px] font-[600] tabular-nums tracking-[0.03em] text-sec">
@@ -79,7 +76,6 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
                 {fmtSastDateTime(e.created_at) ?? '—'}
               </div>
             </div>
-            {/* What changed — visible to every dispatcher, not just forensic mode */}
             {changeRows.length > 0 && (
               <div className="mt-[8px] space-y-[4px]">
                 {changeRows.map((row) => (
@@ -90,7 +86,6 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
                 ))}
               </div>
             )}
-            {/* Hedera anchor ref is forensic detail — admin + forensic mode ON only */}
             <ForensicOnly>
               <div className="mt-[8px]">
                 <BlockchainBadge receipt={receipt} />

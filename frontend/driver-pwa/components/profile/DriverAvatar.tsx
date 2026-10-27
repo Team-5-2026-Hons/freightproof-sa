@@ -10,13 +10,9 @@ export function initialsOf(fullName: string): string {
 
 interface DriverAvatarProps {
   name: string
-  /** Data URL from lib/profile/driver-photo, or null for the initials fallback. */
   photo: string | null
-  /** Diameter in px — fixed, not rem: an avatar is artwork, like the tab bar it sits in. */
   size: number
-  /** Ink ring: the Profile tab's selected state, since a photo cannot change colour. */
   ring?: boolean
-  /** Hide from assistive tech when a visible label already names it (the tab bar). */
   decorative?: boolean
   className?: string
 }

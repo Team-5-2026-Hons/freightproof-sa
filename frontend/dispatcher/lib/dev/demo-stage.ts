@@ -5,9 +5,7 @@ export type DemoStageKind =
 
 export interface DemoStage {
   kind: DemoStageKind
-  /** Where the truck is. On the road: the stop it left. */
   stop: DevTripStop | null
-  /** On the road only: the stop it is heading to. */
   nextStop: DevTripStop | null
   headline: string
 }

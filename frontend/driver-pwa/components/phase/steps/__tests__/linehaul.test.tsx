@@ -9,15 +9,11 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Linehaul } from '../loading/Linehaul'
-// Two levels up — the fixture lives in components/phase/__tests__/, not steps/__tests__/.
 import { makePhase } from '../../__tests__/testFixtures'
 import { LoadingStep } from '@/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 
-// vi.hoisted, not a plain top-level const: vi.mock factories below are hoisted above
-// every import and top-level statement in this file, so a factory that closed over an
-// ordinary `const linehaul` here would read it before initialization.
 const { linehaul } = vi.hoisted(() => ({
   linehaul: {
     trip_id: 'trip-1',
@@ -30,18 +26,11 @@ const { linehaul } = vi.hoisted(() => ({
   },
 }))
 
-// Bare draft — every test below that doesn't care about the photo state renders with no
-// captured photo yet, matching what LOADING_INITIAL seeds a fresh step with.
 const EMPTY_DRAFT = {
   linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null,
   linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt: null,
 }
 
-// The blocked branch now renders WarehouseWaitCard (components/phase/WarehouseWaitCard.tsx),
-// which reads useTrip() directly — every test in this file renders Linehaul bare, with no
-// TripProvider ancestor, so the real hook (which throws outside one) is stubbed for the
-// whole file. A single module-scope vi.fn(), not one created per render, so the "Check Now"
-// tests below can assert on it after the click.
 const mockRefreshQuietly = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('@/lib/hooks/useTrip', () => ({
@@ -90,7 +79,6 @@ describe('Linehaul', () => {
       />,
     )
 
-    // The theft-risk rule: the driver must never learn what is in the truck.
     expect(screen.queryByText(/barcode/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/waybill no/i)).not.toBeInTheDocument()
   })
@@ -112,8 +100,6 @@ describe('Linehaul', () => {
     expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument()
   })
 
-  // Task: driver PWA trip auto-refresh (2026-08-10) — the blocked wait is no longer a
-  // dead end. WarehouseWaitCard adds a Check Now control alongside the existing copy.
   it('renders a Check Now control when blocked', () => {
     render(
       <Linehaul
@@ -161,15 +147,10 @@ describe('Linehaul', () => {
       />,
     )
 
-    // "Linehaul sheet" also appears in the StepHeader's phase name, so the capture
-    // control is identified by its own copy instead — unique to CameraCapture.
     expect(screen.getByRole('button', { name: /scan the sheet/i })).toBeInTheDocument()
   })
 
   it('disables the swipe until a photo exists', async () => {
-    // SwipeToConfirm renders role="slider" (a draggable track), not a <button>, unless
-    // the tap-to-confirm preference is on — mirrors the pattern in
-    // departure/__tests__/CaptureSeal.test.tsx.
     const { rerender } = render(
       <Linehaul
         tripId="trip-1"
@@ -196,24 +177,10 @@ describe('Linehaul', () => {
       />,
     )
 
-    // A draft that arrives with a scan but no PDF rebuilds the PDF first (the swipe says
-    // "Preparing the PDF…" meanwhile), so the enabled state is awaited, not immediate.
     await waitFor(() => expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'false'))
   })
 })
 
-// ─── Step 4c: prove the wiring, not just the component ─────────────────────────────
-//
-// LoadingStep (PhaseStepPageClient.tsx) unconditionally calls usePhaseStepController,
-// which itself calls useRouter, useToast, useOfflineQueue, useTrip and useLocationTrail —
-// none of those are optional, so rendering LoadingStep at all means mocking all five
-// (Toast/Trip's real hooks throw outside their Providers by design). That is over the
-// ~4-module threshold the task calls "awkward" — so rather than also depend on
-// Linehaul.tsx's own markup/copy (already covered by the isolated tests above), the
-// registry is mocked to a PROBE component that renders only what this test cares about:
-// whether LoadingStep forwards a real `linehaul` prop. What is NOT faked is the thing the
-// task exists to guard — LoadingStep's own fetchLinehaul call and the renderStep prop
-// hand-off through the ComponentType<never> cast.
 vi.mock('next/navigation', () => ({
   useParams: () => ({ type: 'loading', slug: '1-linehaul' }),
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
@@ -223,18 +190,12 @@ vi.mock('@/lib/hooks/useOfflineQueue', () => ({ useOfflineQueue: () => ({ enqueu
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: vi.fn(async () => null), recordHere: vi.fn() }),
 }))
-// useTrip is already mocked once, near the top of this file (shared with the isolated
-// Linehaul/WarehouseWaitCard tests above) — that mock already covers every field
-// LoadingStep's usePhaseStepController reads (refetchTrip/adoptTrip/markPhaseSyncing/
-// clearPhaseSyncing), so it is not redeclared here.
 vi.mock('@/lib/api/manifest', () => ({
   fetchLinehaul: vi.fn().mockResolvedValue(linehaul),
 }))
 vi.mock('@/components/phase/steps/registry', () => ({
   stepComponentFor: (phaseType: string, slug: string) => {
     if (phaseType !== 'loading' || slug !== '1-linehaul') return undefined
-    // The probe: renders only the one field this test checks LoadingStep actually
-    // supplied, ignoring every other prop in the bag (draft, onUpdate, onComplete, ...).
     return function LinehaulProbe(props: { linehaul: typeof linehaul | null }) {
       return <p>{props.linehaul?.vehicle_registration ?? 'no-linehaul'}</p>
     }
@@ -282,8 +243,6 @@ function loadingTrip(phase: PhaseDescriptor): Trip {
 
 describe('LoadingStep wiring (PhaseStepPageClient)', () => {
   it('receives the linehaul document from the page client, not just from a test prop', async () => {
-    // Guards the ComponentType<never> cast in renderStep: a missing prop at that call site
-    // is invisible to TypeScript, so only a render through LoadingStep can catch it.
     const phase = loadingPhase()
     const trip = loadingTrip(phase)
 

@@ -13,10 +13,6 @@ from app.db.models.trips import Consignment, TripStop
 from app.schemas.trips import TripCreateRequest, TripStopCreate
 
 
-# ---------------------------------------------------------------------------
-# Model defaults — no DB round trip required, just Python-side attribute state.
-# ---------------------------------------------------------------------------
-
 def test_tripstop_optional_fields_default_to_none():
     stop = TripStop(trip_id=uuid.uuid4(), precinct_id=uuid.uuid4(), sequence=0)
     assert stop.slot_time is None
@@ -35,25 +31,14 @@ def test_consignment_fp112_fields_default_to_none():
     assert consignment.pp_manifest_number is None
 
 
-# ---------------------------------------------------------------------------
-# TripCreateRequest — back-compat single-leg path (stops omitted)
-# ---------------------------------------------------------------------------
-
 def _base_kwargs() -> dict:
     return {
         "order_number": "ORD-1",
         "driver_id": uuid.uuid4(),
         "horse_id": uuid.uuid4(),
         "trailer_ids": [uuid.uuid4()],
-        # trip_type defaults to TripType.LOADED, which now requires at least one
-        # consignment (trip-creation redesign) — orthogonal to the
-        # stop-routing behaviour these tests exercise.
         "consignments": [{"pp_reference": "WAY001", "unit_count_expected": 4}],
-        # Required by validate_request — a resolvable schedule at creation
-        # (see TripCreateRequest.validate_request); orthogonal to the
-        # stop-routing behaviour these tests exercise.
         "planned_departure_at": datetime.now(UTC),
-        # Arrival is required at creation (FP-139).
         "planned_arrival_at": datetime.now(UTC) + timedelta(hours=10),
     }
 
@@ -87,10 +72,6 @@ def test_origin_equal_destination_raises():
         )
 
 
-# ---------------------------------------------------------------------------
-# TripCreateRequest — explicit multi-stop route
-# ---------------------------------------------------------------------------
-
 def test_explicit_stops_without_origin_destination_is_valid():
     req = TripCreateRequest(
         **_base_kwargs(),
@@ -123,12 +104,3 @@ def test_stops_with_fewer_than_two_raises():
             stops=[TripStopCreate(precinct_id=uuid.uuid4(), sequence=0)],
         )
 
-
-# ---------------------------------------------------------------------------
-# TripCreateRequest — client_organization_id removed (trip-creation redesign):
-# client now lives per-consignment, resolved from the PP accnum, not
-# on the trip. test_client_organization_id_is_optional deleted — it asserted
-# the field's presence-but-optionality, which no longer applies since the
-# field itself is gone. See test_trip_schemas.py::test_client_organization_id_removed
-# for the replacement assertion.
-# ---------------------------------------------------------------------------

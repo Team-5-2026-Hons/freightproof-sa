@@ -8,7 +8,6 @@ export function ManifestContentSkeleton(): React.JSX.Element {
   return (
     <div role="status" className="min-w-0 w-full">
       <span className="sr-only">Loading cargo…</span>
-      {/* One announcement; the shapes are neither cargo records nor usable controls. */}
       <div aria-hidden="true" data-testid="manifest-content-skeleton" className="space-y-4">
         <div className="grid grid-cols-2 gap-2">
           {Array.from({ length: SUMMARY_PLACEHOLDER_COUNT }, (_, index) => (
@@ -20,7 +19,6 @@ export function ManifestContentSkeleton(): React.JSX.Element {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          {/* An empty flex item has no intrinsic height in the stacked overlay layout. */}
           <Skeleton className="min-w-0 rounded-md sm:flex-1" />
           <Skeleton className="w-full rounded-md sm:w-32" />
         </div>

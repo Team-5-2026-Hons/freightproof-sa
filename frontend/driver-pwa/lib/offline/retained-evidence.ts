@@ -34,25 +34,18 @@ export type RetainedRef =
 
 export interface RetainedItem {
   ref: RetainedRef
-  /** What the capture is, in the driver's words. */
   title: string
   tripId: string | null
-  /** When it was captured, if recorded. */
   capturedAt: string | null
   reason: string
-  /** Capturer unknown: shown, never attributed to the signed-in driver, never sent. */
   quarantined: boolean
-  /** A refusal that is not a custody conflict may be tried again live. */
   canRetry: boolean
-  /** Present only when this driver may send it as late evidence. */
   late: LateEvidenceSource | null
 }
 
 export interface RetainedEvidenceSnapshot {
   items: RetainedItem[]
-  /** Kept for another account that used this phone — counted, never listed. */
   heldForOtherAccounts: number
-  /** This driver's captures already sent as late evidence, awaiting dispatcher review. */
   receipts: LateEvidenceProgress[]
 }
 
@@ -82,7 +75,6 @@ function queueCapturedAt(entry: QueueEntry): string | null {
 function attentionFields(attention: RetainedAttention | null | undefined, fallback: string): Pick<RetainedItem, 'reason' | 'canRetry'> {
   return {
     reason: attention?.reason ?? fallback,
-    // Neither refusal can succeed on a live resend: custody has moved on, or dispatch closed the phase.
     canRetry: attention != null && !isCustodyConflict(attention) && !isPhaseOverridden(attention),
   }
 }

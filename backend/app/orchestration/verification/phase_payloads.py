@@ -35,9 +35,6 @@ from app.orchestration.verification.errors import _UnsupportedPhasePayloadVersio
 from app.storage.supabase_storage import hash_stored_evidence_file
 
 _LEGACY_PHASE_PAYLOAD_VERSION = 1
-# Phases first anchored on 2026-09-23, when every phase started anchoring. They only
-# ever produced v2 payloads; loading and unloading keep their separate pre-phase legacy
-# handshake contracts below, matched by exact key set before this set is consulted.
 _V2_ONLY_PHASE_TYPES = frozenset({
     PhaseType.ACTIVATION, PhaseType.LOADING, PhaseType.IN_TRANSIT,
     PhaseType.ARRIVAL, PhaseType.UNLOADING,
@@ -161,9 +158,6 @@ async def _reconstruct_loading_payload(
 async def _reconstruct_departure_payload(
     db: AsyncSession, *, event: PhaseEvent, version: int,
 ) -> _PhasePayloadState:
-    # seal_number is a nullable column (not yet completed), but a receipt
-    # only ever exists once departure anchored it. If it's still None here,
-    # report missing committed state rather than claiming no receipt exists.
     if event.seal_number is None:
         raise _PhaseEvidenceMissing("anchored departure fields are missing")
     if version == _LEGACY_PHASE_PAYLOAD_VERSION:
@@ -208,9 +202,6 @@ def _reconstruct_legacy_handshake(
             "driver_visual_count": event.driver_visual_count,
         })
     if legacy_handshake == "unloading":
-        # Rows created before the phase migration retained `unloading`; rows
-        # created during the transition used the new `confirmation` value but
-        # still anchored the old handshake-shaped payload.
         if (
             event.phase_type not in (PhaseType.UNLOADING, PhaseType.CONFIRMATION)
             or event.parcel_count_destination is None
@@ -256,17 +247,12 @@ async def _reconstruct_phase_event_payload(
         raise _PhaseEvidenceMissing("anchored phase event is missing")
     version = _phase_payload_version(anchored_payload)
     if version == PHASE_PAYLOAD_VERSION_V3 and event.phase_type != PhaseType.LOADING:
-        # v3 exists only for loading (the linehaul PDF). Checked before the OVERRIDDEN branch
-        # so a v3-labelled receipt on an overridden row is unsupported, not a hash mismatch.
         raise _UnsupportedPhasePayloadVersion("payload version 3 exists only for loading")
     if version == _LEGACY_PHASE_PAYLOAD_VERSION:
         legacy = _reconstruct_legacy_handshake(event, anchored_payload)
         if legacy is not None:
             return legacy
     if event.status == PhaseStatus.OVERRIDDEN:
-        # Checked before any phase-type branch: an overridden row anchored the override
-        # record (PHASE_OVERRIDE), never its phase's own payload. v2 only, because
-        # overrides were not anchored at all before v2 existed.
         if version == _LEGACY_PHASE_PAYLOAD_VERSION:
             raise _PhaseEvidenceMissing("overrides have no legacy payload")
         if event.dispatcher_override_user_id is None or event.dispatcher_override_note is None:
@@ -278,8 +264,6 @@ async def _reconstruct_phase_event_payload(
             override_note=event.dispatcher_override_note,
         ))
     if event.phase_type in _V2_ONLY_PHASE_TYPES and version == _LEGACY_PHASE_PAYLOAD_VERSION:
-        # These phases started anchoring after v2 existed, so an unversioned payload for
-        # one of them is not a real receipt shape and must not verify.
         raise _PhaseEvidenceMissing("this phase type has no legacy payload")
     if event.phase_type in (PhaseType.ACTIVATION, PhaseType.IN_TRANSIT, PhaseType.UNLOADING):
         builder = {
@@ -343,7 +327,6 @@ async def _reconstruct_phase_event_payload(
 
 async def _payload_with_live_artifact_hashes(state: _PhasePayloadState) -> dict[str, Any]:
     if state.payload.get("payload_version") == PHASE_PAYLOAD_VERSION_V4:
-        # The artifact keys live in the embedded evidence payload, not on the envelope.
         inner = await _payload_with_live_artifact_hashes(
             _PhasePayloadState(payload=state.payload["evidence"], artifacts=state.artifacts),
         )
@@ -418,12 +401,9 @@ async def reconstruct_pending_phase_payload(
         try:
             state = await _reconstruct_phase_event_payload(db, event.id, anchored_payload=contract)
         except (_PhaseEvidenceMissing, _UnsupportedPhasePayloadVersion):
-            # A contract this phase type never produced (v3 off loading) is simply not a
-            # match; move on to the next one rather than abandoning recovery.
             continue
         if _hash_payload(state.payload) == event.event_hash:
             return state.payload
-        # FP-83 C5: a driver-performed phase was queued as a v4 envelope around this contract.
         if event.performed_by_driver_id is not None and event.custody_sequence is not None:
             wrapped = _with_actor(event, state).payload
             if _hash_payload(wrapped) == event.event_hash:

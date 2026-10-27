@@ -5,21 +5,16 @@
 export type SubjectType =
   | 'trip' | 'vehicle' | 'driver' | 'vehicle_event' | 'driver_event'
   | 'precinct_event' | 'phase_event'
-  // One anchorable action on an exception (raise, review, trip cancellation); subject_id is the
-  // evidence anchor EVENT id, never the exception or trip id.
   | 'evidence_event';
 
 export type BlockchainReceiptType =
   | 'journey_lock' | 'pickup' | 'delivery' | 'checkpoint_batch'
-  // One per phase anchored since every phase started anchoring (2026-09-23), plus the
-  // dispatcher override record. pickup = departure, delivery = confirmation.
   | 'activation' | 'loading' | 'transit_arrival' | 'arrival_inspection' | 'unloading'
   | 'phase_override'
   | 'exception_batch' | 'driver_substitution'
   | 'vehicle_created' | 'vehicle_updated'
   | 'driver_created' | 'driver_updated'
   | 'precinct_created' | 'precinct_updated'
-  // FP-290: the three actions on an exception that get their own receipt.
   | 'exception_raised' | 'exception_reviewed' | 'trip_cancelled';
 
 export type BlockchainReceipt = {
@@ -46,7 +41,6 @@ export type VerifyResult = {
   evidence_verified: boolean;
 };
 
-// Mirrors VehicleEventType enum in backend/app/db/models/enums.py exactly.
 export type VehicleEventType =
   | 'created' | 'license_plate_changed' | 'license_disc_renewed'
   | 'vin_updated' | 'vehicle_updated' | 'deactivated' | 'cosmetic_update';
@@ -58,7 +52,6 @@ export type VehicleEvent = {
   id: string;
   vehicle_id: string;
   event_type: VehicleEventType;
-  // Arbitrary field-level diff captured at mutation time — shape varies per event type.
   changed_fields: Record<string, unknown>;
   changed_by_user_id: string;
   blockchain_receipt_id: string | null;
@@ -69,16 +62,12 @@ export type DriverEvent = {
   id: string;
   driver_id: string;
   event_type: DriverEventType;
-  // Arbitrary field-level diff captured at mutation time — shape varies per event type.
   changed_fields: Record<string, unknown>;
   changed_by_user_id: string;
   blockchain_receipt_id: string | null;
   created_at: string;
 };
 
-// Mirrors PrecinctEventType in backend/app/db/models/enums.py. A relocation and a resize
-// are separate types: one changes where the facility is, the other changes how close a
-// phase event must be to count as inside it.
 export type PrecinctEventType =
   | 'created' | 'relocated' | 'geofence_resized' | 'geofence_reshaped'
   | 'sharing_changed' | 'cosmetic_update';
@@ -87,11 +76,8 @@ export type PrecinctEvent = {
   id: string;
   precinct_id: string;
   event_type: PrecinctEventType;
-  // {field: {from, to}} for updates; a flat snapshot for 'created'.
   changed_fields: Record<string, unknown>;
   changed_by_user_id: string;
-  // Null for cosmetic edits, which are logged but never anchored. The absence is
-  // information — it is why no anchor badge renders on that row.
   blockchain_receipt_id: string | null;
   created_at: string;
 };

@@ -7,12 +7,10 @@ import { exceptionRowId } from '@/components/domain/ExceptionRow'
  *  the reader has scrolled away: a repeated id alone would change nothing. */
 export interface RevealRequest {
   exceptionId: string
-  /** Null for a trip-level exception, which lives in the "Trip record" list. */
   phaseId: string | null
   requestId: number
 }
 
-// Long enough to be seen after the scroll lands, short enough not to read as a status.
 export const REVEAL_HIGHLIGHT_MS = 2000
 
 interface Pending {
@@ -34,8 +32,6 @@ export function useExceptionReveal(
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const handledRequestId = useRef<number | null>(null)
   const pending = useRef<Pending>({ timeout: null })
-  // The callback is read at landing time, not captured: the page passes a fresh function every
-  // render, and re-arming the effect on that would cancel a landing already in flight.
   const handler = useRef(onHandled)
   useEffect(() => { handler.current = onHandled })
 
@@ -56,8 +52,6 @@ export function useExceptionReveal(
     frames.push(window.requestAnimationFrame(() => {
       frames.push(window.requestAnimationFrame(land))
     }))
-    // A view change can hide the row between frames. Cancel that landing, and retain the
-    // handled id so returning to Evidence does not replay a superseded navigation request.
     return () => frames.forEach(frame => window.cancelAnimationFrame(frame))
   }, [request])
 
@@ -65,8 +59,6 @@ export function useExceptionReveal(
     const current = pending.current
     return () => {
       if (current.timeout !== null) clearTimeout(current.timeout)
-      // Forget what was handled, so a development double-mount (which runs this cleanup and then
-      // the effect above again) lands the request instead of dropping it.
       handledRequestId.current = null
     }
   }, [])

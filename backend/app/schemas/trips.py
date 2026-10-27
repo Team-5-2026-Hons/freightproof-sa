@@ -22,7 +22,7 @@ from app.schemas.pp_manifest import PPManifestRef, PPManifestSnapshotRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
-if TYPE_CHECKING:  # FP-83: resolved by model_rebuild in schemas/driver_substitutions (it imports this module)
+if TYPE_CHECKING:
     from app.schemas.driver_substitutions import (
         CustodyIntegrityRead, DriverAccess, DriverParticipation, SubstitutionRequestRead, CompletedSubstitutionSummary,
     )
@@ -53,7 +53,7 @@ def validate_declared_schedule(
     """
     if planned_arrival_at is None:
         raise ValueError("a planned arrival is required (planned_arrival_at, or a stop slot_time after departure)")
-    if planned_departure_at is None:  # each caller rejects a missing departure with its own error
+    if planned_departure_at is None:
         return
     if planned_arrival_at <= planned_departure_at:
         raise ValueError(
@@ -89,8 +89,6 @@ class TripListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
-    # created through the explicit path.
     pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     trip_type: TripType
@@ -105,8 +103,6 @@ class TripListItemResponse(BaseModel):
     actual_arrival_at: Optional[datetime] = None
     needs_review_count: int
     attention: TripAttentionResponse
-    # Lets a row read "Unloading · stop 2 · 6/11" without the list view holding a phase
-    # plan. phase_total is the plan's own length (7 on single-leg, 11 on cross-dock).
     current_phase: Optional[str] = None
     current_stop: Optional[int] = None
     phase_total: int
@@ -138,8 +134,6 @@ class TripHistoryListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
-    # created through the explicit path.
     pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     driver: TripHistoryDriverResponse
@@ -171,15 +165,13 @@ class DriverTripListItemResponse(BaseModel):
     trip_type: TripType
     origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
-    # Null when there's no precinct id or the row is gone; PWA falls back to the id.
     origin_precinct_name: Optional[str] = None
     destination_precinct_name: Optional[str] = None
     planned_departure_at: Optional[datetime] = None
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    needs_review_count: int  # unreviewed critical rows only; the driver has no review workflow
-    # FP-83: a trip this driver handed over stays listed as history while it is still active.
+    needs_review_count: int
     participation: "DriverParticipation | None" = None
     last_participation_ended_at: Optional[datetime] = None
     custody_sequence: int = 0
@@ -193,7 +185,7 @@ class TripStopBase(BaseModel):
     precinct_id: UUID
     sequence: int = Field(..., ge=0)
     slot_time: Optional[datetime] = None
-    notes: Optional[ShortNoteStr] = None  # bounded to the String(255) column, client input
+    notes: Optional[ShortNoteStr] = None
 
 
 class TripStopCreate(TripStopBase):
@@ -221,15 +213,13 @@ class TripCreateRequest(BaseModel):
     driver_id: UUID
     horse_id: UUID
     trailer_ids: list[UUID] = Field(default_factory=list)
-    origin_precinct_id: Optional[UUID] = None  # required only when `stops` is omitted (FP-112 A.3)
+    origin_precinct_id: Optional[UUID] = None
     destination_precinct_id: Optional[UUID] = None
-    # When omitted, create_trip() synthesises two stops from origin/destination_precinct_id.
     stops: Optional[list[TripStopCreate]] = Field(default=None, min_length=2)
     template_id: Optional[UUID] = None
     planned_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     trip_type: TripType = TripType.LOADED
-    # Client org is derived per-consignment from the PP accnum, not carried on the trip.
     consignments: list[TripConsignmentInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -245,9 +235,6 @@ class TripCreateRequest(BaseModel):
             sequences = [stop.sequence for stop in self.stops]
             if len(sequences) != len(set(sequences)):
                 raise ValueError("stop sequence numbers must be unique")
-        # A trip must carry a resolvable schedule at creation: _reject_if_not_due treats
-        # "no schedule at all" as PERMANENTLY not-due, not merely not-yet-due. Without
-        # this, a trip could be created that no schedule can ever satisfy.
         has_stop_schedule = self.stops is not None and any(
             stop.slot_time is not None for stop in self.stops
         )
@@ -257,12 +244,8 @@ class TripCreateRequest(BaseModel):
                 "neither can never be activated (provide planned_departure_at, or set slot_time on "
                 "at least one of the provided stops)"
             )
-        # Falls back to stop bounds so the explicit-stops path can't bypass the
-        # duration rule entirely; each half falls back independently.
         slots = stop_slot_times(self.stops)
         effective_departure = self.planned_departure_at or (slots[0] if slots else None)
-        # Strictly after departure, so one timed stop reads as a moment, not a
-        # zero-length span.
         later = [
             slot for slot in slots
             if effective_departure is None or slot > effective_departure
@@ -320,10 +303,7 @@ class ConsignmentManifest(BaseModel):
 
     consignment_id: UUID
     parcel_perfect_reference: str
-    # Nullable: resolved from the PP accnum at sync time — an unmapped accnum
-    # leaves this NULL on the consignment (creation warning, not an error).
     client_organization_id: Optional[UUID] = None
-    # Consolidated-unit grain (pallets) — dispatcher-entered, distinct from parcel grain.
     unit_count_expected: Optional[int] = None
     total_parcel_count: int
     origin_scan_complete: bool
@@ -339,8 +319,6 @@ class ManifestResponse(BaseModel):
     origin_scan_complete: bool
     consignments: list[ConsignmentManifest]
     pulled_at: datetime
-    # The PP manifest as it stood at creation (H0, FP-281), summarised for display —
-    # null on trips without one.
     pp_manifest_snapshot: Optional[PPManifestSnapshotRead] = None
 
 
@@ -368,8 +346,6 @@ class TripDetailResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
-    # created through the explicit path.
     pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     trip_type: TripType
@@ -388,20 +364,12 @@ class TripDetailResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
-    # Denormalised position cache. READ PATH ONLY — the ledger in
-    # `phases` below is the truth, and the dispatcher's trip-detail view derives
-    # the active phase from it. These exist so list views need not recompute.
     current_phase: Optional[str] = None
     current_stop: Optional[int] = None
     phases: list[PhaseEventRead]
     exceptions: list[TripExceptionRead]
     blockchain_receipts: list[BlockchainReceiptRead]
-    # Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode
-    # warnings). Always [] on GET — never persisted.
     warnings: list[str] = []
-    # FP-83 (contract "Existing reads"): `driver` above is the DERIVED current driver; the
-    # original is kept for the journey lock. The substitution lists, integrity and flag are
-    # dispatcher-only (empty/None on driver reads); driver_access is set only on driver reads.
     original_driver: Optional[DriverRead] = None
     driver_substitutions: list["SubstitutionRequestRead"] = []
     completed_driver_substitutions: list["CompletedSubstitutionSummary"] = []
@@ -414,6 +382,4 @@ class TripDetailResponse(BaseModel):
     updated_at: datetime
 
 
-# FP-83: importing the substitution schemas resolves the forward references above, whichever of
-# the two modules is imported first (a plain module import is safe mid-cycle).
 import app.schemas.driver_substitutions  # noqa: E402,F401

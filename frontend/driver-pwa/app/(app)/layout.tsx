@@ -18,11 +18,8 @@ import { isFullBleedRoute } from '@/lib/navigation/full-bleed'
 import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
 import { saveReturnPath } from '@shared/lib/session/return-path'
 
-// Kept in step with AuthContext's own list — see that file for why '/otp' isn't in ROUTES.
 const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
 
-// Rendered only once a driver is signed in, so the token POST carries their bearer, and
-// once per app (not per page) so each push event has exactly one listener behind it.
 function PushNotificationsListener(): null {
   usePushNotifications()
   return null
@@ -35,16 +32,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!auth?.isLoading && !auth?.user && !auth?.connectionFault) {
-      // Covers a session that disappears without the driver choosing to leave — a
-      // silently expired token, or landing on a guarded route (e.g. a deep link) with no
-      // session at all. AuthContext's own signOut() already handled the deliberate case
-      // and marked it via SUPPRESS_RETURN_SAVE_KEY, so this doesn't undo that clear.
       let suppressed = false
       try {
         suppressed = sessionStorage.getItem(SUPPRESS_RETURN_SAVE_KEY) === '1'
         sessionStorage.removeItem(SUPPRESS_RETURN_SAVE_KEY)
       } catch {
-        // Can't tell either way — default to saving; a stray extra save is harmless.
       }
       if (!suppressed) {
         saveReturnPath(
@@ -55,13 +47,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }
       router.replace(ROUTES.login)
     }
-    // connectionFault included deliberately: a retry that fails to restore a user must
-    // re-evaluate this guard, so a session that really did expire still reaches /login
-    // once the fault clears.
   }, [auth?.user, auth?.isLoading, auth?.connectionFault, router])
 
-  // Checked before the loading/!user branch: a driver whose profile load got no answer
-  // is neither loading nor signed out, and must not be told either of those things.
   if (auth?.connectionFault && !auth.isLoading) {
     return (
       <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-8 text-center">
@@ -86,12 +73,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    // LocationProvider sits INSIDE TripProvider, not beside it: it only records a
-    // position while a trip is open, which means it has to be able to read the current
-    // trip. It wraps both branches so the trail covers full-bleed phase screens (where
-    // the real work happens) as well as the shell routes. DriverSubstitutionProvider also
-    // sits inside TripProvider, so a completed handover can drop the working trip at once;
-    // it is mounted here, once, so every screen shares a single notice refresh timer.
     <TripProvider>
       <PushNotificationsListener />
       <CapacitorBridge />
@@ -99,8 +80,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <DriverSubstitutionProvider>
         <LocationProvider>
           {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}
-          {/* Inside TripProvider (it reads the completed-trip snapshot) and last, so it
-              paints over whatever screen the final hand-off navigated to. */}
           <TripCompleteOverlay />
         </LocationProvider>
       </DriverSubstitutionProvider>

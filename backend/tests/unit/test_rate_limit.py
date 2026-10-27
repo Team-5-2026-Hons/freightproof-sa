@@ -98,8 +98,6 @@ def _request(*, ip: str = "203.0.113.10", headers: dict | None = None) -> Reques
     )
 
 
-# ── Counting ─────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_requests_within_the_budget_are_allowed(fake_redis) -> None:
@@ -132,7 +130,7 @@ async def test_the_expiry_is_set_once_per_window_not_per_request(fake_redis) -> 
     key = _window_key(_LIMIT, "ip:1.2.3.4")
     assert fake_redis.expiries[key] == _LIMIT.window_seconds
 
-    fake_redis.expiries[key] = 42  # a TTL already ticking down
+    fake_redis.expiries[key] = 42
     await _count_and_check(_LIMIT, "ip:1.2.3.4")
 
     assert fake_redis.expiries[key] == 42
@@ -142,12 +140,9 @@ def test_the_window_key_changes_as_time_passes() -> None:
     now = int(time.time())
     early = _window_key(_LIMIT, "ip:1.2.3.4")
     assert str(now // _LIMIT.window_seconds) in early
-    # Different bucket, different key — counters cannot collide across limits.
     other = RateLimit(max_requests=3, window_seconds=60, name="other_bucket")
     assert _window_key(other, "ip:1.2.3.4") != early
 
-
-# ── Failure policy ───────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -159,8 +154,6 @@ async def test_a_redis_outage_allows_the_request(monkeypatch) -> None:
 
     assert await _count_and_check(_LIMIT, "ip:1.2.3.4") is True
 
-
-# ── Identity resolution ──────────────────────────────────────────────────────
 
 
 def test_the_forwarded_header_is_ignored_without_a_trusted_proxy(monkeypatch) -> None:
@@ -185,8 +178,6 @@ def test_the_forwarded_header_is_used_behind_a_trusted_proxy(monkeypatch) -> Non
     assert identity == "1.1.1.1"
 
 
-# ── The dependency ───────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_the_dependency_raises_429_once_the_budget_is_gone(fake_redis, monkeypatch) -> None:
@@ -201,8 +192,6 @@ async def test_the_dependency_raises_429_once_the_budget_is_gone(fake_redis, mon
         await dependency(request)
 
     assert exc_info.value.status_code == 429
-    # HTTPException.headers is Optional; assert presence first so the failure reads as
-    # "the limiter sent no headers at all" rather than a TypeError on the subscript.
     assert exc_info.value.headers is not None
     assert exc_info.value.headers["Retry-After"] == str(_LIMIT.window_seconds)
 
@@ -223,8 +212,6 @@ async def test_two_tokens_get_two_budgets(fake_redis, monkeypatch) -> None:
     await dependency(_request(headers={"authorization": "Bearer token-xyz"}))
 
 
-# An ES256 Supabase access token starts with a base64 header carrying alg, kid and typ: the same
-# ~96 characters for every user, so any shorter prefix of the token names no one in particular.
 _SHARED_JWT_HEADER = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjAxOGYyYzRlLTdhMWItNGQ5Mi1hYjNjLTVlNmY3YTgxYjJjZCIsInR5cCI6IkpXVCJ9"
 
 

@@ -20,7 +20,6 @@ from app.schemas.trips import TripDetailResponse
 
 
 def _record_arrival_seal(event: PhaseEvent, payload: ArrivalCompleteRequest) -> str | None:
-    # None only when the seal is MISSING (the schema requires a number otherwise).
     seal_at_arrival = (
         None if payload.seal_number_at_arrival is None
         else _normalized_seal(payload.seal_number_at_arrival)
@@ -28,7 +27,6 @@ def _record_arrival_seal(event: PhaseEvent, payload: ArrivalCompleteRequest) -> 
     event.seal_number = seal_at_arrival
     event.seal_condition = payload.seal_condition.value
     event.seal_photo_artifact_id = payload.seal_photo_artifact_id
-    # Not anchored, as at departure. A missing seal has no number, so nothing to record.
     event.seal_number_source = (
         payload.seal_number_source.value
         if payload.seal_number_source is not None and seal_at_arrival is not None
@@ -66,10 +64,6 @@ async def advance_arrival(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )
 
-    # This LEG's departure (strictly before this row), not "the trip's" —
-    # a multi-stop trip can have several DEPARTURE rows, and a plain
-    # phase_type == DEPARTURE trip-wide lookup would raise MultipleResultsFound
-    # on a real cross-dock trip.
     departure_event = await _find_departure_for_leg(
         db, trip_id=trip_id, before_sequence=event.sequence_number,
     )
@@ -80,19 +74,8 @@ async def advance_arrival(
 
     seal_at_arrival = _record_arrival_seal(event, payload)
 
-    # "" when the departure row carries no seal at all. Reachable in normal
-    # operation, not just from bad data: override_phase resolves a departure
-    # WITHOUT ever writing a seal (it anchors only the override record, never seal
-    # evidence), and _is_resolved treats
-    # OVERRIDDEN as resolved, so the trip runs on to arrival with a NULL seal.
-    # Normalizing first collapses NULL, "" and whitespace to one "not recorded"
-    # case rather than leaving " " to masquerade as a real seal.
     departure_seal = _normalized_seal(departure_event.seal_number or "")
 
-    # Independent of the number comparison below, so a broken seal is recorded even
-    # when there is no departure seal to compare against, and a broken seal that also
-    # carries the wrong number records both findings. Always CRITICAL: a seal found
-    # damaged or missing at the gate is the in-transit opening this phase exists to catch.
     if payload.seal_condition != SealCondition.INTACT:
         await _record_seal_finding(
             db, trip=trip, event=event,
@@ -104,27 +87,6 @@ async def advance_arrival(
         )
 
     if not departure_seal:
-        # NOT a SEAL_MISMATCH. There is no second seal here to differ from, so
-        # claiming a mismatch would put a false theft indicator into the anchored
-        # record and fire the driver app's critical alert (it treats seal_mismatch
-        # as one of three alarm types) for something the driver did not cause and
-        # cannot fix. The honest fact is narrower: continuity for this leg cannot
-        # be checked. Severity splits on whether that absence is EXPLAINED, because
-        # severity is what the dispatcher actually triages on (its exception list
-        # keys the row's border accent and chip off severity; nothing anywhere reads
-        # this description text, so the distinction cannot live in wording alone):
-        #
-        #   OVERRIDDEN — a dispatcher resolved the departure without a seal being
-        #     captured. Authorised, and already on the ledger as its own
-        #     DISPATCHER_NOTE. WARNING: worth seeing, not an alarm.
-        #   anything else — the departure ran the seal-capture path (advance_departure
-        #     writes seal_number unconditionally from a required field) and STILL has
-        #     no seal. Nothing legitimate produces that, so it is a data-integrity
-        #     anomaly and must stay loud. CRITICAL.
-        #
-        # Neither is INFO: an unverifiable seal chain is exactly what a real seal swap
-        # would hide behind. _record_seal_finding writes the row and derives the
-        # realtime severity from the same value, so the two cannot drift apart.
         seal_unverified_severity = _seal_unverified_severity(departure_event)
         await _record_seal_finding(
             db, trip=trip, event=event,
@@ -137,26 +99,6 @@ async def advance_arrival(
             ),
         )
     elif seal_at_arrival is not None and seal_at_arrival != departure_seal:
-        # Recorded as evidence, but does NOT hold the trip. This branch used to set
-        # trip.status = EXCEPTION_HOLD; three reasons it must not:
-        #
-        # 1. There is no release or override path anywhere in this codebase. A held
-        #    trip could never reach confirmation, so it could never record POD or
-        #    anchor its delivery receipt — the hold DESTROYED the remaining evidence
-        #    of the very trip whose integrity it was reacting to. On an evidence
-        #    platform that is the wrong failure direction: record more, not less.
-        # 2. It contradicted _is_resolved, which already treats EXCEPTION as resolved
-        #    for gating, precisely so an anomaly is recorded without stopping the
-        #    ledger. Holding here re-introduced the blocking behaviour by the back
-        #    door, at trip level instead of phase level.
-        # 3. Departure's own seal mismatch (advance_departure) has never held the trip. Two
-        #    seal mismatches on the same trip behaving differently was inconsistent
-        #    with nothing to justify it.
-        #
-        # The mismatch stays fully visible: the phase row is EXCEPTION and a CRITICAL
-        # TripException is written. A dispatcher acts on that, not on a stuck trip.
-        # If a hold is ever genuinely wanted it belongs as a manual dispatcher action
-        # with an explicit release path — not as an automatic dead end.
         await _record_seal_finding(
             db, trip=trip, event=event,
             exception_type=ExceptionType.SEAL_MISMATCH, severity=ExceptionSeverity.CRITICAL,
@@ -165,12 +107,7 @@ async def advance_arrival(
                 f"the seal applied at departure ('{departure_seal}')."
             ),
         )
-    # No LEGACY trip.status assignment here (DEST_GATE_IN is deleted) — the trip
-    # simply stays ACTIVE; recompute_position derives the ledger position generically.
 
-    # After every finding above: the anchor fires on EXCEPTION as well as COMPLETED.
-    # A seal found broken or wrong is the evidence a dispute turns on, so it is the
-    # last row that should go unanchored (departure's precedent).
     _anchor_phase(db, event=event, canonical_payload=compute_arrival_canonical_payload_v2(
         phase_event_id=event.id, trip_id=trip_id,
         seal_number=seal_at_arrival,

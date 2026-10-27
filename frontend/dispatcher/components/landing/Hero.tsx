@@ -7,17 +7,8 @@ import { cn } from '@shared/lib/utils/cn'
 import { CtaLink } from './CtaLink'
 import styles from './landing.module.css'
 
-// Photo: Artem Balashevsky, "a white semi truck driving down a rural road", Unsplash
-// (https://unsplash.com/photos/ZhNYKwjRMh4), free under the Unsplash License. Chosen
-// because the truck carries no company branding and the pale sky fades into the paper.
-// Pre-compressed to a 43 KB WebP and served as-is: Next's optimiser would need the
-// `sharp` package, a new dependency the team hasn't agreed to.
 const HERO_PHOTO = '/landing/hero-truck.webp'
 
-// Apple's product-page order: the name, the promise, the actions, then the picture.
-// The photo sits below the text and fades into the paper at both edges, so no text is
-// ever set on top of it (contrast stays on the paper's terms) and the illustrated road
-// below takes over where the photo ends.
 export function Hero() {
   return (
     <section className="relative">
@@ -60,7 +51,6 @@ export function Hero() {
         className={cn(styles.rise, styles.heroPhoto, 'relative -mt-6 h-[clamp(240px,32vw,460px)] md:-mt-10')}
         style={{ '--i': 4 } as CSSProperties}
       >
-        {/* object-position 73%: keeps the truck in the mask's solid band from 390 to 1920 wide. */}
         <Image
           src={HERO_PHOTO}
           alt="A white articulated truck on an open highway at golden hour"

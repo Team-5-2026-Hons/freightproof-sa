@@ -43,15 +43,10 @@ from app.db.models.enums import ExceptionSeverity
 
 logger = logging.getLogger(__name__)
 
-# One Pub/Sub channel per org; each screen filters the stream client-side.
 CHANNEL_PREFIX = "org:"
 
-# Key for the per-request outbox on Session.info; AsyncSession.info
-# proxies to the same dict the commit listener reads.
 _OUTBOX_KEY = "realtime_outbox"
 
-# Outbox length recorded when each SAVEPOINT began, keyed by its SessionTransaction, so
-# a nested rollback can discard exactly the events queued inside that scope.
 _SAVEPOINT_MARKS_KEY = "realtime_savepoint_marks"
 
 
@@ -63,18 +58,11 @@ class RealtimeKind(str, Enum):
     PHASE_COMPLETED = "phase_completed"
     EXCEPTION_RAISED = "exception_raised"
     EXCEPTION_REVIEWED = "exception_reviewed"
-    # Claim, release and take-over share one kind: every screen reacts the same way
-    # (silent refetch, never a toast), and the payload stays ids-only either way.
     EXCEPTION_CLAIMED = "exception_claimed"
     TRIP_CLOSED = "trip_closed"
-    # A new evidence artifact was stored. Refreshes only the artifacts resource; INFO, never a toast.
     EVIDENCE_UPLOADED = "evidence_uploaded"
-    # FP-83: a driver handover was arranged, cancelled, replaced or completed. Ids only, INFO;
-    # the dispatcher refetches the trip. Drivers learn of it from their durable notices.
     DRIVER_SUBSTITUTION_CHANGED = "driver_substitution_changed"
     LATE_DRIVER_EVIDENCE_CHANGED = "late_driver_evidence_changed"
-    # An incident on this trip was reported, followed up, closed or reopened. INFO, never a
-    # toast: the dispatcher who acted already knows, and colleagues refetch the incident list.
     INCIDENT_CHANGED = "incident_changed"
 
 
@@ -102,13 +90,9 @@ def event_severity(severity: ExceptionSeverity) -> EventSeverity:
 class TripEvent(BaseModel):
     """A thin change notification. Carries no trip data by design (see module docstring)."""
 
-    # Pins the bus to trip-scoped events today; a future resource is a
-    # deliberate typed addition, not a silent one.
     resource: Literal["trip"] = "trip"
     id: UUID
     kind: RealtimeKind
-    # Lifecycle events need say nothing (ordinary progress); only exceptions
-    # have a case for interrupting whoever's on shift.
     severity: EventSeverity = EventSeverity.INFO
     ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -117,9 +101,6 @@ def _channel(org_id: UUID) -> str:
     return f"{CHANNEL_PREFIX}{org_id}"
 
 
-# ── Redis client ──────────────────────────────────────────────────────────────
-# Lazily built so importing this module doesn't require a reachable Redis.
-# decode_responses=True so payloads are str (JSON), not bytes.
 _redis_client: redis_async.Redis | None = None
 
 
@@ -143,7 +124,6 @@ async def subscribe(org_id: UUID) -> AsyncIterator[TripEvent]:
     await pubsub.subscribe(_channel(org_id))
     try:
         async for message in pubsub.listen():
-            # listen() also emits subscribe/unsubscribe confirmations.
             if message.get("type") != "message":
                 continue
             yield TripEvent.model_validate_json(message["data"])
@@ -151,8 +131,6 @@ async def subscribe(org_id: UUID) -> AsyncIterator[TripEvent]:
         await pubsub.unsubscribe(_channel(org_id))
         await pubsub.aclose()
 
-
-# ── Per-request outbox + after-commit publish ───────────────────────────────────
 
 
 def enqueue_event(session: AsyncSession, org_id: UUID, event: TripEvent) -> None:
@@ -164,8 +142,6 @@ def enqueue_event(session: AsyncSession, org_id: UUID, event: TripEvent) -> None
     session.info.setdefault(_OUTBOX_KEY, []).append((org_id, event))
 
 
-# Strong refs to in-flight publish tasks — asyncio only holds a weak
-# reference to scheduled tasks, so this prevents premature GC.
 _pending_tasks: set[asyncio.Task[None]] = set()
 
 
@@ -183,7 +159,6 @@ def _schedule_publish(org_id: UUID, event: TripEvent) -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No running loop (e.g. sync/offline commit) — drop rather than crash.
         logger.warning("No running event loop; dropping realtime event kind=%s", event.kind.value)
         return
     task = loop.create_task(_safe_publish(org_id, event))

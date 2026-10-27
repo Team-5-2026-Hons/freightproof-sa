@@ -11,7 +11,6 @@ const departure = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'departure'
 
 describe('StepLayout', () => {
   it('lists what the step needs, marking each item done or still needed', () => {
-    // Arrange / Act
     render(
       <StepLayout
         phase={departure}
@@ -24,7 +23,6 @@ describe('StepLayout', () => {
       />,
     )
 
-    // Assert — screen readers hear the state, not just sighted drivers seeing a tick.
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(within(list).getByText('Done:')).toBeInTheDocument()
     expect(within(list).getByText('Still needed:')).toBeInTheDocument()
@@ -32,34 +30,28 @@ describe('StepLayout', () => {
   })
 
   it('pins the action in a footer that stays on screen while the step scrolls', () => {
-    // Arrange / Act
     render(<StepLayout phase={departure} stepIndex={0} action={<button type="button">Confirm</button>} />)
 
-    // Assert
     const footer = screen.getByRole('button', { name: 'Confirm' }).closest('footer')
     expect(footer).toHaveClass('sticky', 'bottom-0')
   })
 
   it('renders no footer at all when the step has no action (blocked or waiting)', () => {
-    // Arrange / Act
     const { container } = render(
       <StepLayout phase={departure} stepIndex={0} requirements={[{ label: 'Seal photo', met: false }]} />,
     )
 
-    // Assert — a checklist with nothing to unlock would only confuse.
     expect(container.querySelector('footer')).toBeNull()
     expect(screen.queryByRole('list', { name: 'Needed to continue' })).not.toBeInTheDocument()
   })
 
   it('shows the intro above the step content', () => {
-    // Arrange / Act
     render(
       <StepLayout phase={departure} stepIndex={0} intro="Photograph the seal.">
         <p>content</p>
       </StepLayout>,
     )
 
-    // Assert
     expect(screen.getByText('Photograph the seal.')).toBeInTheDocument()
     expect(screen.getByText('content')).toBeInTheDocument()
   })

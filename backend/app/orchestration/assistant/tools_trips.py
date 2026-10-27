@@ -85,13 +85,10 @@ STATUS_GROUPS: dict[StatusGroup, tuple[TripStatus, ...]] = {
     "closed": (TripStatus.CLOSED,),
     "cancelled": (TripStatus.CANCELLED,),
 }
-# Finished trips pile up for ever; listing them all would be the whole history.
 NEEDS_A_WINDOW: frozenset[StatusGroup] = frozenset({"closed", "cancelled"})
-# A list longer than this is read on the trips page, not in a chat; the totals still count all.
 MAX_ROWS = 25
 OPEN_INCIDENT_STATUSES: tuple[IncidentStatus, ...] = (IncidentStatus.OPEN, IncidentStatus.INVESTIGATING)
 _SEVERITY_ORDER = ("critical", "warning", "info")
-# Sorts a trip with no time last.
 _NEVER = datetime.max.replace(tzinfo=UTC)
 
 
@@ -285,7 +282,6 @@ async def _trip_list(
 ) -> ToolOutcome:
     names = await precinct_names(context, {i.origin_precinct_id for i in kept} | {i.destination_precinct_id for i in kept})
     rows = [row_of(item, names, context.now) for item in kept[:MAX_ROWS]]
-    # Looked up again for the shown rows only, so the lines can say when each one closed.
     closed = await _closed_at(context, kept[:MAX_ROWS]) if inputs.which_time == "closed" else None
     statuses = Counter(item.status for item in kept)
     counts = {
@@ -317,7 +313,6 @@ def incident_row(incident: IncidentRead) -> IncidentRow:
 
 
 def incident_line(incident: IncidentRead) -> IncidentLine:
-    # Never `summary`: a person typed it (spec §5.2).
     return IncidentLine(
         reference=incident.reference, incident_type=incident.incident_type.value, status=incident.status.value,
         trip_reference=incident.trip_reference, received=format_when(incident.received_at),
@@ -349,7 +344,6 @@ async def _trip_for_manifest(context: ToolContext, number: int) -> uuid.UUID | T
     items = await list_trips(context.db, context.organization_id, pp_manifest_number=number)
     if not items:
         return ToolOutcome.failed(f"No trip carries manifest {number}. Tell the dispatcher; don't guess another.")
-    # A manifest is on at most one live trip; otherwise the newest (list_trips sorts newest first).
     live = [item for item in items if item.status in OCCUPYING_STATUSES]
     return (live or items)[0].id
 

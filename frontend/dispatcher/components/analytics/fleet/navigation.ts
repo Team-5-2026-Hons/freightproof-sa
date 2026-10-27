@@ -7,7 +7,6 @@ import { GENERAL_PRESETS, GRAINS, PRESETS_BY_GRAIN, type PresetId } from '@/lib/
 import type { Grain } from '@shared/lib/types/fleet-analytics'
 import type { TabControls } from './controls/ControlRow'
 
-/** The page's own tab parameter: shared, so the return address and the tabs agree. */
 export const TAB_PARAM = 'tab'
 /** Which window the incident map is showing. Declared here rather than beside the tab so the
  *  address parser doesn't have to import a React component to name its own return type. */

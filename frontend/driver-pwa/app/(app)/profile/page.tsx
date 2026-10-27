@@ -30,8 +30,6 @@ const ICON = 'size-5'
 
 const THEME_LABEL = { system: 'System', light: 'Light', dark: 'Dark' } as const
 
-// Identity check status as the driver should read it. Amber, not red, for "pending": it is
-// a wait, not a fault. Failed is red because a trip cannot begin until it is resolved.
 const IDVS = {
   verified: { text: 'ID verified', className: 'bg-success-tint text-success' },
   pending: { text: 'ID check pending', className: 'bg-attention-tint text-attention' },
@@ -44,7 +42,6 @@ const PERMISSION: Record<PermissionStatus, { text: string; className: string }> 
   ask: { text: 'Asks when needed', className: 'text-surface-on-variant' },
 }
 
-// Built once: rows are memoised, and a fresh icon element each render would defeat that.
 const ICONS = {
   appearance: <Contrast className={ICON} strokeWidth={1.9} />,
   location: <MapPin className={ICON} strokeWidth={1.9} />,
@@ -67,8 +64,6 @@ const Tile = memo(function Tile({ label, value, detail }: { label: string; value
   return (
     <div className="min-w-0 rounded-xl bg-fill p-3.5">
       <p className="text-footnote text-surface-on-variant">{label}</p>
-      {/* break-words, not truncate: a licence or plate cut to "DL-7…" is useless, and at
-          accessibility text sizes the tile is narrower than the value. It wraps instead. */}
       <p className="break-words text-headline tabular-nums text-surface-on">{value}</p>
       <p className="break-words text-footnote text-surface-on-variant">{detail}</p>
     </div>
@@ -78,7 +73,6 @@ const Tile = memo(function Tile({ label, value, detail }: { label: string; value
 const PermissionRow = memo(function PermissionRow({ icon, label, detail, status }: {
   icon: ReactNode; label: string; detail?: string; status: PermissionStatus | null
 }) {
-  // A platform that cannot report the permission shows no row rather than a guess.
   if (status === null) return null
   const { text, className } = PERMISSION[status]
   return (
@@ -91,9 +85,6 @@ const PermissionRow = memo(function PermissionRow({ icon, label, detail, status 
   )
 })
 
-// Each sheet's open state lives in the small component that opens it, not in the page: a
-// page-level flag re-rendered the whole profile on every open and close (14 tasks of
-// 66-191 ms at 4x CPU throttling), when only the row and its sheet change.
 function AppearanceRow() {
   const themeLabel = useThemeLabel()
   const [open, setOpen] = useState(false)
@@ -161,7 +152,6 @@ export default function ProfilePage() {
 
   async function confirmSignOut(): Promise<void> {
     if (!user) return
-    // A face is personal data (POPIA): it leaves this phone with the driver.
     clearDriverPhoto(user.id)
     await signOut()
     router.replace(ROUTES.login)
@@ -176,8 +166,6 @@ export default function ProfilePage() {
             type="button"
             onClick={choosePhoto}
             aria-label={photo === null ? 'Add photo' : 'Change photo'}
-            // size-[44px], not size-11: the avatar beside it is fixed px artwork, and a rem
-            // badge grew to 77px at accessibility text sizes and covered the initials.
             className="absolute -bottom-0.5 -right-0.5 flex size-[44px] items-center justify-center rounded-full border-[3px] border-surface bg-primary text-primary-on transition-transform duration-100 active:scale-95"
           >
             <Camera className="size-[18px]" strokeWidth={2.25} aria-hidden />

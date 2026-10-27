@@ -33,17 +33,14 @@ interface TrendColumnsProps<Row> {
   rowKey: (row: Row) => string
   tickLabel: (key: string) => string
   isPartial: (row: Row) => boolean
-  /** Stacked bottom to top, in slot order. */
   series: readonly ColumnSeries<Row>[]
   renderTooltip: (row: Row) => ReactNode
-  /** The y-axis heading, e.g. "Trips". Required: every chart names its value axis. */
   yLabel: string
   height?: number
   /** How the value axis writes its numbers, e.g. fmtAxisAmount for rand. Plain numbers by default. */
   valueFormatter?: (value: number) => string
 }
 
-// Internal keys, prefixed so no series key can collide with them.
 const KEY = '__key'
 const PARTIAL = '__partial'
 
@@ -54,7 +51,6 @@ type Datum = Record<string, string | number | boolean>
 export function TrendColumns<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT, valueFormatter,
 }: TrendColumnsProps<Row>) {
-  // Taller inside the zoom modal.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))
@@ -66,7 +62,6 @@ export function TrendColumns<Row>({
   const topIndex = series.length - 1
 
   return (
-    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
     <ResponsiveContainer width="100%" height="100%" minHeight={height}>
       <BarChart data={data} margin={TIME_CHART_MARGIN}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />

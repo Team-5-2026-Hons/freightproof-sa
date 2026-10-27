@@ -8,14 +8,6 @@ import type { TripException } from '@shared/lib/types/exception'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { mockTrips } from '@shared/lib/mocks/trips'
 
-// Real (non-demo) mode: IS_DEMO_MODE is a module-level constant, so the demo and
-// real branches of logException need separate test files — same split as
-// AuthContext.test.tsx / AuthContext.real.test.tsx. This file exists to pin the
-// GPS-drop regression at the API boundary: gpsLat/gpsLng passed into logException
-// MUST land in raiseException's body as gps_lat/gps_lng, because TripContext
-// previously extracted only description + supporting_artifact_id and silently
-// discarded the coordinates the panic page had promised the driver.
-
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
 vi.mock('next/navigation', () => ({
@@ -25,14 +17,10 @@ vi.mock('next/navigation', () => ({
 const demoDriver = mockDrivers[0]
 const CLIENT_REPORT_ID = '34d124eb-1708-42e8-9341-87f890ee16fd'
 
-// Reuse the shared fixture so the trip shape stays in lockstep with the mocks the
-// demo-mode tests use — only the transport (real API mocks below) differs.
 const activeTrip = mockTrips.find(
   (t) => t.driver?.id === demoDriver.id && !['closed', 'cancelled'].includes(t.status),
 )
 if (!activeTrip) throw new Error('Fixture drift: mockDrivers[0] has no active mock trip')
-// The trailer a driver names on an interlink breakdown — taken from the fixture so the
-// id is one the trip really carries.
 const namedTrailer = activeTrip.trailers[activeTrip.trailers.length - 1]
 if (!namedTrailer) throw new Error('Fixture drift: mockDrivers[0]\'s active trip has no trailer')
 
@@ -227,9 +215,6 @@ describe('TripContext.logException (real mode) — GPS reaches raiseException', 
       fireEvent.click(screen.getByText('log-panic-no-gps'))
     })
 
-    // gpsLat/gpsLng of null (failed capture) must not become gps_lat: null in the
-    // body — the backend treats explicit null the same as absent, but sending
-    // undefined keeps the JSON payload free of the keys entirely.
     expect(mockRaiseException).toHaveBeenCalledWith(
       String(activeTrip!.id),
       expect.objectContaining({ gps_lat: undefined, gps_lng: undefined }),
@@ -254,8 +239,6 @@ describe('TripContext.logException (real mode) — GPS reaches raiseException', 
   })
 })
 
-// Trailer analytics: the page hands logException the driver's "truck or trailer" answer
-// as vehicleType/trailerId; it must reach the server as vehicle_type/trailer_id.
 describe('TripContext.logException (real mode) — the breakdown vehicle reaches raiseException', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -296,8 +279,6 @@ describe('TripContext.logException (real mode) — the breakdown vehicle reaches
   })
 
   it('drops a vehicle kind that is neither horse nor trailer instead of sending it', async () => {
-    // The server would 422 an unknown kind, and the offline queue discards any 4xx —
-    // so an unknown value is sent as no answer, and the report still lands.
     mockRaiseException.mockResolvedValue(createdException({ exception_type: 'mechanical' }))
     await renderAndWaitForTrip()
 
@@ -311,9 +292,6 @@ describe('TripContext.logException (real mode) — the breakdown vehicle reaches
   })
 })
 
-// FP-290: the driver can attach several photos. The page uploads them first and hands the
-// complete ordered id list in; the first id also rides in the legacy single field so an
-// older backend still receives the lead photo.
 describe('TripContext.logException (real mode) — photo ids reach raiseException', () => {
   beforeEach(() => {
     vi.clearAllMocks()

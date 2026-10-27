@@ -13,15 +13,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-# Caps decoded bytes so an anonymous caller can't spend our Storage bill or memory
-# (well under evidence.artifacts.MAX_FILE_SIZE_BYTES). Base64 field is bounded separately
-# (4/3 inflation) so an oversized body is rejected before decoding.
 MAX_SIGNATURE_BYTES = 512 * 1024
 MAX_SIGNATURE_B64_CHARS = (MAX_SIGNATURE_BYTES * 4) // 3 + 4
 
-# Same ceilings as HandoverConfirmRequest below: the identity resolve compares what the
-# receiver typed at consent time, which is later submitted at confirm time under those
-# limits, so a longer value could never match anything the confirm route would accept.
 MAX_RECEIVER_NAME_LENGTH = 120
 MAX_RECEIVER_ID_NUMBER_LENGTH = 60
 
@@ -32,9 +26,7 @@ _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 class IssueTokenQuery(BaseModel):
     """Query string of the issue-link route."""
 
-    # The driver's "show a new code" escape hatch.
     force: bool = False
-    # The custody period the driver is acting in (see the driver-substitution contract).
     custody_sequence: int | None = Field(default=None, ge=0)
 
 
@@ -47,7 +39,7 @@ class HandoverTokenResponse(BaseModel):
 
     scan_url: Optional[str] = None
     expires_at: datetime
-    rotate_after_seconds: int  # from settings, so an installed APK follows a cadence change
+    rotate_after_seconds: int
     receiver_opened: bool = False
 
 
@@ -56,9 +48,7 @@ class HandoverStatusResponse(BaseModel):
 
     confirmed: bool
     confirmed_at: Optional[datetime] = None
-    receiver_opened: bool = False  # display only: page loaded, receiver hasn't swiped yet
-    # Submitted as pod_signature_artifact_id; null until confirmed, and
-    # ConfirmationCompleteRequest requires it, so the driver step must not proceed while null.
+    receiver_opened: bool = False
     signature_artifact_id: Optional[UUID] = None
 
 
@@ -73,15 +63,11 @@ class HandoverScanResponse(BaseModel):
     destination_name: str
     waybill_references: list[str]
     expires_at: datetime
-    # Null until consent; non-null lets a returning browser (fresh page load, no client
-    # state) resume where it left off.
     verification: Optional["HandoverVerificationState"] = None
 
 
 class HandoverConfirmRequest(BaseModel):
     receiver_name: str = Field(min_length=1, max_length=120)
-    # Advisory shape only, never validated as an SA ID — a passport or company reg number
-    # is also legitimate, and a mistyped digit is itself part of the record.
     receiver_id_number: str = Field(min_length=1, max_length=60)
     signature_png_base64: str = Field(max_length=MAX_SIGNATURE_B64_CHARS)
     receiver_lat: Optional[Decimal] = None
@@ -124,12 +110,8 @@ class HandoverConsentRequest(BaseModel):
     """
 
     consent_text: str = Field(min_length=1, max_length=4000)
-    # False records a refusal: no consent is stored and no vendor session may follow.
-    # Required, with no default: a receiver page cached from before this field existed
-    # sends its decline without it, so a default of True would store that refusal as
-    # agreement. A missing decision is rejected (422) and the stale page has to reload.
     consented: bool
-    has_document: bool = True  # False records consent at the typed-only tier, not a refusal
+    has_document: bool = True
 
 
 class HandoverResolveRequest(BaseModel):

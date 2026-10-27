@@ -4,7 +4,6 @@
 
 export interface ViewportPreset {
   id: string
-  /** The browser width the preset stands in for. */
   width: number
   label: string
 }
@@ -16,17 +15,12 @@ export const VIEWPORT_PRESETS: readonly ViewportPreset[] = [
   { id: 't768', width: 768, label: 'Tablet 768' },
 ]
 
-// The app's collapsed navigation rail, which every real page sits beside.
 const SIDEBAR_RAIL_PX = 80
-// DetailPanel's own breakpoint and column width (components/ui/DetailPanel.tsx keeps both private).
 const DOCK_MIN_VIEWPORT_PX = 1280
 const DOCKED_PANEL_PX = 400
-// TripTimeline's section: `max-w-4xl` with `md:p-6` on each side.
 const TIMELINE_MAX_PX = 896
 const TIMELINE_PADDING_PX = 24
-// Around a phase card's content: node column (30) + gap (14) + card padding (2 x 16).
 const CARD_CHROME_PX = 76
-// The frame draws a 1 px border on each side, inside its own width.
 const FRAME_BORDER_PX = 2
 
 /** At 1280 and wider the panel is a permanent column and takes its width from the timeline. */

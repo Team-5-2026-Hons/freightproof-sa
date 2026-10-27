@@ -37,8 +37,8 @@ from tests.integration._fleet_seed import (
 
 _ACTIVITY = "/api/v1/analytics/fleet/activity"
 _WEEKS_BACK = 4
-_START_OFFSET_DAYS = 2  # Wednesday: cuts the first week, so it is partial
-_END_OFFSET_DAYS = 20  # the Sunday two weeks later: the last two weeks are whole
+_START_OFFSET_DAYS = 2
+_END_OFFSET_DAYS = 20
 
 
 def _week0() -> date:
@@ -86,8 +86,6 @@ def stops(seed: dict[str, Any]) -> list[Precinct]:
     return [seed["origin"], seed["dest"]]
 
 
-# ── Auth ─────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_activity_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_ACTIVITY, params=_period_params())
@@ -110,8 +108,6 @@ async def test_fleet_activity_with_driver_token_returns_403(
 
     assert response.status_code == 403
 
-
-# ── 422 ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -179,8 +175,6 @@ async def test_fleet_activity_does_not_misreport_a_service_value_error_as_422(
         await client.get(_ACTIVITY, params=_period_params(), headers=headers(operator))
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_activity_for_an_org_without_trips_returns_empty_buckets(
     client: AsyncClient, operator: Operator,
@@ -207,16 +201,14 @@ async def test_fleet_activity_counts_closed_trips_by_sast_departure_week(
     client: AsyncClient, db_session: AsyncSession, operator: Operator, stops: list[Precinct],
 ) -> None:
     overridden = replace_step(SINGLE_LEG, PhaseType.DEPARTURE, status=PhaseStatus.OVERRIDDEN)
-    # (departure, trip type, status, steps)
     cases = (
-        (at_sast(_day(3), 10), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),  # week 0
-        (at_sast(_day(1), 10), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),  # before the start
-        (at_sast(_day(9), 10), TripType.EMPTY_LEG, TripStatus.CLOSED, SINGLE_LEG),  # week 1
-        (at_sast(_day(10), 10), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),  # week 1
-        # 00:30 SAST on Monday is still Sunday 22:30 in UTC: it must count in week 1.
+        (at_sast(_day(3), 10), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),
+        (at_sast(_day(1), 10), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),
+        (at_sast(_day(9), 10), TripType.EMPTY_LEG, TripStatus.CLOSED, SINGLE_LEG),
+        (at_sast(_day(10), 10), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),
         (at_sast(_day(7), 0, 30), TripType.LOADED, TripStatus.CLOSED, SINGLE_LEG),
-        (at_sast(_day(10), 10), TripType.LOADED, TripStatus.ACTIVE, SINGLE_LEG),  # not closed
-        (at_sast(_day(11), 10), TripType.LOADED, TripStatus.CLOSED, overridden),  # no attested departure
+        (at_sast(_day(10), 10), TripType.LOADED, TripStatus.ACTIVE, SINGLE_LEG),
+        (at_sast(_day(11), 10), TripType.LOADED, TripStatus.CLOSED, overridden),
     )
     for departed_at, trip_type, trip_status, steps in cases:
         await seed_trip(
@@ -240,7 +232,6 @@ async def test_fleet_activity_counts_cancellations_by_the_day_trips_ended(
     client: AsyncClient, db_session: AsyncSession, operator: Operator, stops: list[Precinct],
 ) -> None:
     seeded: dict[str, Any] = {}
-    # (name, status, when it ended)
     ends = (
         ("cancelled_week0", TripStatus.CANCELLED, at_sast(_day(3), 12)),
         ("closed_a", TripStatus.CLOSED, at_sast(_day(4), 12)),

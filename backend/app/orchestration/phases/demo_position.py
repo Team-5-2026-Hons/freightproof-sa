@@ -24,8 +24,6 @@ from typing import Awaitable, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
-# Answers "where should this trip's phone be, for a demo?" — None for "wherever it says
-# it is". Async because the dev implementation reads the mock-state store.
 DemoPositionProvider = Callable[[uuid.UUID], Awaitable[Optional[tuple[Decimal, Decimal]]]]
 
 _provider: Optional[DemoPositionProvider] = None

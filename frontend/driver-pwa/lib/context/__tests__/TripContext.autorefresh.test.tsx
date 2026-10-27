@@ -44,13 +44,7 @@ const authValue: AuthState = {
   signOut: vi.fn(),
 }
 
-// A single-phase trip with the phase still open ('pending') server-side — the fixture
-// tests below flip to 'syncing' locally and rely on the server's own answer never moving
-// that phase past pending, so a re-fetch reflecting THAT is the mid-submission poll the
-// optimistic layer is supposed to survive.
 const OPEN_PHASE_ID = 'phase-event-open' as PhaseEventId
-// A second, unrelated phase id — used to prove the unblock toast keys off phase IDENTITY
-// and not just the gate value (see the gate-transition describe block at the bottom).
 const OTHER_PHASE_ID = 'phase-event-other' as PhaseEventId
 
 interface BuildTripOptions {
@@ -97,8 +91,6 @@ function Probe() {
   const phase = ctx.trip?.phases.find((p) => p.phase_event_id === OPEN_PHASE_ID)
   return (
     <div>
-      {/* The only reliable "the mount fetch actually landed" signal — mirrors every
-          other TripContext test file's Probe (see TripContext.real.test.tsx). */}
       <span data-testid="trip-loaded">{ctx.trip ? 'yes' : 'no'}</span>
       <span data-testid="is-loading">{String(ctx.isLoading)}</span>
       <span data-testid="is-refreshing">{String(ctx.isRefreshing)}</span>
@@ -140,14 +132,10 @@ describe('TripContext.refreshQuietly — quiet (property 1)', () => {
     await renderAndWaitForTrip()
     expect(screen.getByTestId('is-loading')).toHaveTextContent('false')
 
-    // Fires refreshQuietly and lets its synchronous portion (setIsRefreshing(true), the
-    // call into loadTrip()) flush, without resolving the underlying fetch yet.
     act(() => {
       fireEvent.click(screen.getByText('refresh-quietly'))
     })
     expect(screen.getByTestId('is-refreshing')).toHaveTextContent('true')
-    // The property under test: isLoading never moves, even mid-refresh — none of the
-    // six screens gated on it may blank to a spinner for this fetch.
     expect(screen.getByTestId('is-loading')).toHaveTextContent('false')
 
     await act(async () => {
@@ -163,8 +151,6 @@ describe('TripContext.refreshQuietly — quiet (property 1)', () => {
 
 describe('TripContext.refreshQuietly — optimistic layer preserved (property 2)', () => {
   it('a refresh landing while a phase is syncing leaves that phase resolved', async () => {
-    // Every fetch (mount + refresh) returns the SAME server state — the phase is still
-    // 'pending' server-side, exactly what a poll landing mid-submission looks like.
     mockFetchMyActiveTrip.mockResolvedValue(buildTrip())
 
     await renderAndWaitForTrip()
@@ -179,9 +165,6 @@ describe('TripContext.refreshQuietly — optimistic layer preserved (property 2)
       fireEvent.click(screen.getByText('refresh-quietly'))
     })
 
-    // The server's own answer (still pending) landed in serverTrip, but
-    // withOptimisticResolution re-layers syncingPhaseIds on top of it — the phase must
-    // not un-complete out from under a submission still in flight.
     expect(screen.getByTestId('phase-status')).toHaveTextContent('completed')
   })
 })
@@ -195,8 +178,6 @@ describe('TripContext.refreshQuietly — rejected refresh', () => {
 
     await renderAndWaitForTrip()
 
-    // No try/catch here on purpose — a throw out of refreshQuietly would fail this test
-    // via an unhandled rejection, which is exactly the "never throws" contract under test.
     await act(async () => {
       fireEvent.click(screen.getByText('refresh-quietly'))
     })
@@ -222,11 +203,6 @@ describe('TripContext — unblock toast fires on a real gate transition only', (
     )
   }
 
-  // A mutable "what the server currently says" instead of an ordered mock queue. Mounting
-  // on a BLOCKED trip switches polling on, which fires a leading-edge refresh immediately
-  // (useTripAutoRefresh.ts) — so the number of fetches before the assertions is an
-  // implementation detail, and a .mockResolvedValueOnce chain silently ran off the end of
-  // its queue the moment that leading check was added.
   function serveTrip(initial: Trip): (next: Trip) => void {
     let current = initial
     mockFetchMyActiveTrip.mockImplementation(() => Promise.resolve(current))
@@ -239,7 +215,6 @@ describe('TripContext — unblock toast fires on a real gate transition only', (
 
     renderWithToast(notify)
     await waitFor(() => expect(screen.getByTestId('trip-loaded')).toHaveTextContent('yes'))
-    // Every observation so far has been blocked — seeding, never a transition.
     expect(notify).not.toHaveBeenCalled()
 
     serveNext(buildTrip({ blockedOn: null }))
@@ -252,24 +227,17 @@ describe('TripContext — unblock toast fires on a real gate transition only', (
   })
 
   it('stays silent when a DIFFERENT phase becomes actionable while unblocked', async () => {
-    // Regression: the first implementation remembered only the last gate VALUE, so any
-    // later unblocked plan read as "the warehouse finished" — including a driver simply
-    // switching to their other assignment, which had never been blocked at all.
     const notify = vi.fn()
     const serveNext = serveTrip(buildTrip({ blockedOn: BLOCKED_ON_SCAN }))
 
     renderWithToast(notify)
     await waitFor(() => expect(screen.getByTestId('trip-loaded')).toHaveTextContent('yes'))
 
-    // One more refresh while STILL blocked. Load-bearing: this is what seeded the old
-    // value-only implementation's ref, so without it the old code would also stay silent
-    // below and this test would pass against the very bug it exists to guard.
     await act(async () => {
       fireEvent.click(screen.getByText('refresh-quietly'))
     })
     expect(notify).not.toHaveBeenCalled()
 
-    // The driver opens their OTHER assignment, which was never blocked.
     serveNext(buildTrip({ phaseEventId: OTHER_PHASE_ID, blockedOn: null }))
     await act(async () => {
       fireEvent.click(screen.getByText('refresh-quietly'))
@@ -293,11 +261,6 @@ describe('TripContext — unblock toast fires on a real gate transition only', (
   })
 })
 
-// The gap that made a driver kill and relaunch the app to see an assignment (Tim, 21 Oct):
-// pollingEnabled used to require `trip !== null`, so a Home with no trip started no
-// interval at all. Nothing else on that screen asks again — the foreground refresh only
-// fires when the app comes BACK, and a phone propped on the dash never leaves the
-// foreground.
 describe('TripContext — a driver waiting to be assigned a trip', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -322,10 +285,8 @@ describe('TripContext — a driver waiting to be assigned a trip', () => {
 
   it('test_a_newly_assigned_trip_appears_without_relaunching_the_app', async () => {
     await renderWithNoTrip()
-    // The poll's leading edge, which also retries a first load that failed.
     await waitFor(() => expect(mockFetchMyActiveTrip.mock.calls.length).toBeGreaterThanOrEqual(2))
 
-    // Dispatch assigns one while the driver sits on Home, touching nothing.
     mockFetchMyActiveTrip.mockResolvedValue(buildTrip())
     await act(async () => {
       await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS)
@@ -339,7 +300,6 @@ describe('TripContext — a driver waiting to be assigned a trip', () => {
     await waitFor(() => expect(mockFetchMyActiveTrip.mock.calls.length).toBeGreaterThanOrEqual(2))
     const afterLeadingEdge = mockFetchMyActiveTrip.mock.calls.length
 
-    // Nothing pushes a new assignment, so this cadence is how fast a just-created trip shows.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS / 2)
     })

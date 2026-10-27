@@ -11,7 +11,6 @@ import { PhaseLocationSection } from './PhaseLocationSection'
 interface Props {
   phase: PhaseDescriptor
   precinct: Precinct | undefined
-  /** The stop's planned slot, shown for an activation (its expected location). */
   slotTime: string | null
 }
 
@@ -50,7 +49,6 @@ export function PhaseLocationDetails({ phase, precinct, slotTime }: Props) {
   const showRecorded = !isTransit && hasLocationEvidence(locationEvidenceForPhase(phase, precinct))
   return (
     <details className="group/details mt-1">
-      {/* A flex summary drops the browser's marker, so the chevron is what says it opens. */}
       <summary className={SUMMARY}>
         <Ic n="chev" s={12} className="transition-transform group-open/details:rotate-90 motion-reduce:transition-none" />
         Location details

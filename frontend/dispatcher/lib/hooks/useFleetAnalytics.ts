@@ -22,9 +22,7 @@ export const FLEET_ANALYTICS_PATH = '/api/v1/analytics/fleet'
 
 export interface FleetQueryResult<T> {
   data: T | null
-  /** First load: nothing to show yet. */
   isLoading: boolean
-  /** A newer request is in flight while `data` still holds the previous answer. */
   isRefreshing: boolean
   error: string | null
   refetch: () => void
@@ -35,10 +33,8 @@ export interface FleetQueryResult<T> {
 }
 
 interface FleetParams {
-  /** null = All time: sent without a start. */
   start: string | null
   end: string
-  /** Trend endpoints only. */
   grain?: Grain
 }
 
@@ -100,7 +96,6 @@ export function useFleetQuery<T>(path: string | null): FleetQueryResult<T> {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     runFetch()
-    // Retire the in-flight request on unmount or path change, so it cannot land late.
     return () => { generationRef.current += 1 }
   }, [runFetch])
 

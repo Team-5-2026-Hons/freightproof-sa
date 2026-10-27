@@ -79,25 +79,12 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
-        # an unscheduled trip is deliberately unstartable, so this fixture books itself for
-        # today — which is what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
         created_by_user_id=user.id,
     )
     db_session.add(trip)
     await db_session.flush()
 
-    # Hand-built single-leg phase plan, mirroring what create_trip actually
-    # produces: the plan generator writes every row `pending` at
-    # trip creation, but create_trip then completes TRIP_CREATION (h0) inline
-    # once its Hedera anchor succeeds (see trips.creation.create_trip) — so h0
-    # is seeded COMPLETED here and every driver-facing row stays PENDING
-    # before any endpoint call (the deleted _get_handshake_event no longer
-    # creates them on demand). IN_TRANSIT (P4) is included and stays PENDING like
-    # every other driver-facing row: it is opened by advance_departure and closed by
-    # the driver's own arrival submission — see advance_in_transit's docstring in
-    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -170,8 +157,6 @@ async def _phase_id(client: AsyncClient, trip_id, token, phase_type: str) -> str
     return row["phase_event_id"]
 
 
-# ── Ported from test_handshakes.py: activation completion over the new route ──
-
 async def test_activation_complete_returns_200(client: AsyncClient, db_session, seed_trip):
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
@@ -232,8 +217,6 @@ async def test_activation_before_the_scheduled_day_returns_409(client: AsyncClie
     )
 
     assert resp.status_code == 409
-    # The date has to reach the driver — a bare "conflict" tells them nothing about
-    # when to come back, and the PWA surfaces this detail verbatim.
     assert "scheduled for" in resp.json()["detail"]
 
     await db_session.refresh(trip)
@@ -325,7 +308,6 @@ async def test_later_phases_are_not_date_gated(client: AsyncClient, db_session, 
     _gate_and_load instead of advance_activation.
     """
     trip, driver = seed_trip
-    # Activation already done yesterday; the plan now sits at loading.
     trip.planned_departure_at = datetime.now(UTC) - timedelta(days=1)
     await db_session.flush()
     token = make_token(sub=str(driver.id), role="driver")
@@ -340,8 +322,6 @@ async def test_later_phases_are_not_date_gated(client: AsyncClient, db_session, 
         headers=auth_header(token),
     )
 
-    # Now push the schedule far into the future. Loading must still be completable:
-    # the trip is already underway, and the date gate has no say over it.
     trip.planned_departure_at = datetime.now(UTC) + timedelta(days=30)
     await db_session.flush()
     loading_id = await _phase_id(client, trip.id, token, "loading")
@@ -361,10 +341,6 @@ async def test_later_phases_are_not_date_gated(client: AsyncClient, db_session, 
 
 async def test_activation_complete_unknown_driver_token_returns_401(client: AsyncClient, db_session, seed_trip):
     trip, driver = seed_trip
-    # An unauthenticated-as-non-owner probe must 401 before any DB lookup of
-    # the trip's phases is even possible for this token, so the activation id
-    # is resolved using the real owner's token first, then addressed with an
-    # unknown driver's token.
     owner_token = make_token(sub=str(driver.id), role="driver")
     activation_id = await _phase_id(client, trip.id, owner_token, "activation")
 
@@ -380,10 +356,8 @@ async def test_activation_complete_unknown_driver_token_returns_401(client: Asyn
         },
         headers=auth_header(token),
     )
-    assert resp.status_code == 401  # other_driver doesn't exist as a Driver row -> get_current_driver 401s first
+    assert resp.status_code == 401
 
-
-# ── Ported from test_handshakes.py's GET /{handshake_type} trio, now GET /phases ──
 
 async def test_list_phases_returns_the_plan(client: AsyncClient, db_session, seed_trip):
     """Replaces test_get_handshake_detail_returns_event: covers the same
@@ -450,8 +424,6 @@ async def test_list_phases_other_driver_returns_404(client: AsyncClient, db_sess
     assert resp.status_code == 404
 
 
-# ── New coverage: the plan-shaped behaviours GET /phases and GET /phases/next add ──
-
 async def test_list_phases_returns_the_whole_plan_in_order(client: AsyncClient, db_session, seed_trip):
     """Length is data: assert the plan matches the fixture's own rows, never a
     hard-coded 7 as a general rule. Assert sequence_number is ascending and the
@@ -517,8 +489,6 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
     resp = await client.get(f"/api/v1/trips/{trip.id}/phases/next", headers=auth_header(token))
     assert resp.json()["phase_type"] == "loading"
 
-    # Drive the rest of the plan to closure so next_phase's null branch is
-    # exercised, not merely one step of it.
     loading_id = await _phase_id(client, trip.id, token, "loading")
     await client.post(
         f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
@@ -542,7 +512,6 @@ async def test_next_phase_tracks_the_ledger_and_returns_null_when_closed(client:
             headers=auth_header(token),
         )
 
-    # Departure hands the ledger to the driving leg, not straight to unloading.
     resp = await client.get(f"/api/v1/trips/{trip.id}/phases/next", headers=auth_header(token))
     assert resp.json()["phase_type"] == "in_transit"
 
@@ -636,7 +605,6 @@ async def test_complete_missing_required_field_returns_422(client: AsyncClient, 
         json={
             "phase_type": "departure",
             "waybill_photo_artifact_id": str(uuid.uuid4()),
-            # seal_number deliberately omitted
             "seal_photo_artifact_id": str(uuid.uuid4()),
             "guard_verified_seal": True,
             "idempotency_key": str(uuid.uuid4()),
@@ -682,8 +650,6 @@ async def test_departure_completes_without_a_waybill_photo(client: AsyncClient, 
         resp = await client.post(
             f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
             json={
-                # No waybill_photo_artifact_id at all — not null, absent, exactly as the
-                # app now serialises it when the field is omitted from the request body.
                 "phase_type": "departure",
                 "seal_number": "AB-1234",
                 "seal_photo_artifact_id": seal_photo_id,
@@ -699,11 +665,9 @@ async def test_departure_completes_without_a_waybill_photo(client: AsyncClient, 
     )).scalar_one()
     assert departure_row.status == PhaseStatus.COMPLETED
     assert departure_row.waybill_photo_artifact_id is None
-    # The seal evidence — the reason this phase exists — is untouched by the removal.
     assert departure_row.seal_number == "AB-1234"
     assert str(departure_row.seal_photo_artifact_id) == seal_photo_id
 
-    # And the plan still advances: departure hands off to the driving leg as before.
     resp = await client.get(f"/api/v1/trips/{trip.id}/phases/next", headers=auth_header(token))
     assert resp.json()["phase_type"] == "in_transit"
 
@@ -775,12 +739,6 @@ async def test_replayed_complete_returns_200_and_does_not_duplicate(client: Asyn
     re-executed the wrapper body (rather than short-circuiting) would stamp a
     fresh completed_at the second time around."""
     trip, driver = seed_trip
-    # Captured as plain values BEFORE any expire_all() below: expiring the
-    # session invalidates trip's loaded attributes, and a later `trip.id`
-    # access would trigger a lazy load outside a greenlet context
-    # (sqlalchemy.exc.MissingGreenlet) — the same known sharp edge noted in
-    # test_phase_anchoring.py and hit by
-    # test_update_vehicle_invalid_vin_leaves_db_state_unchanged.
     trip_id = trip.id
     token = make_token(sub=str(driver.id), role="driver")
     activation_id = await _phase_id(client, trip_id, token, "activation")
@@ -800,10 +758,6 @@ async def test_replayed_complete_returns_200_and_does_not_duplicate(client: Asyn
     )
     assert first.status_code == 200
 
-    # Fresh read, not stale identity-map state: the endpoint ran in a
-    # different session-bound request context than db_session's own identity
-    # map, so a plain attribute read here without expiring first could pass
-    # without ever touching the database.
     db_session.expire_all()
     activation_row = (await db_session.execute(
         select(PhaseEvent).where(PhaseEvent.id == uuid.UUID(activation_id))
@@ -823,12 +777,10 @@ async def test_replayed_complete_returns_200_and_does_not_duplicate(client: Asyn
         select(PhaseEvent).where(PhaseEvent.id == uuid.UUID(activation_id))
     )).scalar_one()
 
-    assert count_after == count_before  # the replay wrote no second row anywhere on the trip
+    assert count_after == count_before
     assert activation_row.idempotency_key == key
-    assert activation_row.completed_at == completed_at_after_first  # not re-stamped by the replay
+    assert activation_row.completed_at == completed_at_after_first
 
-
-# ── (a): in_transit is driver-addressable; trip_creation is not ────────────────
 
 async def test_complete_addressing_in_transit_row_records_arrival(
     client: AsyncClient, db_session, seed_trip,
@@ -908,8 +860,6 @@ async def test_arrival_is_not_gated_on_the_destination_warehouse_scan(
     assert in_transit["blocked_on"] is None
 
 
-# ── (b): ownership checked before the phase-type cross-check ──────────────
-
 async def test_complete_with_wrong_phase_type_on_another_drivers_trip_returns_404(
     client: AsyncClient, db_session, seed_trip,
 ):
@@ -941,8 +891,6 @@ async def test_complete_with_wrong_phase_type_on_another_drivers_trip_returns_40
     assert "activation" not in resp.text
 
 
-# ── (c): the full single-leg walk over live HTTP, closing the trip ────────
-
 async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClient, db_session, seed_trip):
     """The stage's literal exit bar: POST /phases/{id}/complete for each real
     driver-addressable phase, resolving every id from a real GET /phases
@@ -972,9 +920,6 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     )
     assert resp.status_code == 200
 
-    # seal_number must match ^[A-Z]{2}-\d{4}$; unloading's destination seal
-    # must match departure's or a CRITICAL seal_mismatch exception is raised
-    # (the trip still proceeds to confirmation and closes regardless).
     waybill_id = await _make_artifact(db_session, trip.id)
     seal_photo_id = await _make_artifact(db_session, trip.id)
     departure_id = await _phase_id(client, trip.id, token, "departure")
@@ -1022,17 +967,6 @@ async def test_full_single_leg_walk_over_http_closes_the_trip(client: AsyncClien
     assert resp.json()["status"] == "closed"
 
 
-# ── An EMPTY_LEG trip must reach `closed` ───────────────────────────────────
-#
-# The plan generator emits no LOADING row at all for an empty leg (nothing is
-# picked up), and advance_confirmation used to call _find_loading_for_leg,
-# which RAISED ResourceNotFoundError("PhaseEvent", "loading") instead of
-# returning None — 404ing every empty-leg confirmation, permanently. Created
-# via a real POST /trips (not a hand-built PhaseEvent fixture, matching the
-# idiom in tests/integration/test_create_trip_multistop.py) so
-# build_phase_plan's real no-loading-row shape for an empty leg is exercised,
-# not merely asserted against in a unit test.
-
 @pytest_asyncio.fixture
 async def empty_leg_seed_data(db_session):
     """Minimal rows for POST /trips with trip_type=empty_leg. Same shape as
@@ -1047,8 +981,6 @@ async def empty_leg_seed_data(db_session):
         id=uuid.uuid4(), organization_id=operator_org.id,
         email="el-dispatcher@test.co.za", full_name="EL Dispatcher", is_active=True,
     )
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(id=uuid.uuid4(), name="EL Origin", is_shared=True, principal_organization_id=client_org.id, latitude="0", longitude="0")
     dest = Precinct(id=uuid.uuid4(), name="EL Dest", is_shared=True, principal_organization_id=client_org.id, latitude="1", longitude="1")
     driver = Driver(
@@ -1094,7 +1026,6 @@ async def test_empty_leg_trip_walks_to_closed(
                 "origin_precinct_id": str(seed["origin_id"]),
                 "destination_precinct_id": str(seed["dest_id"]),
                 "planned_departure_at": datetime.now(UTC).isoformat(),
-                # Arrival is required at creation (FP-139).
                 "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
                 "trip_type": "empty_leg",
                 "consignments": [],
@@ -1111,9 +1042,6 @@ async def test_empty_leg_trip_walks_to_closed(
     )
     assert phases_resp.status_code == 200
     phase_types = [p["phase_type"] for p in phases_resp.json()]
-    # The load-bearing shape this test exists to prove: no `loading` row at
-    # all on an empty leg (build_phase_plan never emits one when nothing is
-    # picked up).
     assert phase_types == [
         "trip_creation", "activation", "departure", "in_transit", "arrival", "unloading", "confirmation",
     ]
@@ -1147,8 +1075,6 @@ async def test_empty_leg_trip_walks_to_closed(
         )
     assert resp.status_code == 200
 
-    # An empty leg still has a drive, and the driver still has to say he arrived —
-    # in_transit gates the unloading below exactly as it does on a laden trip.
     in_transit_id = await _phase_id(client, trip_id, driver_token, "in_transit")
     resp = await client.post(
         f"/api/v1/trips/{trip_id}/phases/{in_transit_id}/complete",
@@ -1161,8 +1087,6 @@ async def test_empty_leg_trip_walks_to_closed(
     )
     assert resp.status_code == 200, resp.text
 
-    # The seal is inspected at the gate before anything is opened — even on an
-    # empty leg, which still has a real seal applied at departure.
     seal_photo_id = await _make_artifact(db_session, trip_id)
     arrival_id = await _phase_id(client, trip_id, driver_token, "arrival")
     resp = await client.post(
@@ -1202,8 +1126,6 @@ async def test_empty_leg_trip_walks_to_closed(
     assert resp.status_code == 200
     assert resp.json()["status"] == "closed"
 
-
-# ── blocked_on served on the phase read schema ──────────────────────────────
 
 async def test_phase_list_reports_blocked_on_for_loading(
     client: AsyncClient, db_session, seed_trip_with_consignment,
@@ -1269,8 +1191,6 @@ async def test_phase_list_query_count_is_independent_of_phase_count(
     assert len(consignment_queries) == 1
 
 
-# ── The gate enforced on completion, not just read ──────────────────────────
-
 @pytest_asyncio.fixture
 async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
     """seed_trip with activation already completed under a known idempotency_key.
@@ -1299,10 +1219,6 @@ async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
         "trip_id": str(trip.id),
         "activation_event_id": activation_id,
         "idempotency_key": key,
-        # The SAME token as the original completion, not a fresh make_token() call:
-        # sessions.py's one-device-per-driver rule only lets a NEWER session_id take
-        # over, and two make_token() calls close together can tie on issued_at,
-        # 401ing the replay for a reason that has nothing to do with this test.
         "token": token,
     }
 
@@ -1316,9 +1232,6 @@ async def test_completing_a_blocked_loading_returns_409(
     trip, driver = seed_trip_with_consignment
     token = make_token(sub=str(driver.id), role="driver")
 
-    # Loading is sequence-gated on activation being resolved first (_gate_and_load's
-    # lower-sequence check) — completing that here isolates the 409 below to the
-    # scan gate, not a stale earlier phase.
     activation_id = await _phase_id(client, trip.id, token, "activation")
     await client.post(
         f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
@@ -1369,8 +1282,6 @@ async def test_an_idempotent_replay_of_a_completed_phase_does_not_409(
 
     assert response.status_code == 200
 
-
-# ── A closed phase row is never rewritten by a later scan ───────────────────
 
 
 @pytest.fixture
@@ -1460,8 +1371,6 @@ async def completed_unloading_trip(
 
     token = make_token(sub=str(driver.id), role="driver")
 
-    # Scan-out at origin, staged/ingested/closed BEFORE loading — mirrors the real
-    # dispatcher flow and is what clears loading's own gate.
     feed = MockScanFeed()
     await feed.stage_scans(
         consignment_reference=pp_reference, stop_reference=str(stop0.id),
@@ -1515,8 +1424,6 @@ async def completed_unloading_trip(
     await _complete_in_transit(client, trip, token)
     await _complete_arrival(client, db_session, trip, token)
 
-    # Close (not stage) the destination IN-direction session: satisfies unloading's
-    # new gate without giving it any barcode data — see the fixture docstring above.
     await feed.close_session(
         consignment_reference=pp_reference, stop_reference=str(stop1.id), direction=ScanDirection.IN,
     )
@@ -1554,7 +1461,6 @@ async def test_a_closed_phase_row_is_never_written_again(
         "completed_at": event.completed_at,
     }
 
-    # A late scan-in lands well after unloading closed — the realistic ordering.
     feed = MockScanFeed()
     await feed.stage_scans(
         consignment_reference=completed_unloading_trip["pp_reference"],
@@ -1578,8 +1484,6 @@ async def test_a_closed_phase_row_is_never_written_again(
         "completed_at": event.completed_at,
     } == before
 
-
-# ── The paper linehaul sheet photographed at loading ─────────────────────────
 
 async def _complete_activation(client: AsyncClient, trip_id, token) -> None:
     """Advances a fresh seed_trip past activation so `loading` is reachable."""
@@ -1741,8 +1645,6 @@ async def test_loading_complete_with_another_trips_linehaul_photo_returns_404(
     token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, trip.id, token)
 
-    # A second, otherwise-unrelated trip sharing the same org/driver/vehicle/precinct
-    # rows as `trip` — enough to satisfy every FK on Trip without a second full fixture.
     other_trip = Trip(
         id=uuid.uuid4(), trip_reference=f"FP-OTHER-{uuid.uuid4().hex[:8]}", order_number="ORD-OTHER",
         operator_organization_id=trip.operator_organization_id,
@@ -1772,8 +1674,6 @@ async def test_loading_complete_with_another_trips_linehaul_photo_returns_404(
     event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
     assert event.linehaul_photo_artifact_id is None
 
-
-# ── Completion validates the attribution of what it cites ───────────────────────
 
 async def _make_attributed_artifact(
     db_session, trip_id, phase_event_id, role: EvidenceRole, *, driver_id=None,
@@ -1856,7 +1756,7 @@ async def test_completion_citing_artifact_attributed_to_another_phase_returns_42
     await db_session.refresh(loading)
     assert loading.status == PhaseStatus.PENDING
     assert loading.linehaul_photo_artifact_id is None
-    assert loading.anchor_status == anchor_before  # nothing was queued for anchoring
+    assert loading.anchor_status == anchor_before
 
 
 async def test_completion_citing_wrong_role_returns_422(client: AsyncClient, db_session, seed_trip):
@@ -1949,7 +1849,6 @@ async def test_confirmation_rejects_driver_pod_photo_as_receiver_confirmation(
     pod_photo = await _make_attributed_artifact(
         db_session, trip.id, confirmation_id, EvidenceRole.POD_PHOTO, driver_id=driver.id,
     )
-    # Two distinct ids: the request schema already rejects one id in both fields.
     another_pod_photo = await _make_attributed_artifact(
         db_session, trip.id, confirmation_id, EvidenceRole.POD_PHOTO, driver_id=driver.id,
     )
@@ -2309,9 +2208,7 @@ async def test_loading_complete_rejects_a_linehaul_pdf_without_its_scan(
     assert event.linehaul_pdf_artifact_id is None
 
 
-# ── WI-27 item 4: an own replay of an EXCEPTION-status completion is a 200 ──────────
-
-_ARRIVAL_SEAL_MISMATCH = "ZZ-9999"  # the fixture's departure seal is AB-1234
+_ARRIVAL_SEAL_MISMATCH = "ZZ-9999"
 
 
 async def _arrival_resolved_as_exception(client: AsyncClient, db_session, trip, token: str) -> tuple[str, str, dict]:

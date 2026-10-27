@@ -25,13 +25,10 @@ import { ROUTES }         from '@/lib/constants/routes'
 import { COPY }           from '@shared/lib/constants/copy'
 import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
 
-// Names the stored column widths; this list's must not share History's.
 const ACTIVE_TRIPS_TABLE_ID = 'active-trips'
-// Keeps the list usable on a short screen; the area under the top bar scrolls instead of squeezing it.
 const TRIPS_CARD_MIN_HEIGHT = 'min-h-[18rem]'
 const CREATED_DATE_COLUMN = { label: 'Created', pick: (trip: TripSummary): string => trip.created_at }
 
-// `exception_hold` has no tab of its own (nothing sets it yet), so it appears under All only.
 const TAB_STATUS: Record<Exclude<TripTab, 'all'>, TripStatus> = { created: 'created', active: 'active' }
 const TAB_LABEL: Record<TripTab, string> = { all: 'All', created: 'Scheduled', active: 'In progress' }
 const TAB_EMPTY_TITLE: Record<Exclude<TripTab, 'all'>, string> = { created: 'No scheduled trips', active: 'No trips in progress' }
@@ -39,7 +36,6 @@ const TAB_PANEL_ID = 'active-trips-panel'
 
 const inTab = (trip: TripSummary, tab: TripTab): boolean => tab === 'all' || trip.status === TAB_STATUS[tab]
 
-// useSearchParams (the filters live in the URL) needs a Suspense boundary above it in the App Router.
 export default function ActiveTripsPage() {
   return (
     <Suspense fallback={<div role="status" aria-label="Loading trips" className="flex flex-1 items-center justify-center"><Spinner size="lg" /></div>}>
@@ -50,12 +46,7 @@ export default function ActiveTripsPage() {
 
 function ActiveTripsList() {
   const router = useRouter()
-  // Held in the URL so the list is still filtered after opening a trip and coming back.
   const { state: { tab }, update, search, setSearch, href: listHref } = useUrlListState(TRIP_LIST_CODEC)
-  // Attention first by default: this is a monitoring screen, so a trip that has just raised a
-  // critical must surface without anyone clicking a header, even though that means a live event can
-  // move rows. A header click still takes over, and clicking Exceptions returns to attention order.
-  // Sort stays local: it is not part of the filters the URL keeps.
   const { sort, tableSort, onSort } = useTableSort({
     keys: TRIP_SORT_KEYS,
     firstDir: defaultTripSortDirection,
@@ -63,8 +54,6 @@ function ActiveTripsList() {
   })
   const { trips, precincts, initialLoad, loadFailed, error, refetch } = useActiveTrips()
 
-  // Counted over the whole active list, not the searched one, so a tab's number does not jitter
-  // while typing and always matches what clicking it would show with an empty search.
   const tabs = useMemo<Tab[]>(
     () => TRIP_TABS.map(id => ({ id, label: TAB_LABEL[id], badge: trips.filter(trip => inTab(trip, id)).length })),
     [trips],
@@ -75,11 +64,9 @@ function ActiveTripsList() {
     return sortTrips(matching, sort, precincts)
   }, [trips, tab, search, sort, precincts])
 
-  // Built per render: route names depend on the loaded precincts.
   const columns = useMemo(
     () => buildTripColumns<TripSummary>({
       precincts, date: CREATED_DATE_COLUMN, showProgress: true, sortable: true,
-      // The filtered list as returnTo, so the trip page's Back button finds it too.
       hrefFor: id => withReturnTo(ROUTES.tripDetail(id), listHref),
     }),
     [precincts, listHref],

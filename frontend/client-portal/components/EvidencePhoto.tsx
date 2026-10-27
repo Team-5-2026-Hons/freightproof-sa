@@ -15,14 +15,8 @@ type Load =
 
 type Check = { matches: boolean; actual: string } | { error: string }
 
-// Files already downloaded this page session, by artifact id. Picking another event and coming
-// back remounts the photo; without this each visit would download (and be logged server-side as
-// a photo view) again, and spend the rate limit.
 const fileCache = new Map<string, ArrayBuffer>()
 
-// The only types a blob URL may carry. A blob: URL has the portal's own origin, so evidence typed
-// text/html or image/svg+xml, opened in a tab, would run as a page of this site. Everything else
-// is handed to the browser as opaque bytes, which it can only download.
 const OPENABLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'])
 const OPAQUE_TYPE = 'application/octet-stream'
 
@@ -32,8 +26,6 @@ interface FailureText {
 }
 const FAILURE_BY_STATUS: Record<number, FailureText> = {
   401: { text: 'Access expired — reload the page to enter a new code', retry: false },
-  // The server refused to serve bytes that no longer hash to what was sealed. Not retryable:
-  // the stored file changed, and only the issuing operator can explain why.
   409: { text: 'The stored file no longer matches the one sealed — contact the issuing operator', retry: false },
   410: { text: 'This link has been closed', retry: false },
   429: { text: 'Too many requests — try again shortly', retry: true },
@@ -53,10 +45,7 @@ async function hashCheck(bytes: ArrayBuffer, expectedHex: string): Promise<Check
 interface Props {
   token: string
   file: EvidenceFile
-  // Names the photo ("Photo 2 of 3") instead of its role. Exception photos have only one role.
   label?: string
-  // The receipt that committed this photo's hash. undefined = this pack does not tie photos to
-  // receipts (manifest v1); null = it does, and no receipt covers this one.
   receiptId?: string | null
 }
 
@@ -65,7 +54,6 @@ export function EvidencePhoto({ token, file, label, receiptId }: Props) {
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [check, setCheck] = useState<Check | null>(null)
   const [imageFailed, setImageFailed] = useState(false)
-  // Bumped by Retry so the effect below runs again for the same file.
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -81,11 +69,9 @@ export function EvidencePhoto({ token, file, label, receiptId }: Props) {
         if (controller.signal.aborted) return
         url = URL.createObjectURL(new Blob([bytes], { type: OPENABLE_TYPES.has(file.mime_type) ? file.mime_type : OPAQUE_TYPE }))
         setLoad({ state: 'ready', url, bytes })
-        // Checked as soon as the bytes are here: the reader should not have to ask whether a photo is the photo.
         const outcome = await hashCheck(bytes, file.sha256)
         if (!controller.signal.aborted) setCheck(outcome)
       } catch (error) {
-        // Leaving the page (or the event) aborts the download on purpose; that is not a failure.
         if (controller.signal.aborted) return
         console.warn('Could not load the evidence file', error)
         setLoad({ state: 'failed', status: error instanceof PackError ? error.status : 0 })

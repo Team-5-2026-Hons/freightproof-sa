@@ -11,8 +11,6 @@ import {
 
 import { DEFAULT_THUMBNAIL_WIDTH_PX, StaticGeofenceThumbnail } from '../StaticGeofenceThumbnail'
 
-// Fixed fixture coordinates (Cape Town CBD) so the expected tile z/x/y can be computed
-// independently in this test without duplicating the component's own maths.
 const LATITUDE = -33.9249
 const LONGITUDE = 18.4241
 const RADIUS_METRES = 200
@@ -20,14 +18,9 @@ const PRECINCT_NAME = 'V&A Waterfront Yard'
 
 const TILE_URL_PATTERN = /^https:\/\/tile\.openstreetmap\.org\/(\d+)\/(\d+)\/(\d+)\.png$/
 
-// jsdom has no ResizeObserver, so the component renders at its default width — which is
-// exactly the width these expectations are computed against.
 const EXPECTED_WIDTH_PX = DEFAULT_THUMBNAIL_WIDTH_PX
 const EXPECTED_HEIGHT_PX = 150
 
-// The component frames the zoom on the SMALLER dimension so the circle cannot overflow
-// the fixed-height band (see tiles.test.ts for the invariant across every card width).
-// Expectations here derive from the same box rather than restating the rule.
 const EXPECTED_FRAME_PX = Math.min(EXPECTED_WIDTH_PX, EXPECTED_HEIGHT_PX)
 
 function renderThumbnail(radiusMetres = RADIUS_METRES) {
@@ -62,10 +55,6 @@ describe('StaticGeofenceThumbnail', () => {
     })
   })
 
-  // The bug this guards: a fixed 2x2 tile block is offset by the centre's fractional
-  // position within its own tile, so for most coordinates it left a blank strip down
-  // the side of the card — the grey void the schematic fallback exists to prevent, but
-  // reached without any tile actually failing.
   it('renders enough tiles to cover the whole thumbnail, leaving no blank strip', () => {
     renderThumbnail()
 
@@ -137,9 +126,6 @@ describe('StaticGeofenceThumbnail', () => {
   })
 
   it('tolerates isolated tile failures instead of abandoning the map', () => {
-    // An edge-of-coverage 404 or one dropped request is normal on a healthy map. This
-    // used to latch to the schematic on the FIRST error, with no reset and no way back,
-    // which contradicted the tolerance GeofenceMap applies to the same problem.
     renderThumbnail()
     const images = tileImages()
 
@@ -166,7 +152,6 @@ describe('StaticGeofenceThumbnail', () => {
     renderThumbnail()
     const images = tileImages()
 
-    // Approach the threshold repeatedly, but never reach it without a success between.
     for (let round = 0; round < 3; round++) {
       for (let i = 0; i < TILE_ERROR_FALLBACK_THRESHOLD - 1; i++) {
         fireEvent.error(images[i % images.length])
@@ -180,9 +165,6 @@ describe('StaticGeofenceThumbnail', () => {
   it('labels the map once on its container, not once per tile fragment', () => {
     renderThumbnail()
 
-    // One accessible name for the whole map — the tiles are fragments of a single
-    // image, so labelling each would make a screen reader announce the precinct once
-    // per tile.
     const container = screen.getByRole('img', { name: `Street map showing ${PRECINCT_NAME}` })
     expect(within(container).queryAllByRole('img')).toHaveLength(0)
 

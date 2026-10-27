@@ -66,22 +66,15 @@ from app.storage.supabase_storage import (
 
 logger = logging.getLogger(__name__)
 
-# Bumped only if the seal's key set or meaning changes; old receipts keep verifying
-# under the version they were written with.
 SEAL_PAYLOAD_VERSION = 1
 
-# 32 random bytes → 43 URL-safe characters: unguessable, and short enough to paste.
 SHARE_TOKEN_BYTES = 32
 
 
 @dataclass(frozen=True)
 class IssuedPack:
     pack: AuditPack
-    # Exists only in this return value — the database keeps its hash.
     raw_token: str
-    # None for a legacy pack with no recipient email. Exists only here and in the email
-    # already sent — the database keeps its hash. Returned to the dispatcher so they can
-    # still pass it on if the automatic send failed (see the fail-open comment below).
     raw_password: str | None = None
 
 
@@ -164,8 +157,6 @@ async def render_trip_incident_sheet(
 
 
 async def _next_version(db: AsyncSession, trip_id: uuid.UUID) -> int:
-    # Row lock on the trip serialises concurrent issues for it; the unique
-    # (trip_id, pack_version) constraint is the backstop if that is ever bypassed.
     await db.execute(select(Trip.id).where(Trip.id == trip_id).with_for_update())
     current = (await db.execute(
         select(func.max(AuditPack.pack_version)).where(AuditPack.trip_id == trip_id)
@@ -249,12 +240,8 @@ async def issue_audit_pack(
         try:
             await send_issue_email(pack, label=issue.pack_label, share_url=share_url(raw_token), raw_password=raw_password)
         except EmailUnavailableError:
-            # Fail-open like the seal above: a SendGrid outage must not stop the pack being
-            # issued. The dispatcher still has the share link and can pass it on another way.
             logger.exception("Audit pack issue email could not be sent for pack_id=%s", pack.id)
         else:
-            # Logged only once SendGrid has accepted it, so the dispatcher never sees
-            # "password emailed" for an email that never left.
             db.add(AuditPackAccessEvent(
                 id=uuid.uuid4(), audit_pack_id=pack.id, event_type=AuditPackAccessEventType.PASSWORD_EMAILED,
             ))

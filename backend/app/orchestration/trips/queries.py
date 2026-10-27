@@ -58,9 +58,6 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     be handed it or they could never start work.
     """
     inactive = {TripStatus.CLOSED, TripStatus.CANCELLED}
-    # Rank, not sort key: every underway status shares rank 0 so departure order still
-    # decides between two of them. ACTIVE and EXCEPTION_HOLD are peers — a held trip
-    # is still the trip the driver is on, it is just blocked from advancing.
     underway_first = case(
         (Trip.status.in_((TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD)), 0),
         else_=1,
@@ -68,27 +65,18 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     result = await db.execute(
         select(Trip)
         .where(
-            # The driver holding the trip now; Trip.driver_id is only the journey lock's original.
             current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id) == driver_id,
             Trip.status.notin_(inactive),
         )
         .order_by(
             underway_first,
             Trip.planned_departure_at.asc().nulls_last(),
-            # Last resort only, for two trips leaving at the same minute (or two
-            # unscheduled ones): keeps the result deterministic instead of letting
-            # Postgres return whichever row it reaches first.
             Trip.created_at.desc(),
         )
     )
     trip = result.scalars().first()
     if trip is None:
         return None
-    # Deliberate asymmetry with GET /trips/{id} (which strips receipts for
-    # non-admin dispatchers): the driver's own active trip keeps its
-    # blockchain_receipts because the PWA anchor UI renders them. Receipts
-    # carry hashes/tx ids only — no PII (POPIA-safe). Covered by
-    # test_active_trip_includes_receipts_for_driver.
     return await _driver_view(
         db, await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id),
         trip=trip, driver_id=driver_id,
@@ -138,8 +126,6 @@ async def list_trips_for_driver(
     rows to populate its Past tab, and grouping is the client's job — filtering them
     out here would make a completed-trip history impossible to build.
     """
-    # FP-83: every trip this driver ever held, not only those they were originally assigned: a
-    # takeover is theirs to work, and a handed-over trip stays in their history.
     held_later = select(DriverSubstitution.trip_id).where(or_(
         DriverSubstitution.original_driver_id == driver_id, DriverSubstitution.substituting_driver_id == driver_id,
     ))
@@ -159,13 +145,9 @@ async def list_trips_for_driver(
 
     trip_ids = [t.id for t in trips]
 
-    # One query for every trip's handover chain, not two per trip: this list is a driver's whole
-    # history, and each query is a network round trip to the database.
     links_by_trip = await completed_links_by_trip(db, trip_ids=trip_ids)
     participation = {t.id: _participation(t, links_by_trip[t.id], driver_id) for t in trips}
 
-    # Batched, not per-row: same N+1 guard as trips.listing.list_trips().
-    # Both FKs are nullable on Trip, so Nones are dropped before the IN clause.
     precinct_ids = {
         pid
         for t in trips
@@ -194,10 +176,6 @@ async def list_trips_for_driver(
 
 async def _critical_exception_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
     """Unreviewed critical exceptions per trip, for the driver's trip cards."""
-    # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
-    # but the driver has no review action at all (see FP-146 follow-on): a count of
-    # routine warnings they can neither act on nor clear is noise on their trip card.
-    # The dispatcher-facing counts deliberately include every severity.
     return {
         row[0]: row[1]
         for row in (
@@ -272,11 +250,8 @@ async def get_own_trip_detail_for_driver(
     blockchain_receipts (hashes and tx ids only, no PII) because the PWA renders
     the anchor state.
     """
-    # 404 for a driver who never held the trip, TripHandedOverError for one who held it earlier
-    # (their history is a separate, restricted read); never the current trip data.
     held = await require_current_driver_with_links(db, trip_id=trip_id, driver_id=driver_id)
     trip = held.trip
-    # The gate read the trip and the custody links; the detail and the view reuse them.
     detail = await get_trip_detail(
         db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
         facts=TripReadFacts(trip=trip, custody_links=held.links),

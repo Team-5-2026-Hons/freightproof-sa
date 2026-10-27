@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-/** How long a new row keeps its highlight: long enough to notice, short enough not to read as
- *  a status. */
 export const RECENT_KEY_MS = 2500
 
 /**
@@ -27,8 +25,6 @@ export function useRecentKeys(keys: readonly string[], enabled: boolean, duratio
     const fresh = [...current].filter(key => !previous.has(key))
     if (fresh.length === 0) return
     setRecent(existing => new Set([...existing, ...fresh]))
-    // Timers are tracked in a ref, not cleaned up per run: a later change must not cancel the
-    // fade of an earlier arrival, or its highlight would stick.
     const timer = setTimeout(() => {
       timers.current.delete(timer)
       setRecent(existing => new Set([...existing].filter(key => !fresh.includes(key))))

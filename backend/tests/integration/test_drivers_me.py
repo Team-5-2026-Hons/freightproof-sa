@@ -64,8 +64,6 @@ async def client_with_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Asyn
         app.dependency_overrides.pop(get_db, None)
 
 
-# ── Happy path ────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_get_my_driver_profile_returns_driver(
@@ -89,8 +87,6 @@ async def test_get_my_driver_profile_returns_driver(
     finally:
         app.dependency_overrides.pop(get_current_driver, None)
 
-
-# ── Rejection paths ───────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio

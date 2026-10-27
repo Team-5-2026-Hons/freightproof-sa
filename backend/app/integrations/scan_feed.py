@@ -32,11 +32,8 @@ from app.integrations.mock_state import build_key, get_mock_state_store
 
 logger = logging.getLogger(__name__)
 
-# Redis key kind for scan state, distinct from staged PP state.
 _SCAN_KEY_KIND = "scan"
 
-# Separate key from staged barcodes, so closing a session can't rewrite the
-# barcode payload if a dev-panel trigger fires out of order.
 _SESSION_KEY_KIND = "scan-session"
 
 
@@ -47,8 +44,8 @@ class ScanDirection(str, enum.Enum):
     and that file is read by every branch.
     """
 
-    OUT = "out"   # scanned onto the truck at a pickup stop  → Parcel.pp_scan_out_at
-    IN = "in"     # scanned off the truck at a delivery stop → Parcel.pp_scan_in_at
+    OUT = "out"
+    IN = "in"
 
 
 @dataclass(frozen=True)
@@ -199,9 +196,6 @@ def get_scan_feed() -> ScanFeed:
     """Return the configured scan feed (mirrors get_pp_client())."""
     if settings.SCAN_FEED_USE_MOCK:
         return MockScanFeed()
-    # No live feed exists (PP exposes no scan endpoint, no depot account).
-    # Raising is honest — a silent mock fallback would let production
-    # believe it had real scan data.
     raise NotImplementedError(
         "No live warehouse scan feed is implemented — set SCAN_FEED_USE_MOCK=true"
     )

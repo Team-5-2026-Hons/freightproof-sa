@@ -20,10 +20,6 @@ from tests.integration.test_phase_corroboration import (  # noqa: F401
     override_get_db,
 )
 
-# Import fixture functions directly, matching test_gps_mismatch. A per-module
-# pytest_plugins declaration works when this file is collected alone, but not after
-# test_phase_corroboration has already been collected by the full suite.
-
 
 async def _phase_id(client: AsyncClient, trip_id: uuid.UUID, token: str) -> str:
     response = await client.get(

@@ -44,7 +44,6 @@ describe('newCapture pre-fills seal checks from the ledger', () => {
 
     expect(capture.sealChecks).toHaveLength(1)
     expect(capture.sealChecks[0]).toMatchObject({ condition: 'not_applicable', notApplicableReason: NO_SEAL_YET_REASON, photos: [] })
-    // The driver is asked only to confirm the vehicles are present; no seal is demanded.
     expect(captureProblems(capture, context.vehicles)).toEqual([
       `Confirm every vehicle: ${context.vehicles.map((vehicle) => vehicle.registration).join(', ')}`,
     ])

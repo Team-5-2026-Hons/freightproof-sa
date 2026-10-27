@@ -1,7 +1,5 @@
 import type { Vehicle } from '@shared/lib/types/vehicle'
 
-// South African combination rules: no trailer (a single unit), one trailer of any length,
-// or exactly a 6 m + 12 m pair (18 m combined). Anything else is refused before submit.
 const SHORT_TRAILER_M = 6
 const LONG_TRAILER_M = 12
 export const MAX_TRAILERS = 2
@@ -19,8 +17,6 @@ export function trailerCombo(selected: readonly Vehicle[]): TrailerCombo {
     return { valid: true, message: `${only.registration} · ${length}` }
   }
   if (selected.length === MAX_TRAILERS) {
-    // A missing length is named, not counted as 0 m: "0 m + 12 m" would blame the pair when the
-    // real problem is a trailer record with no length.
     const unmeasured = selected.find(t => t.length_m == null)
     if (unmeasured) return { valid: false, message: `${unmeasured.registration} has no recorded length` }
     const lengths = selected.map(t => t.length_m as number).sort((a, b) => a - b)

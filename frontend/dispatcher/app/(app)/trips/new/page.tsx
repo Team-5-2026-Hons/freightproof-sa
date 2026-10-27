@@ -69,9 +69,7 @@ const CTA_HINT_BLOCKED = 'This manifest cannot become a trip.'
 interface Notice {
   tone: 'error' | 'warn'
   message: string
-  /** The trip already holding this manifest, when it is ours to open. */
   trip?: { id: string; reference: string | null }
-  /** An empty-leg timeout: Active trips is where to check. */
   showActiveTrips?: boolean
 }
 
@@ -93,12 +91,10 @@ export default function TripNewPage(): React.JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
-  // Bumped on every refused Create, so the same first error is refocused on a second press.
   const [refusedAttempts, setRefusedAttempts] = useState(0)
   const noticeRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // The assistant's "Open trip form" link (assistant spec §7.3): read once, only known ids used, nothing created.
   const driverIds = useMemo(() => new Set(drivers.map(d => d.id)), [drivers])
   const horseIds = useMemo(() => new Set(horses.map(h => h.id)), [horses])
   const trailerIds = useMemo(() => new Set(trailers.map(t => t.id)), [trailers])
@@ -109,7 +105,6 @@ export default function TripNewPage(): React.JSX.Element {
     setMode, setManifestInput, lookUp: lookup.lookUp, setCrew, setPicks, setOverrides,
   })
 
-  // Without this the failure is invisible: the precinct pickers would just be empty.
   useEffect(() => {
     if (precinctsError) {
       notify({
@@ -120,13 +115,10 @@ export default function TripNewPage(): React.JSX.Element {
     }
   }, [precinctsError, notify])
 
-  // A failed create is announced where the dispatcher's attention goes next.
   useEffect(() => {
     if (notice) noticeRef.current?.focus()
   }, [notice])
 
-  // A refused Create takes the dispatcher to the first field to fix. The CTA sits in the
-  // sticky summary, often a screen away from the field that blocked it.
   useEffect(() => {
     if (refusedAttempts === 0) return
     panelRef.current?.querySelector<HTMLElement>('[aria-invalid="true"], [data-invalid="true"]')?.focus()
@@ -135,14 +127,12 @@ export default function TripNewPage(): React.JSX.Element {
   const preview: PPManifestPreview | null = lookup.state.status === 'loaded' ? lookup.state.preview : null
   const source = mode === 'manifest' && preview ? manifestTimes(preview) : NO_TIMES
   const shown = shownTimes(overrides, source)
-  // Who is busy in the times entered so far (FP-142). Asked again whenever they change.
   const availability = useCrewAvailability(availabilityWindow(shown))
   const busyErrors = validateCrewAvailability(crew, availability.busy)
   const selectedTrailers = crew.trailerIds
     .map(id => trailers.find(t => t.id === id))
     .filter((t): t is Vehicle => t !== undefined)
   const combo = trailerCombo(selectedTrailers)
-  // In manifest mode nothing else is asked for until the manifest can become a trip.
   const formReady = mode === 'empty_leg' || preview?.can_create === true
 
   let errors: FieldErrors = {}
@@ -158,12 +148,8 @@ export default function TripNewPage(): React.JSX.Element {
     }
   }
   const hasErrors = Object.keys(errors).length > 0
-  // A busy pick is shown at once, not held back until Create like a missing field: it is news
-  // the dispatcher needs while still choosing (the times changed under a crew already picked).
   const shownErrors: FieldErrors = showErrors ? errors : busyErrors
 
-  // Route, times and the review state belong to one manifest or one empty leg. Crew does
-  // not, so it survives every reset.
   function resetEntries(): void {
     setOverrides(NO_OVERRIDES)
     setPicks(NO_PICKS)
@@ -180,7 +166,6 @@ export default function TripNewPage(): React.JSX.Element {
   function changeManifestInput(value: string): void {
     setManifestInput(value)
     setManifestInputError(null)
-    // The summary must always describe the number in the box: what is shown is what gets created.
     if (lookup.state.status !== 'idle') {
       lookup.reset()
       resetEntries()
@@ -223,8 +208,6 @@ export default function TripNewPage(): React.JSX.Element {
       const failure = classifyCreateError(err)
       switch (failure.kind) {
         case 'no_response': {
-          // Creation is atomic: the trip exists in full or not at all. One exact lookup
-          // therefore turns "maybe" into a definite answer (spec §10.4).
           let existing: { id: string } | null
           try {
             existing = await findLiveTripForManifest(current.pp_manifest)
@@ -233,15 +216,11 @@ export default function TripNewPage(): React.JSX.Element {
             setNotice({ tone: 'error', message: TIMEOUT_UNCONFIRMED })
             return
           }
-          // A trip found here may have been created by another dispatcher in the meantime;
-          // spec §10.4 accepts that, since a manifest can only be on one trip.
           if (existing) openCreated(existing.id)
           else setNotice({ tone: 'error', message: TIMEOUT_NOT_CREATED })
           return
         }
         case 'manifest_changed':
-          // Crew, picks and edited times stand. Untouched times are null overrides, so they
-          // now follow the new manifest.
           lookup.replace(failure.preview)
           setNotice({ tone: 'warn', message: MANIFEST_CHANGED_NOTE })
           return
@@ -253,7 +232,6 @@ export default function TripNewPage(): React.JSX.Element {
           })
           return
         case 'crew_unavailable':
-          // Lost a race, or the check was out of date: show why, and refresh what is greyed out.
           setNotice({ tone: 'error', message: failure.message })
           availability.refetch()
           return
@@ -290,7 +268,6 @@ export default function TripNewPage(): React.JSX.Element {
     }
   }
 
-  // ── Route ends and summary rows ─────────────────────────────────────────────
   const clientPrecincts = preview?.client_organization_id
     ? precincts.filter(p => p.principal_organization_id === preview.client_organization_id)
     : []
@@ -333,7 +310,6 @@ export default function TripNewPage(): React.JSX.Element {
   ]
 
   const manifestBlocked = mode === 'manifest' && preview !== null && !preview.can_create
-  // Why the CTA is disabled, said in words: a greyed button alone explains nothing.
   const ctaHint = formReady
     ? null
     : manifestBlocked
@@ -345,9 +321,6 @@ export default function TripNewPage(): React.JSX.Element {
     <div className="flex min-h-0 flex-1 flex-col">
       <TopBar title="Create Trip" sub={mode === 'manifest' ? 'From a client manifest' : 'Empty leg, no cargo'} />
 
-      {/* relative: visually hidden labels (sr-only) are absolutely positioned. Without a
-          positioned ancestor they escape this scroll box and lengthen the whole document,
-          so the app shell scrolls away past the end of the form. */}
       <div className="relative min-h-0 flex-1 overflow-auto">
         <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 md:px-6 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-5">
@@ -429,8 +402,6 @@ export default function TripNewPage(): React.JSX.Element {
             </div>
           </div>
 
-          {/* On desktop the summary and its CTA stay in view while the form scrolls; below lg
-              the column stacks and the summary follows the form. */}
           <div className="flex w-full shrink-0 flex-col gap-2 lg:sticky lg:top-6 lg:w-[280px]">
             <CreateTripSummary
               rows={rows}

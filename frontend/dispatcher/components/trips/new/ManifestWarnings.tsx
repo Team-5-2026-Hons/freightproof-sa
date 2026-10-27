@@ -6,15 +6,10 @@ import { RecordLink } from '@/components/ui/RecordLink'
 import { ROUTES } from '@/lib/constants/routes'
 import type { PPManifestWarning, PPManifestWarningCode } from '@shared/lib/types/pp-manifest'
 
-// Non-blocking warnings ask the dispatcher for something or inform them. Each gets a
-// neutral row and an icon naming what it is about. Colour stays reserved for the blocking
-// case (DESIGN_SYSTEM.md §1.2: colour is information).
 const PROMPT_ICON: Partial<Record<PPManifestWarningCode, IconName>> = {
   MANIFEST_NOT_CLOSED: 'file',
 }
 
-// Prompts the form itself answers: the precinct picker appears with its own hint, and an
-// empty departure is a required field. Listing them here as well said everything twice.
 const ANSWERED_BY_THE_FORM: readonly PPManifestWarningCode[] = [
   'ORIGIN_HUB_UNLINKED', 'DESTINATION_HUB_UNLINKED', 'NO_PLANNED_TIMES',
 ]
@@ -45,8 +40,6 @@ export function ManifestWarnings({ warnings, onEmptyLeg }: ManifestWarningsProps
                 {warning.waybills.length > 0 && (
                   <p className="mt-0.5 font-[600] tabular-nums tracking-[0.03em]">{warning.waybills.join(', ')}</p>
                 )}
-                {/* Only our own organisation's trips come with an id (piece A keeps foreign
-                    holders private), so a missing id means "nothing to open". */}
                 {warning.trip_id && (
                   <RecordLink href={ROUTES.tripDetail(warning.trip_id)}>
                     Open {warning.trip_reference ?? 'that trip'}

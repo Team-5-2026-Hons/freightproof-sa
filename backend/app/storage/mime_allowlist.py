@@ -13,7 +13,6 @@ don't justify a new dependency (plus libmagic in the container).
 
 from typing import Callable
 
-# Longest prefix any sniffer below inspects. Callers that stream can stop reading here.
 MAGIC_PREFIX_BYTES = 16
 
 JPEG = "image/jpeg"
@@ -24,7 +23,6 @@ PDF = "application/pdf"
 
 
 def _is_jpeg(head: bytes) -> bool:
-    # SOI marker, then the start of the first segment.
     return head.startswith(b"\xff\xd8\xff")
 
 
@@ -33,13 +31,10 @@ def _is_png(head: bytes) -> bool:
 
 
 def _is_webp(head: bytes) -> bool:
-    # RIFF container with a WEBP form type: "RIFF" <4-byte size> "WEBP".
     return head.startswith(b"RIFF") and head[8:12] == b"WEBP"
 
 
 def _is_heic(head: bytes) -> bool:
-    # ISO base media format: <4-byte box size> "ftyp" <brand>. iPhones
-    # default to HEIC, so iOS captures land here, not JPEG.
     if head[4:8] != b"ftyp":
         return False
     return head[8:12] in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1"}
@@ -49,8 +44,6 @@ def _is_pdf(head: bytes) -> bool:
     return head.startswith(b"%PDF-")
 
 
-# SVG deliberately absent — a script host to a browser, must not be added.
-# GIF/BMP absent because nothing in the product produces them.
 _SNIFFERS: dict[str, Callable[[bytes], bool]] = {
     JPEG: _is_jpeg,
     PNG: _is_png,
@@ -87,8 +80,6 @@ def resolve_mime_type(file_bytes: bytes, declared: str | None) -> str:
             "or a PDF document."
         )
 
-    # Named rather than silently corrected — a mismatch on honest paths is a
-    # client bug worth surfacing.
     if declared and declared.split(";")[0].strip().lower() != detected:
         raise ValueError(
             f"File content is {detected}, which does not match the declared type "

@@ -3,7 +3,6 @@ import { NONCE_HEADER, apiOriginFrom, buildCsp, createNonce, tileSourceFrom } fr
 import { OSM_TILES } from '@/lib/tiles'
 import { TRUSTED_MIRRORS } from '@/lib/verify'
 
-// Same fallback as lib/api.ts, which refuses to build for production without the variable.
 const LOCAL_DEV_API_URL = 'http://localhost:8000'
 const MIRROR_ORIGINS = Object.values(TRUSTED_MIRRORS).flat()
 
@@ -16,8 +15,6 @@ export function middleware(request: NextRequest): NextResponse {
     tileSource: tileSourceFrom(process.env.NEXT_PUBLIC_TILE_URL || OSM_TILES),
     isDev: process.env.NODE_ENV === 'development',
   })
-  // On the REQUEST as well as the response: Next reads the nonce from the request's policy
-  // and stamps it on the framework's own scripts while rendering.
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set(NONCE_HEADER, nonce)
   requestHeaders.set('Content-Security-Policy', policy)
@@ -27,8 +24,6 @@ export function middleware(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // Pages only: static assets carry no script to protect, and a prefetch is rendered again
-  // (with its own nonce) when it is shown.
   matcher: [{
     source: '/((?!_next/static|_next/image|favicon.ico).*)',
     missing: [

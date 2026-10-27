@@ -8,8 +8,6 @@ describe('BackButton', () => {
 
     const button = screen.getByRole('button', { name: 'Back' })
 
-    // The arrow is the whole point of the shared component — a Back without it is the
-    // inconsistency this replaced.
     expect(button.querySelector('svg')).toBeInTheDocument()
   })
 

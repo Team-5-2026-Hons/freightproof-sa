@@ -33,8 +33,6 @@ _MONDAY_INDEX = 0
 _SUNDAY_INDEX = 6
 
 
-# ── Buckets ──────────────────────────────────────────────────────────────────
-
 
 def test_week_bucket_of_a_sunday_starts_on_the_monday_before() -> None:
     result = bucket_start(_SUNDAY, Grain.WEEK)
@@ -71,7 +69,6 @@ def test_bucket_starts_run_from_the_start_bucket_to_the_end_bucket() -> None:
 
 
 def test_bucket_starts_keep_buckets_nothing_happened_in() -> None:
-    # Three months, whatever the data: an empty month must still be a bar on the chart.
     result = bucket_starts(date(2026, 6, 1), date(2026, 8, 31), Grain.MONTH)
 
     assert result == [date(2026, 6, 1), date(2026, 7, 1), date(2026, 8, 1)]
@@ -94,7 +91,6 @@ def test_whole_weeks_inside_the_period_are_not_partial() -> None:
 
 
 def test_the_month_still_running_is_partial() -> None:
-    # A period ending on the 15th (today) holds only half of this month.
     period = Period(start=date(2026, 8, 1), end=date(2026, 9, 15), grain=Grain.MONTH)
 
     result = buckets(period)
@@ -111,8 +107,6 @@ def test_buckets_of_a_period_without_grain_raises() -> None:
     with pytest.raises(ValueError):
         buckets(period)
 
-
-# ── South African days and instants ──────────────────────────────────────────
 
 
 def test_an_event_at_2330_utc_lands_on_the_next_sast_day() -> None:
@@ -148,8 +142,6 @@ def test_trailing_days_include_today() -> None:
     assert result == (date(2026, 8, 17), today)
 
 
-# ── Per-occurrence day counts ────────────────────────────────────────────────
-
 
 def test_the_31st_is_only_divided_by_months_that_have_one() -> None:
     result = occurrence_days(date(2026, 1, 1), date(2026, 12, 31))
@@ -168,7 +160,6 @@ def test_month_of_year_counts_the_days_in_each_month() -> None:
 
 
 def test_weekday_counts_five_mondays_against_four_sundays() -> None:
-    # Monday 7 Sep to Monday 5 Oct: Mondays 7, 14, 21, 28 Sep and 5 Oct; Sundays 13, 20, 27 Sep and 4 Oct.
     result = occurrence_days(_MONDAY, date(2026, 10, 5))
 
     assert result.weekday[_MONDAY_INDEX] == 5
@@ -181,8 +172,6 @@ def test_months_outside_the_period_count_zero_days() -> None:
     assert result.month_of_year[4] == 0
     assert sum(result.month_of_year.values()) == result.total_days
 
-
-# ── Period validation ────────────────────────────────────────────────────────
 
 
 def test_build_period_accepts_exactly_the_maximum_number_of_buckets() -> None:
@@ -217,8 +206,6 @@ def test_build_period_rejects_a_start_after_the_end() -> None:
     with pytest.raises(ValueError, match="after it ends"):
         build_period(start=_SUNDAY, end=_MONDAY, grain=Grain.WEEK, today=_SUNDAY)
 
-
-# ── All time ─────────────────────────────────────────────────────────────────
 
 
 def test_resolve_start_keeps_an_explicit_start() -> None:

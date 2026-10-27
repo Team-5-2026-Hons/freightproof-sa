@@ -80,7 +80,6 @@ describe('buildAccessRequestMailto', () => {
   it('build_encodes_ampersands_so_the_body_is_not_truncated', () => {
     const url = buildAccessRequestMailto(validRequest(), 'freightproof@gmail.com')
 
-    // A raw '&' in the company name would start a new mailto parameter.
     expect(url.match(/&/g)).toHaveLength(1)
   })
 

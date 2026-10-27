@@ -10,21 +10,9 @@ export interface NavItem {
   matchPrefixes: readonly string[]
 }
 
-// Trips list/detail live under '/trips', but phase steps, in-transit, checkpoint,
-// upload, exception, and panic screens all live under the singular '/trip/...'
-// prefix (see routes.ts and lib/phase/routes.ts). A driver reaches every one of
-// those screens by drilling into a specific trip, so conceptually they're still "in
-// Trips" — there's no other nav item that represents that state — so both prefixes
-// count as Trips-active. This matches on the '/trip' prefix alone (not a full
-// '/trip/phase/' listing), so it needs no update when a new phase-step sub-route
-// is added — a repeated phase_type on a cross-dock plan still resolves to the same
-// singular '/trip/phase/...' tree.
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Home', href: ROUTES.home, icon: Home, matchPrefixes: [] },
   { label: 'Trips', href: ROUTES.trips, icon: Truck, matchPrefixes: ['/trips', '/trip'] },
-  // Settings merged into Profile (Oct 2026). BottomNav draws the driver's photo for this
-  // tab; the icon is the fallback for any surface that lists tabs without a photo. The old
-  // /settings path stays a match while it redirects here.
   { label: 'Profile', href: ROUTES.profile, icon: CircleUserRound, matchPrefixes: [ROUTES.profile, ROUTES.settings] },
 ]
 

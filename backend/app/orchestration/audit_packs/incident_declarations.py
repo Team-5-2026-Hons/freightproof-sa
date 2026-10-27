@@ -39,15 +39,12 @@ async def record_declaration(
 ) -> IncidentDeclaration:
     await _assert_trip(db, trip_id, organization_id)
     if request.exception_id is not None:
-        # Pinning a declaration to an exception on some other trip would put it in the
-        # wrong trip's evidence pack.
         on_trip = (await db.execute(
             select(TripException.id).where(TripException.id == request.exception_id, TripException.trip_id == trip_id)
         )).scalar_one_or_none()
         if on_trip is None:
             raise ResourceNotFoundError("Exception", str(request.exception_id))
     if request.incident_id is not None:
-        # Same reason: an incident on another trip would carry this declaration into the wrong pack.
         incident_on_trip = (await db.execute(
             select(Incident.id).where(Incident.id == request.incident_id, Incident.trip_id == trip_id)
         )).scalar_one_or_none()

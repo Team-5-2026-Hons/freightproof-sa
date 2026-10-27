@@ -29,7 +29,6 @@ describe('DriverAvatar', () => {
   })
 
   it('test_draws_a_ring_when_selected', () => {
-    // The Profile tab's active state: an ink ring, since a photo can't change colour.
     render(<DriverAvatar name="Sipho Dlamini" photo={null} size={26} ring />)
 
     expect(screen.getByRole('img')).toHaveClass('ring-2')

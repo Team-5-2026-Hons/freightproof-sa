@@ -207,11 +207,9 @@ function CancellationsCard({ activity, grain, today }: TrendCardProps) {
 }
 
 interface ActivityTabProps {
-  /** The tab's trend period and grain, resolved by the page from its control row. */
   query: TabQuery
   allTimeStart: string | null
   today: string
-  /** The busy patterns' own period, kept by the page so it survives tab switches. */
   patternPeriod: PeriodSelection
   onPatternPeriodChange: (period: PeriodSelection) => void
 }
@@ -222,8 +220,6 @@ export function ActivityTab({ query, allTimeStart, today, patternPeriod, onPatte
   const activity = useFleetActivity(query, allTimeStart)
   const patterns = useFleetPatterns(resolvePeriod(patternPeriod, today))
   const [event, setEvent] = useState<PatternEvent>('departures')
-  // Label buckets by the grain the answer was built with, so a slow reply is never
-  // mislabelled with a grain chosen after it was requested.
   const grain = activity.data?.period.grain ?? query.grain
   const patternEcho = patterns.data?.period
   const monthNote = patternEcho !== undefined && !coversFullYear(patternEcho.start, patternEcho.end)

@@ -25,19 +25,15 @@ type AnyStepComponent = ComponentType<never>
 type ActivationSlug = '2-verification'
 type LoadingSlug = '1-linehaul'
 type DepartureSlug = '2-capture-seal' | '4-departure'
-// The seal check moved here from unloading — same slug, new phase (see arrival/SealVerify.tsx).
 type ArrivalSlug = '2-seal-verify'
-// Slimmed to visual count only; the seal check now lives on `arrival` above.
 type UnloadingSlug = '4-visual-count'
 type ConfirmationSlug = '1-pod-photo' | '2-receiver-handover' | '3-reconciliation' | '4-closed'
 
 export interface StepRegistry {
-  // trip_creation is dispatcher-side, before the driver is ever involved.
   trip_creation: Record<string, never>
   activation: Record<ActivationSlug, AnyStepComponent>
   loading: Record<LoadingSlug, AnyStepComponent>
   departure: Record<DepartureSlug, AnyStepComponent>
-  // in_transit is driver-submitted from the in-transit hub's swipe, not a step page.
   in_transit: Record<string, never>
   arrival: Record<ArrivalSlug, AnyStepComponent>
   unloading: Record<UnloadingSlug, AnyStepComponent>

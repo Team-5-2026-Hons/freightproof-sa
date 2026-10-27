@@ -105,7 +105,6 @@ describe('legacy exception migration', () => {
 
     await migrateLegacyExceptionEntries({
       readLegacy: () => [e],
-      // dropLegacy is synchronous, so start the store read here and settle it afterwards.
       dropLegacy: () => {
         checks.push(getExceptionEnvelope(e.body.client_report_id!).then((stored) => stored !== null))
         return true
@@ -128,7 +127,6 @@ describe('legacy exception migration', () => {
 
   test('test_rerun_after_crash_between_write_and_drop_dedupes_and_keeps_recorded_id', async () => {
     const e = entry({ photoDataUrl: DATA_URL })
-    // First run wrote the envelope, uploaded the photo, then the tab died before dropLegacy.
     const first = legacyEntryToEnvelope(e)
     await saveExceptionEnvelope({
       ...first,

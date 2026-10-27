@@ -19,9 +19,6 @@ export function useExceptionDetail(exceptionId: string): UseExceptionDetailResul
     null,
   )
 
-  // No 'exception' realtime resource exists, so subscribe to the TRIP it belongs to.
-  // Before the fetch resolves, '' is a harmless placeholder (useLiveResource's own guard
-  // means no real event matches it); once data.trip_id arrives it re-subscribes for real.
   useLiveResource('trip', data?.trip_id ?? '', refetchSilent, {
     kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'],
   })

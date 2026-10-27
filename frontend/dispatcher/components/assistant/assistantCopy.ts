@@ -118,7 +118,6 @@ export const DISC_WORDS: Record<DiscState, string> = {
   expired: 'Disc expired', expiring: 'Disc expires soon', ok: 'Disc valid', unknown: 'No disc date recorded',
 }
 
-/** The "Checked:" line's words for each tool. */
 export const TOOL_LABELS: Record<string, string> = {
   trips: 'Trips',
   trip_status: 'Trip',

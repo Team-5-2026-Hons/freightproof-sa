@@ -92,7 +92,6 @@ async def test_patch_cost_profile_as_admin_saves_row(client: AsyncClient, db_ses
     assert len(rows) == 1
     assert rows[0].diesel_price_per_litre == Decimal("34.50")
     assert rows[0].updated_by_user_id == user.id
-    # Fields not sent were filled from the starting rates.
     assert rows[0].delay_cost_per_hour == DEFAULT_COST_RATES.delay_per_hour
 
 
@@ -136,7 +135,6 @@ async def test_patch_cost_profile_as_dispatcher_returns_403(
 
 @pytest.mark.parametrize("method", ["GET", "PATCH"])
 async def test_cost_profile_without_token_returns_403(client: AsyncClient, method: str) -> None:
-    # The house convention (see test_fleet_on_time.py): no bearer header is 403, a bad token 401.
     response = await client.request(method, _PATH, json={"road_factor": 1.2})
 
     assert response.status_code == 403

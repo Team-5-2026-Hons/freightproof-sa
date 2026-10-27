@@ -17,14 +17,12 @@ describe('NotFoundPage', () => {
   it('test_links_back_to_home_with_a_full_page_load', () => {
     render(<NotFoundPage />)
 
-    // A plain anchor on purpose (see the page): it may be served for any unknown path.
     expect(screen.getByRole('link', { name: 'Go to Home' })).toHaveAttribute('href', ROUTES.home)
   })
 
   it('test_offers_no_retry_because_nothing_failed', () => {
     render(<NotFoundPage />)
 
-    // error.tsx's "Try Again" re-renders a crashed segment; a wrong address has none.
     expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
   })
 })

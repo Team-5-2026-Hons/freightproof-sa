@@ -30,10 +30,7 @@ from app.db.models.enums import (
 from app.schemas.audit_pack import CoverageGap, IncidentDeclarationRecord, Observation, PositionFix
 from app.schemas.text import FreeText, RequiredFreeText, clean_text
 
-# incidents.reported_by_name is String(200).
 REPORTER_NAME_MAX_LENGTH = 200
-# One report names a truck's worth of cargo, not a warehouse: a ceiling that bounds the
-# request without ever binding a real load (the largest seeded trip carries 50 parcels).
 MAX_PARCELS_PER_REQUEST = 500
 MAX_EXCEPTIONS_PER_REQUEST = 50
 
@@ -61,10 +58,8 @@ class IncidentCreate(_Request):
     reporter_role: IncidentReporterRole
     report_channel: IncidentReportChannel
     reported_occurred_at: AwareDatetime | None = None
-    # Defaults to the moment the server records it; set when the call came in earlier.
     received_at: AwareDatetime | None = None
     confidence: IncidentConfidence
-    # Defaults to the reporting dispatcher: every incident has an owner from the start.
     assigned_to_user_id: UUID | None = None
     exception_ids: Annotated[list[UUID], AfterValidator(_unique)] = Field(
         default_factory=list, max_length=MAX_EXCEPTIONS_PER_REQUEST,
@@ -89,12 +84,9 @@ class IncidentCreate(_Request):
         return self
 
 
-# ── Follow-up (POST /incidents/{id}/updates) ────────────────────────────────
-
 class NoteUpdate(_Request):
     kind: Literal[IncidentUpdateKind.NOTE]
     note: RequiredFreeText
-    # Optional citation of the evidence the note is about.
     exception_id: UUID | None = None
     phase_event_id: UUID | None = None
     parcel_id: UUID | None = None
@@ -108,7 +100,6 @@ class StatusUpdate(_Request):
 
 class AssignUpdate(_Request):
     kind: Literal[IncidentUpdateKind.ASSIGNED]
-    # null unassigns.
     assigned_to_user_id: UUID | None
     note: FreeText | None = None
 
@@ -116,7 +107,6 @@ class AssignUpdate(_Request):
 class ConfidenceUpdate(_Request):
     kind: Literal[IncidentUpdateKind.CONFIDENCE_CHANGED]
     confidence: IncidentConfidence
-    # Required: "corroborated" must say what corroborated it.
     note: RequiredFreeText
 
 
@@ -136,7 +126,6 @@ class ParcelFindingUpdate(_Request):
     kind: Literal[IncidentUpdateKind.PARCEL_FINDING]
     parcel_id: UUID
     finding: ParcelFinding
-    # Required: a finding without its basis is an assertion, not evidence.
     note: RequiredFreeText
 
 
@@ -162,15 +151,12 @@ IncidentUpdateCreate = Annotated[
 
 class IncidentCloseRequest(_Request):
     outcome: IncidentOutcome
-    # Required: closing must say what was established, never just that it was.
     reason: RequiredFreeText
 
 
 class IncidentReopenRequest(_Request):
     reason: RequiredFreeText
 
-
-# ── Reads ───────────────────────────────────────────────────────────────────
 
 class IncidentListFilters(BaseModel):
     """Optional narrowing for GET /incidents and GET /trips/{trip_id}/incidents."""
@@ -199,7 +185,6 @@ class IncidentUpdateRead(BaseModel):
     recorded_at: datetime
 
 
-# What the scans say about a parcel, stated as scan facts — never as a conclusion.
 ParcelScanState = Literal["scanned_in", "no_scan_in_recorded", "no_scan_recorded"]
 
 
@@ -247,12 +232,10 @@ class IncidentRead(BaseModel):
     trip_stopped_at: datetime | None
     closed_at: datetime | None
     created_at: datetime
-    # The exceptions it groups, oldest link first: lets an exception page say "in INC2" from the list.
     exception_ids: list[UUID]
     exceptions_total: int
     exceptions_reviewed: int
     parcels_total: int
-    # Affected parcels nothing has been established about yet — "what remains unresolved".
     parcels_unresolved: int
 
 
@@ -260,7 +243,6 @@ ResponseStepKey = Literal[
     "trip_stopped", "tracking_company_alerted", "saps_reported", "insurer_notified",
     "client_notified", "driver_welfare_check", "audit_pack_issued",
 ]
-# in_progress: begun but not complete (reported to SAPS, no case number on record yet).
 ResponseStepState = Literal["done", "in_progress", "todo", "not_applicable"]
 
 
@@ -285,22 +267,14 @@ class IncidentDetail(IncidentRead):
     updates: list[IncidentUpdateRead]
     declarations: list[IncidentDeclarationRecord]
     document_upload_enabled: bool
-    # Hijackings only: the response steps and which are recorded. null for other types.
     response_guide: list[ResponseStep] | None = None
-    # Set on the close response only (state.close_warnings): told once, then the audit pack
-    # carries the same fact as an observation.
     warnings: list[str] = Field(default_factory=list)
 
 
 class IncidentDocumentLink(BaseModel):
     artifact_id: UUID
-    # None when Storage declines to sign; the document is still on record.
     signed_url: str | None
 
-
-# ── Evidence (GET /incidents/{id}/evidence) ─────────────────────────────────
-# A slice of the trip's audit-pack manifest, so what the dispatcher decides on and what the
-# insurer later reads come from one builder and cannot disagree.
 
 class SealReading(BaseModel):
     phase_event_id: UUID
@@ -328,7 +302,6 @@ class ConsignmentScanSummary(BaseModel):
     parcels_on_record: int
     scanned_out: int
     scanned_in: int
-    # Scanned out at origin with no scan-in recorded: a scan fact, not a theft finding.
     no_scan_in_recorded: int
 
 
@@ -339,7 +312,6 @@ class TripExceptionLink(BaseModel):
     description: str
     raised_at: datetime
     review_status: str
-    # The incident that groups it, if any — this one or another.
     incident_id: UUID | None
 
 
@@ -349,8 +321,6 @@ class IncidentEvidence(BaseModel):
     counts: list[CountReading]
     consignments: list[ConsignmentScanSummary]
     trip_exceptions: list[TripExceptionLink]
-    # The last fix from any source at or before the reported time (or received time when the
-    # reporter could not say) — the "last known location" a SAPS docket asks for.
     last_known_position: PositionFix | None
     position_reference_time: datetime
     coverage_gaps: list[CoverageGap]

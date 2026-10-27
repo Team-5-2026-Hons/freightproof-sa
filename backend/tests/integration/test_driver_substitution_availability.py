@@ -43,8 +43,6 @@ async def _world(db: AsyncSession, *, arrival: datetime | None = BASE + 8 * HOUR
     return await build_world(db, departure=BASE, arrival=arrival)
 
 
-# ── pending incoming reservations: [expected_at, planned_end) ───────────────
-
 
 async def test_pending_takeover_reserves_the_incoming_driver_from_expected_at(db_session: AsyncSession):
     w = await _world(db_session)
@@ -75,8 +73,6 @@ async def test_reservation_ends_exactly_at_the_trips_planned_end(db_session: Asy
 
 async def test_open_ended_trip_keeps_the_reservation_open_ended(db_session: AsyncSession):
     w = await build_world(db_session, departure=BASE, arrival=None)
-    # build_world supplies a default arrival for None; this case needs a genuine
-    # open-ended trip rather than the fixture's normal eight-hour journey.
     trip = await db_session.get(Trip, w.trip_id)
     assert trip is not None
     trip.planned_arrival_at = None
@@ -92,7 +88,7 @@ async def test_open_ended_trip_keeps_the_reservation_open_ended(db_session: Asyn
 async def test_overrun_trip_keeps_the_reservation_until_the_trip_ends(db_session: AsyncSession):
     w = await _world(db_session)
     await add_pending(db_session, w, outgoing=w.a, incoming=w.b, expected_at=BASE + 4 * HOUR)
-    now = BASE + 9 * HOUR  # an hour past the planned arrival, trip still live
+    now = BASE + 9 * HOUR
 
     incoming = await _busy(db_session, w, w.b, BASE + 50 * HOUR, BASE + 51 * HOUR, now=now)
     outgoing = await _busy(db_session, w, w.a, BASE + 50 * HOUR, BASE + 51 * HOUR, now=now)
@@ -104,7 +100,7 @@ async def test_overrun_trip_keeps_the_reservation_until_the_trip_ends(db_session
 async def test_overdue_reservation_starts_no_later_than_now_and_stays_effective(db_session: AsyncSession):
     w = await _world(db_session)
     await add_pending(db_session, w, outgoing=w.a, incoming=w.b, expected_at=BASE + 2 * HOUR)
-    now = BASE + 3 * HOUR  # the exchange was expected an hour ago and has not happened
+    now = BASE + 3 * HOUR
 
     at_expected = await _busy(db_session, w, w.b, BASE + 2 * HOUR, BASE + 2 * HOUR + timedelta(minutes=30), now=now)
     right_now = await _busy(db_session, w, w.b, now, now + HOUR, now=now)
@@ -112,7 +108,6 @@ async def test_overdue_reservation_starts_no_later_than_now_and_stays_effective(
 
     assert len(at_expected) == 1 and len(right_now) == 1
     assert at_expected[0].busy_from <= now
-    # Overdue means the reservation holds until cancelled or completed, past the planned arrival.
     assert len(next_week) == 1 and next_week[0].busy_until is None
 
 
@@ -175,8 +170,6 @@ async def test_fleet_view_lists_the_reservation_as_a_driver_entry(db_session: As
     assert drivers == {w.a, w.b}
 
 
-# ── activation uses the effective driver ─────────────────────────────────────
-
 
 async def _created_trip(db: AsyncSession, w: SubWorld, *, driver_id: uuid.UUID, horse_id: uuid.UUID) -> Trip:
     trip = Trip(
@@ -215,10 +208,8 @@ async def test_former_driver_can_activate_another_trip(db_session: AsyncSession)
     await complete_handover(db_session, live, outgoing=live.a, incoming=live.b)
     mine = await _created_trip(db_session, live, driver_id=live.a, horse_id=await _spare_horse(db_session, live))
 
-    await _claim_crew_for_activation(db_session, mine)  # does not raise
+    await _claim_crew_for_activation(db_session, mine)
 
-
-# ── the trip wizard reads the same rule ──────────────────────────────────────
 
 
 @pytest_asyncio.fixture

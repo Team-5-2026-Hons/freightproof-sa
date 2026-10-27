@@ -12,7 +12,6 @@ import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import { ROUTES } from '@/lib/constants/routes'
 import { actionablePhase, currentPhase } from './derive'
 
-/** Every phase-step URL starts with this — the back stack uses it to skip finished steps. */
 export const PHASE_STEP_PREFIX = '/trip/phase/'
 
 /** The canonical URL for a given phase type's step — the one place a step URL is built. */
@@ -20,16 +19,12 @@ export function phaseStepRoute(phaseType: PhaseType, slug: string): string {
   return `${PHASE_STEP_PREFIX}${phaseType}/step/${slug}`
 }
 
-// Empty-recipe phases (e.g. trip_creation) have no step to land on, so the search keeps
-// walking past them. Reuses currentPhase's own resolved-status walk so this file carries
-// no second copy of what "resolved" means. Terminates because each iteration strictly
-// advances `afterSequence`, and the plan is finite.
 function firstStepAfter(phases: readonly PhaseDescriptor[], afterSequence: number): string {
   let cursor = afterSequence
   for (;;) {
     const remaining = phases.filter((phase) => phase.sequence_number > cursor)
     const next = currentPhase(remaining)
-    if (next === null) return ROUTES.trips // Nothing left unresolved: trip finished.
+    if (next === null) return ROUTES.trips
 
     const slugs = STEP_SLUGS[next.phase_type]
     if (slugs.length > 0) return phaseStepRoute(next.phase_type, slugs[0])
@@ -46,7 +41,7 @@ function firstStepAfter(phases: readonly PhaseDescriptor[], afterSequence: numbe
  */
 export function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
   const phase = actionablePhase(phases)
-  if (phase === null) return ROUTES.trips // No unresolved phase has steps: trip finished.
+  if (phase === null) return ROUTES.trips
 
   return phaseStepRoute(phase.phase_type, STEP_SLUGS[phase.phase_type][0])
 }
@@ -71,13 +66,9 @@ export function nextStepRoute(
     throw new Error(`Unknown step slug "${slug}" for phase type "${phase.phase_type}"`)
   }
 
-  // Mid-phase — next step of the same recipe.
   if (stepIndex < slugs.length - 1) {
     return phaseStepRoute(phase.phase_type, slugs[stepIndex + 1])
   }
 
-  // End of this phase's recipe: walk forward from its position in the plan. Deliberately
-  // no branch on phase.phase_type here — a type-specific branch would be a
-  // fixed-plan-shape assumption in disguise.
   return firstStepAfter(phases, phase.sequence_number)
 }

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import { driverRecord } from '@/lib/utils/driver-record'
 
-// Only the fields driverRecord reads; the cast keeps fixtures readable.
 function trip(fields: Partial<DriverTripSummary>): DriverTripSummary {
   return {
     id: crypto.randomUUID(),
@@ -22,17 +21,14 @@ describe('driverRecord', () => {
   })
 
   it('test_on_time_rate_compares_actual_to_planned_arrival', () => {
-    // Arrange — one early, one exactly on plan, one late.
     const trips = [
       trip({ planned_arrival_at: '2026-10-01T12:00:00Z', actual_arrival_at: '2026-10-01T11:40:00Z' }),
       trip({ planned_arrival_at: '2026-10-02T12:00:00Z', actual_arrival_at: '2026-10-02T12:00:00Z' }),
       trip({ planned_arrival_at: '2026-10-03T12:00:00Z', actual_arrival_at: '2026-10-03T12:30:00Z' }),
     ]
 
-    // Act
     const record = driverRecord(trips)
 
-    // Assert
     expect(record.onTimeRate).toBeCloseTo(2 / 3)
   })
 

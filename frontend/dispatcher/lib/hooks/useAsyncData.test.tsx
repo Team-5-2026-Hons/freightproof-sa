@@ -16,7 +16,6 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject }
 }
 
-// Hands out one pending request per call, so a test decides the order responses arrive in.
 function queuedFetch(): { fetchFn: () => Promise<string>; requests: Deferred<string>[] } {
   const requests: Deferred<string>[] = []
   const fetchFn = (): Promise<string> => {
@@ -42,7 +41,6 @@ describe('useAsyncData', () => {
 
     await act(async () => { requests[0].resolve('first') })
 
-    // Applied, not discarded for being superseded: the screen moves on while events keep coming.
     expect(result.current.data).toBe('first')
     expect(requests).toHaveLength(2)
 
@@ -85,7 +83,6 @@ describe('useAsyncData', () => {
 
     act(() => { vi.advanceTimersByTime(timeoutMs) })
 
-    // The follow-up starts at once; the timed-out request's error is superseded by it.
     expect(requests).toHaveLength(2)
 
     await act(async () => { requests[1].resolve('fresh') })

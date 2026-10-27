@@ -13,10 +13,8 @@ const INCIDENT: IncidentSummary = {
 
 describe('TripIncidentsSection', () => {
   it('links each incident back to this trip, closed ones included', () => {
-    // Arrange / Act
     render(<TripIncidentsSection incidents={[INCIDENT]} isLoading={false} returnTo="/trips/t1?panel=information" onReport={vi.fn()} />)
 
-    // Assert
     const link = screen.getByRole('link', { name: 'View incident INC1' })
     expect(link).toHaveAttribute('href', `/incidents/inc-1?returnTo=${encodeURIComponent('/trips/t1?panel=information')}`)
     expect(screen.getByText('Closed')).toBeInTheDocument()
@@ -56,19 +54,15 @@ describe('TripIncidentsSection', () => {
   })
 
   it('shows skeleton rows while loading, not a sentence', () => {
-    // Arrange / Act
     render(<TripIncidentsSection incidents={[]} isLoading returnTo="/trips/t1" onReport={vi.fn()} />)
 
-    // Assert
     expect(screen.getByRole('status', { name: 'Loading incidents' })).toBeInTheDocument()
   })
 
   it('puts the Report incident button at the top of the body and carries no heading of its own', () => {
-    // Arrange / Act
     const onReport = vi.fn()
     render(<TripIncidentsSection incidents={[]} isLoading={false} returnTo="/trips/t1" onReport={onReport} />)
 
-    // Assert
     expect(screen.queryByRole('heading')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Report incident' })).toBeInTheDocument()
     expect(screen.getByText('No incidents on this trip.')).toBeInTheDocument()

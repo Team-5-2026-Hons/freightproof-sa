@@ -30,7 +30,6 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
         id={inputId}
         onBlur={() => setTouched(true)}
         className={cn(
-          // Field as Input: a fill, no border; 16px+ text so iOS never zooms.
           'w-full rounded-[14px] border-0 bg-fill px-4 py-3.5 text-body text-surface-on',
           'placeholder:text-surface-on-variant resize-none',
           'outline-none focus-visible:ring-2 focus-visible:ring-primary',

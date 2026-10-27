@@ -6,20 +6,9 @@ from typing import Optional
 from app.integrations.parcel_perfect.models import PPContents, PPTrack, PPWaybillDetails, PPWaybillResponse
 
 
-# ---------------------------------------------------------------------------
-# Mock fixture
-# ---------------------------------------------------------------------------
-
-# The PP account carried by scripts/seed_demo.py's principal Organization
-# (pp_account_number="MOCK01"). Consignment sync resolves the client org through
-# this value, so it must stay in step with the seeder.
 _DEMO_PP_ACCOUNT = "MOCK01"
 _DEMO_PP_CUSTOMER = "CGY Logistics"
 
-# Manifest groupings. 69/70 belong to the original WAY00x fixtures and are asserted
-# by tests - never add to them. Each seeded trip gets its own manifest so a wizard
-# manifest lookup returns exactly one trip's cargo, and the unassigned pool gets its
-# own so the bulk-fetch path has a clean happy path that creates no conflicts.
 _MANIFEST_SINGLE = 71
 _MANIFEST_XDOCK = 72
 _MANIFEST_ACTIVE = 73
@@ -119,16 +108,6 @@ def _mock_waybill(
     )
 
 
-# ---------------------------------------------------------------------------
-# Demo depot geography.
-#
-# The three precincts scripts/seed_demo.py creates. Seeded-trip fixtures draw
-# their origin/destination from here so a waybill's stated leg matches the trip
-# route the seeder actually builds - otherwise the dispatcher's consignment panel
-# contradicts the trip's own stops, which on an evidence platform reads as
-# tampering rather than as a fixture mismatch.
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class _Depot:
@@ -144,21 +123,12 @@ _CPT = _Depot("CAPE TOWN", "12 Gunners Circle, Epping Industria", "Epping Goods 
 _BFN = _Depot("BLOEMFONTEIN", "8 Reid Street, Hamilton", "Hamilton Cross-Dock", "BFN")
 _JHB = _Depot("JOHANNESBURG", "1 Depot Street, Linbro Park", "Linbro Receiving", "JNB")
 
-# The campus-and-mall stops used for quick, physically walkable demos. The precincts
-# behind them are created by hand in the dispatcher, not by scripts/seed_demo.py, and
-# nothing in the app writes pp_hub_code, so these hubs are deliberately NOT linked: a
-# manifest between them previews with unlinked-hub prompts and the presenter picks the
-# precinct. Addresses are descriptive text on the waybill, not geocoded.
 _CAVENDISH = _Depot("CLAREMONT", "Cavendish Square, Dreyer Street, Claremont", "Cavendish Goods Receiving", "CAV")
 _UCT_NORTH = _Depot("RONDEBOSCH", "UCT North Stop, Upper Campus, Rondebosch", "UCT North Stop Receiving", "UCN")
 _UCT_SOUTH = _Depot("RONDEBOSCH", "UCT South Stop, Lower Campus, Rondebosch", "UCT South Stop Receiving", "UCS")
 
-# The hub codes scripts/seed_demo.py puts on the three demo precincts.
 DEMO_HUB_CODES: frozenset[str] = frozenset({_CPT.hub_code, _BFN.hub_code, _JHB.hub_code})
-# Kept apart from DEMO_HUB_CODES: that set is asserted equal to the seeder's, and these
-# hubs have no seeded precinct.
 LOCAL_HUB_CODES: frozenset[str] = frozenset({_CAVENDISH.hub_code, _UCT_NORTH.hub_code, _UCT_SOUTH.hub_code})
-# A real hub with no demo precinct: the unlinked-destination case (manifest 69).
 _HUB_DURBAN = "DUR"
 
 
@@ -201,8 +171,6 @@ def _routed_waybill(
     )
 
 
-# accnum "MOCK01" maps to the seeded demo principal org; "UNMAP9" deliberately
-# has no Organization row — it exercises the unmapped-client warning path.
 MOCK_WAYBILLS: dict[str, PPWaybillResponse] = {
     w.details.waybill: w
     for w in [
@@ -237,36 +205,18 @@ MOCK_WAYBILLS: dict[str, PPWaybillResponse] = {
                       contents=[PPContents(item=1, description="Samples", actmass=12.0, pieces=1)]),
     ]
 }
-# Back-compat: existing tests reference MOCKWAY001 / MOCK_WAYBILL_RESPONSE.
 MOCK_WAYBILLS[MOCK_WAYBILL_RESPONSE.details.waybill] = MOCK_WAYBILL_RESPONSE
 
-
-# ---------------------------------------------------------------------------
-# Seeded-trip fixtures - the cargo scripts/seed_trips.py puts on demo trips.
-#
-# These exist because the seeder used to invent references PP had never heard of,
-# so the dispatcher wizard's fail-closed lookup 404'd on its own demo data. Every
-# reference the seeder consumes must resolve here; tests/unit/test_seed_fixtures.py
-# fails the build if the two ever drift apart again.
-#
-# Legs match the routes seed_trips.py builds:
-#   SINGLE  CPT -> JHB
-#   XDOCK   CPT -> BFN -> JHB, with one consignment per leg shape
-#   ACTIVE  same shape as XDOCK, walked partway through
-#   CLOSED  CPT -> JHB, delivered (carries a poddate, as PP would)
-# ---------------------------------------------------------------------------
 
 SEEDED_WAYBILLS: dict[str, PPWaybillResponse] = {
     w.details.waybill: w
     for w in [
-        # --- SINGLE: one consignment, straight through -----------------------
         _routed_waybill(
             waybill="MOCKWB0001", origin=_CPT, destination=_JHB,
             manifest=_MANIFEST_SINGLE, parcel_count=18, weight_kg=840.0,
             declared_value=42000.0,
             contents=[PPContents(item=1, description="Retail FMCG cartons", actmass=840.0, pieces=18)],
         ),
-        # --- XDOCK: A straight through, B dropped at hub, C collected at hub --
         _routed_waybill(
             waybill="MOCKWB0002", origin=_CPT, destination=_JHB,
             manifest=_MANIFEST_XDOCK, parcel_count=9, weight_kg=310.0,
@@ -286,7 +236,6 @@ SEEDED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=9800.0,
             contents=[PPContents(item=1, description="Agricultural spares", actmass=275.0, pieces=6)],
         ),
-        # --- ACTIVE: same three leg shapes, different cargo -------------------
         _routed_waybill(
             waybill="MOCKWB0005", origin=_CPT, destination=_JHB,
             manifest=_MANIFEST_ACTIVE, parcel_count=11, weight_kg=495.0,
@@ -306,7 +255,6 @@ SEEDED_WAYBILLS: dict[str, PPWaybillResponse] = {
             declared_value=5400.0,
             contents=[PPContents(item=1, description="Workshop tooling", actmass=88.0, pieces=4)],
         ),
-        # --- CLOSED: delivered, so PP reports a POD date ----------------------
         _routed_waybill(
             waybill="MOCKWB0008", origin=_CPT, destination=_JHB,
             manifest=_MANIFEST_CLOSED, parcel_count=7, weight_kg=232.0,

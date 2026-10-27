@@ -4,11 +4,6 @@ import { useState } from 'react'
 import { PackError, STORAGE_BLOCKED_NOTICE, storageBlocked, verifyPassword } from '@/lib/api'
 import { Eyebrow } from './Eyebrow'
 
-// Shown instead of the pack when it was issued to an email address: the link and a
-// password were mailed there together at issue, and this browser has not yet entered
-// that password. Unlike the old one-time code, the password is not sent from here —
-// there is nothing to "send me one" for, since it already went out automatically.
-
 function messageFor(err: unknown, fallback: string): string {
   return err instanceof PackError ? err.message : fallback
 }

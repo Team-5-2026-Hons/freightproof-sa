@@ -7,8 +7,6 @@ import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
-// What this component reads of an artifact. A narrower shape than EvidenceArtifactWithUrl so an
-// exception photo (which carries no storage key or coordinates) can be shown the same way.
 export type PhotoArtifact = Pick<EvidenceArtifactWithUrl, 'signed_url' | 'captured_at' | 'file_hash'>
   & { id: string }
   & Partial<Pick<EvidenceArtifactWithUrl, 'captured_lat' | 'captured_lng'>>
@@ -20,8 +18,6 @@ interface Props {
   loading?: boolean
   error?: string | null
   onRetry?: () => void
-  /** `compact` is the 44 px thumbnail a Recorded row uses; the default keeps the 96 px every
-   *  other caller has always had. The same modal opens from either. */
   size?: 'default' | 'compact'
 }
 
@@ -48,8 +44,6 @@ function ArtifactProvenance({ artifact }: { artifact: PhotoArtifact }) {
             {artifact.captured_lat!.toFixed(5)}, {artifact.captured_lng!.toFixed(5)}
           </div>
         )}
-        {/* Truncated head and tail, like every other hash on this page — enough to
-            eyeball against a receipt, and the full value is one click away. */}
         <button
           onClick={e => {
             e.stopPropagation()
@@ -100,7 +94,6 @@ export function EvidencePhoto({ label, artifact, artifactId, loading = false, er
       ) : (
         <button type="button" onClick={() => setOpenKey(artifactKey)} aria-label={`Open ${label}`}
           className="block rounded-md overflow-hidden border border-outline-v/30 hover:border-outline-v transition-colors">
-          {/* Signed URLs expire and cannot usefully be cached by the image optimiser. */}
           <img key={retryAttempt} src={artifact.signed_url!} alt={label} loading="lazy"
             onError={() => setFailedUrl(artifact.signed_url)} className={`${THUMBNAIL_CLASS[size]} object-cover`} />
         </button>

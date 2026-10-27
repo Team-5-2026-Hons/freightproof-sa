@@ -31,11 +31,8 @@ import { fmtBucketName, fmtShare, sumOf } from '../format'
 const COPY = FLEET_COPY.problems
 const LEGEND_ICON_SIZE = 12
 const PERCENT = 100
-// A rate per trip reads best with at most one decimal at today's volumes ("4", "0.5").
 const PER_TRIP_DECIMALS = 1
 const SOURCES: readonly ExceptionSource[] = ['system', 'driver', 'dispatcher']
-// Trip creation and activation are rare places for a problem, so they only appear when
-// something actually happened there.
 const OPTIONAL_STEPS: ReadonlySet<string> = new Set(['trip_creation', 'activation'])
 
 interface TabCardProps {
@@ -80,7 +77,6 @@ function PerTripCard({ problems, grain, today }: TabCardProps) {
     { key: 'trips', label: COPY.perTrip.trips },
     { key: 'warning', label: COPY.perTrip.warning },
     { key: 'critical', label: COPY.perTrip.critical },
-    // Nothing raises info today; its column appears only if something ever does.
     ...(showInfo ? [{ key: 'info' as const, label: COPY.perTrip.info }] : []),
     { key: 'perTrip', label: COPY.perTrip.perTrip },
   ]
@@ -140,7 +136,6 @@ function TheftCard({ problems, grain, today }: TabCardProps) {
   const rows = problems.data?.theft_signals ?? []
   const trips = sumOf(problems.data?.per_trip ?? [], (row) => row.trip_count)
   const total = sumOf(rows, (row) => row.total_count)
-  // The backend sends every theft-sign type, zeros included, in one stable order.
   const types = Object.keys(rows[0]?.by_type ?? {})
   type TheftRow = Record<string, string | number>
   const tableRows: TheftRow[] = rows.map((row) => ({

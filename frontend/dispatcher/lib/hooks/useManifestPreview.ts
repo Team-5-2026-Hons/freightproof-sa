@@ -22,8 +22,6 @@ export interface UseManifestPreviewResult {
 /** The manifest lookup on the create-trip screen (spec §10.1). Read-only. */
 export function useManifestPreview(): UseManifestPreviewResult {
   const [state, setState] = useState<ManifestPreviewState>({ status: 'idle' })
-  // Each change takes a ticket, and only the newest may write. A slow answer for 81 must
-  // not replace the summary for 82 that the dispatcher asked for after it.
   const ticket = useRef(0)
 
   const lookUp = useCallback(async (manifestNumber: number): Promise<void> => {
@@ -33,8 +31,6 @@ export function useManifestPreview(): UseManifestPreviewResult {
       const preview = await previewPPManifest(manifestNumber)
       if (mine === ticket.current) setState({ status: 'loaded', manifestNumber, preview })
     } catch (err) {
-      // Classified and shown by ManifestLookup: a failed lookup is a screen state, not an
-      // exception to rethrow.
       if (mine === ticket.current) {
         setState({ status: 'failed', manifestNumber, failure: classifyLookupError(err, manifestNumber) })
       }

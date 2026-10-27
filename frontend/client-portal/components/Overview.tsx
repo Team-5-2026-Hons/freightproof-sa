@@ -70,12 +70,10 @@ export function JourneyStrip({ manifest, items }: { manifest: AuditPackManifest;
   if (phases.length === 0) return <p className="text-body text-muted">No custody phases recorded.</p>
   const breakAfter = incidentBreakAfter(manifest)
   const incident = manifest.incident
-  // A segment is cut when it leads to a phase after the break, or every segment when the incident preceded them all.
   const cut = (nextSequence: number) => incident != null && (breakAfter === null || nextSequence > breakAfter)
   const rule = (isCut: boolean) => (isCut ? 'border-dashed border-err' : 'border-ink')
   return (
     <>
-      {/* Scrolls sideways on a phone rather than squeezing an 11-phase plan into unreadable labels. */}
       <div className="-mx-1 overflow-x-auto pb-1">
         <ol aria-label="Custody journey" className="flex min-w-max sm:min-w-0">
           {phases.map((item, i) => {

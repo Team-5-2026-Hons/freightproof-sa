@@ -26,7 +26,6 @@ from app.storage.supabase_storage import (
 
 @pytest.fixture(autouse=True)
 def isolate_signing_clients(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Worker-local clients must not outlive the SDK double belonging to a test.
     monkeypatch.setattr(supabase_storage, "_SIGNING_CLIENTS", type(supabase_storage._SIGNING_CLIENTS)())
 
 
@@ -107,7 +106,6 @@ async def test_signing_runs_off_the_event_loop_and_reuses_its_worker_client(
     client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: SimpleNamespace(create_signed_url=sign)))
     make_client = Mock(return_value=client)
     monkeypatch.setattr(supabase_storage, "_get_client", make_client)
-    # One worker makes reuse deterministic without sharing a mutable SDK client across threads.
     with ThreadPoolExecutor(max_workers=1) as executor:
         asyncio.get_running_loop().set_default_executor(executor)
 

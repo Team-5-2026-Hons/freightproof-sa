@@ -120,8 +120,6 @@ async def _seed_plans(db: AsyncSession, operator: Operator, stops: list[Precinct
     await seed_trip(db, other, stops=stops, start=at_sast(_day(1), 6), planned_departure_minute=10)
 
 
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
-
 
 async def test_fleet_on_time_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_ON_TIME, params=_params())
@@ -159,8 +157,6 @@ async def test_fleet_on_time_rejects_an_end_after_today(client: AsyncClient, ope
     assert response.status_code == 422
     assert "after today" in response.json()["detail"]
 
-
-# ── 200 ──────────────────────────────────────────────────────────────────────
 
 
 async def test_fleet_on_time_for_an_org_without_trips_returns_empty_buckets(
@@ -208,7 +204,6 @@ async def test_fleet_on_time_lateness_bands_match_the_on_time_count(
     arrivals = {bar["band"]: bar["trip_count"] for bar in body["lateness"]["arrivals"]}
     assert [departures[band] for band in _BANDS] == [1, 1, 1, 0, 1, 0]
     assert [arrivals[band] for band in _BANDS] == [1, 2, 0, 1, 0, 1]
-    # Invariant: Early + On time is exactly the on-time departures/arrivals count.
     assert departures["early"] + departures["on_time"] == sum(row["on_time_departures"] for row in body["punctuality"])
     assert arrivals["early"] + arrivals["on_time"] == sum(row["on_time_arrivals"] for row in body["punctuality"])
 
@@ -223,17 +218,13 @@ async def test_fleet_on_time_plan_spread_bands_every_trip_with_a_full_plan(
     assert response.status_code == 200
     spread = response.json()["plan_spread"]
     bands = {band["band"]: band["trip_count"] for band in spread["bands"]}
-    # A on plan, B +10 (0-15 over), C -70 (1-3 h early), E +220 (3 h+ over); D has no planned departure.
     assert {band: count for band, count in bands.items() if count} == {
         "on_plan": 1, "over_0_15": 1, "early_60_180": 1, "over_over_180": 1,
     }
     assert sum(bands.values()) == spread["early_count"] + spread["over_count"] + spread["on_plan_count"] == 4
     assert (spread["early_count"], spread["over_count"], spread["on_plan_count"]) == (1, 2, 1)
-    # Positive minutes on both sides: median of [70] early, median of [10, 220] over.
     assert (spread["median_early_minutes"], spread["median_over_minutes"]) == pytest.approx((70, 115))
 
-
-# ── Consistency with the driver pages ─────────────────────────────────────────
 
 
 @pytest_asyncio.fixture

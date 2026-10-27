@@ -112,9 +112,6 @@ async def create_vehicle(
     db.add(vehicle_event)
     await db.flush()
 
-    # changed_fields keeps the plaintext device ID (Supabase DB, POPIA-compliant); the anchored
-    # payload (→ BlockchainReceipt.payload_json) carries only its hash. fleet.canonical builds
-    # that payload and is the single definition of the rewrite, shared with verification.
     await anchor_fleet_event(
         db,
         anchor=anchor_subject,
@@ -146,8 +143,6 @@ async def update_vehicle(
     old = {
         "registration": vehicle.registration,
         "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
-        # vehicle_type column is String-backed, so a freshly loaded Vehicle holds a
-        # plain str here (not a VehicleType enum) — no .value, or it AttributeErrors.
         "vehicle_type": vehicle.vehicle_type,
         "vin_number": vehicle.vin_number,
         "pulsit_device_id": vehicle.pulsit_device_id,
@@ -164,16 +159,10 @@ async def update_vehicle(
     try:
         await db.flush()
     except IntegrityError as exc:
-        # Renaming a vehicle onto another's registration is the same collision
-        # create_vehicle already handles; without this it arrived as an unhandled
-        # IntegrityError and a 500. `patched` is passed rather than the ORM row
-        # because the session is already failed here — see _duplicate_vehicle_error.
         raise _duplicate_vehicle_error(exc, patched) or exc
     new = {
         "registration": vehicle.registration,
         "licence_disc_expiry": vehicle.licence_disc_expiry.isoformat() if vehicle.licence_disc_expiry else None,
-        # vehicle_type column is String-backed, so a freshly loaded Vehicle holds a
-        # plain str here (not a VehicleType enum) — no .value, or it AttributeErrors.
         "vehicle_type": vehicle.vehicle_type,
         "vin_number": vehicle.vin_number,
         "pulsit_device_id": vehicle.pulsit_device_id,
@@ -195,13 +184,10 @@ async def update_vehicle(
         elif "is_active" in changed and not new["is_active"]:
             event_type = VehicleEventType.DEACTIVATED
         elif changed == {"licence_disc_expiry"}:
-            # Only the disc expiry changed — specific label
             event_type = VehicleEventType.LICENSE_DISC_RENEWED
         elif changed == {"vin_number"}:
-            # Only the VIN changed — specific label
             event_type = VehicleEventType.VIN_UPDATED
         else:
-            # Multiple critical fields changed simultaneously
             event_type = VehicleEventType.VEHICLE_UPDATED
 
     event = VehicleEvent(
@@ -215,8 +201,6 @@ async def update_vehicle(
     await db.flush()
 
     if critical_diff is not None:
-        # changed_fields logs the cosmetic diff too; the anchored payload keeps only the
-        # critical part, which fleet.canonical selects.
         await anchor_fleet_event(
             db,
             anchor=anchor_subject,
@@ -268,7 +252,6 @@ async def get_vehicle_detail(
     else:
         receipts = []
 
-    # Include org filter so trips from other organisations never appear in this vehicle's detail.
     trips = (
         await db.execute(
             select(Trip).where(

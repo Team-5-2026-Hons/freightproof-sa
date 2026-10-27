@@ -30,7 +30,6 @@ from app.orchestration.substitutions.availability import reservation_window
 from app.orchestration.trips.availability import CrewFilter, TimeWindow, busy_crew_in_window
 from app.schemas.driver_substitutions import SubstitutionCompletionBlocker
 
-# Licence expiry is a calendar date, and the calendar that matters is the driver's.
 SAST = ZoneInfo("Africa/Johannesburg")
 
 

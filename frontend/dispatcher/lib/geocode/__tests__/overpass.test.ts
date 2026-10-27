@@ -12,11 +12,8 @@ function way(id: number, tags: Record<string, string>, ring: LatLngPair[]) {
   return { type: 'way', id, tags, geometry: closed.map(([lat, lon]) => ({ lat, lon })) }
 }
 
-// ~100 m box holding the pin.
 const WAREHOUSE = way(1, { building: 'warehouse' }, [[-29.7937, 30.9815], [-29.7937, 30.9825], [-29.7947, 30.9825], [-29.7947, 30.9815]])
-// ~900 m × 770 m estate holding the pin.
 const ESTATE = way(2, { landuse: 'industrial', name: 'Riverhorse Valley' }, [[-29.790, 30.978], [-29.790, 30.986], [-29.798, 30.986], [-29.798, 30.978]])
-// A building ~60 m east of the pin, not containing it.
 const NEIGHBOUR = way(3, { building: 'yes' }, [[-29.7940, 30.9831], [-29.7940, 30.9836], [-29.7944, 30.9836], [-29.7944, 30.9831]])
 
 afterEach(() => {

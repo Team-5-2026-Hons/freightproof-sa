@@ -17,8 +17,6 @@ describe('ScheduleFields', () => {
     render(<ScheduleFields overrides={NO_OVERRIDES} source={SOURCE} onChange={vi.fn()} errors={{}} />)
 
     expect(screen.getByLabelText('Planned departure (SAST)')).toBeInTheDocument()
-    // A pattern, not the exact text: arrival is always required now (FP-139), so its label also
-    // carries the required marker.
     expect(screen.getByLabelText(/^Expected arrival \(SAST\)/)).toBeInTheDocument()
   })
 

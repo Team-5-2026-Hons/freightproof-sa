@@ -64,29 +64,24 @@ _MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_analytics_read_models.py"
 )
-# Recreates the two vehicle views for horses AND trailers; runs after FP-153's statements.
 _TRAILER_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_12_tom_trailer_vehicle_analytics.py"
 )
-# Turns all five into plain (live) views; runs last, as Alembic applies it.
 _LIVE_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
 )
-# FP-83: the driver view recreated with handover-aware attribution. Always run after the live views.
 _SUBSTITUTION_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
 )
 
-# Adds arrival to the driver view's phase dwell. Always run after the FP-83 recreation.
 _ARRIVAL_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_10_23_ciaran_driver_analytics_arrival.py"
 )
 
-# SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 _MINUTES_PER_HOUR = 60
 _MONTHS_BACK = 3
@@ -108,8 +103,6 @@ _SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsu
 _ARRIVAL_MIGRATION = _load_migration(_ARRIVAL_MIGRATION_PATH, "ciaran_drv_arrival_dwell")
 
 
-# ── The one hand-computed timeline ───────────────────────────────────────────
-
 
 @dataclass(frozen=True)
 class _Step:
@@ -121,11 +114,6 @@ class _Step:
     geofence: bool | None = None
 
 
-# origin (stop 0) -> destination (stop 1). Every expected number below comes from this:
-#   dwells: activation 30, loading 60, departure 10, unloading 40, confirmation 20
-#   transit: arrival 400 - departure 100 = 300 minutes = 5 driving hours
-#   Pulsit at origin: confirmed, mismatch, unwitnessed — one each (rate 1/2, not 1/3)
-#   Pulsit at destination: confirmed twice. in_transit is never a facility observation.
 _DEPARTURE_MINUTE = 100
 _ARRIVAL_MINUTE = 400
 _TIMELINE = (
@@ -138,8 +126,8 @@ _TIMELINE = (
     _Step(PhaseType.CONFIRMATION, 1, 460, geofence=True),
 )
 _TRANSIT_MINUTES = _ARRIVAL_MINUTE - _DEPARTURE_MINUTE
-_PLANNED_DEPARTURE_MINUTE = 120  # departed at +100, so on time
-_PLANNED_DURATION_MINUTES = 280  # schedule delta = 300 - 280 = +20 (late)
+_PLANNED_DEPARTURE_MINUTE = 120
+_PLANNED_DURATION_MINUTES = 280
 _BREAKDOWN_MINUTE = 200
 
 
@@ -175,8 +163,6 @@ def _headers(operator: _Operator) -> dict[str, str]:
         sub=str(operator.dispatcher.id), role="dispatcher", org_id=str(operator.org.id),
     ))
 
-
-# ── Seeding ──────────────────────────────────────────────────────────────────
 
 
 def _new_horse(org: Organization) -> Vehicle:
@@ -253,7 +239,6 @@ async def _seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -306,8 +291,6 @@ async def _run_history(
             breakdown=mark == "X",
         )
 
-
-# ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -372,8 +355,6 @@ async def closed_trip(
     return trip
 
 
-# ── Auth ─────────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.parametrize("path", _ALL)
 async def test_analytics_without_token_returns_403(
@@ -419,8 +400,6 @@ async def test_analytics_with_driver_token_returns_403(
 
     assert response.status_code == 403
 
-
-# ── 422 ──────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("path", _MONTHLY)
@@ -477,8 +456,6 @@ async def test_analytics_does_not_misreport_a_service_value_error_as_422(
         await client.get(_DRIVERS, params=_range(month), headers=_headers(operator))
 
 
-# ── 200: hand-computed values per grain ──────────────────────────────────────
-
 
 @pytest.mark.usefixtures("views")
 @pytest.mark.parametrize("path", _ALL)
@@ -496,9 +473,6 @@ async def test_analytics_count_a_trip_closed_after_an_earlier_read(
     client: AsyncClient, db_session: AsyncSession, operator: _Operator, lane: list[Precinct],
     month: date,
 ) -> None:
-    # The 2026-09-13 bug: the views were snapshots, so a trip closed after the last refresh
-    # never appeared. Live views must count it on the very next request, with no refresh.
-    # One token for both requests: each make_token() call opens a new session.
     headers = _headers(operator)
     await _seed_trip(db_session, operator, stops=lane, start=_start(month, 5))
     before = await client.get(_DRIVERS, params=_range(month), headers=headers)
@@ -553,7 +527,6 @@ async def test_vehicle_analytics_returns_registration_and_hand_computed_numbers(
         row["mechanical_warning_count"],
         row["mechanical_critical_count"],
     ) == (0, 1, 0)
-    # The horse's first-ever breakdown: there is no earlier one to measure a gap from.
     assert row["mechanical_gap_count"] == 0
     assert row["mean_minutes_between_mechanical"] is None
     assert row["driving_hours_sum"] == pytest.approx(_TRANSIT_MINUTES / _MINUTES_PER_HOUR)
@@ -570,9 +543,7 @@ async def test_vehicle_streaks_carry_trips_since_last_incident(
     clean_horse = _new_horse(operator.org)
     db_session.add(clean_horse)
     await db_session.flush()
-    # '.X..' — streak of 1 closed by the breakdown, then 2 still running: (2, 1), 2 since.
     await _run_history(db_session, operator, operator.horse, lane, month, ".X..")
-    # '..' — never broken down: lowest is null, and every closed trip counts since.
     await _run_history(db_session, operator, clean_horse, lane, month, "..")
     await db_session.flush()
 
@@ -671,7 +642,6 @@ async def test_facility_analytics_keeps_unwitnessed_out_of_the_rate(
     assert (
         at_origin["confirmed_count"], at_origin["mismatch_count"], at_origin["unwitnessed_count"],
     ) == (1, 1, 1)
-    # Unwitnessed stays outside the denominator: 1 / (1 + 1), not 1 / 3.
     assert at_origin["corroboration_rate"] == pytest.approx(0.5)
     at_destination = rows[str(destination.id)]
     assert (
@@ -682,14 +652,11 @@ async def test_facility_analytics_keeps_unwitnessed_out_of_the_rate(
     assert at_destination["corroboration_rate"] == pytest.approx(1.0)
 
 
-# ── Names and org scoping ────────────────────────────────────────────────────
-
 
 async def test_client_owned_private_precincts_are_still_named(
     client: AsyncClient, closed_trip: Trip, operator: _Operator, lane: list[Precinct], month: date,
 ) -> None:
     origin, destination = lane
-    # The case this guards: neither depot is the operator's, and neither is shared.
     assert {origin.principal_organization_id, destination.principal_organization_id} != {
         operator.org.id
     }

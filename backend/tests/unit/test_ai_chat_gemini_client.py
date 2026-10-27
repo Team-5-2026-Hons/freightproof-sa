@@ -55,8 +55,6 @@ async def _reply(messages: list[Any] | None = None) -> ModelReply:
     )
 
 
-# ── The request ──────────────────────────────────────────────────────────────
-
 
 @respx.mock
 async def test_reply_builds_the_generate_content_request() -> None:
@@ -66,7 +64,7 @@ async def test_reply_builds_the_generate_content_request() -> None:
 
     request = route.calls.last.request
     assert request.headers[API_KEY_HEADER] == "test-key"
-    assert "key=" not in str(request.url)  # never in the address, where logs would keep it
+    assert "key=" not in str(request.url)
     body = json.loads(request.content)
     assert body["systemInstruction"] == {"parts": [{"text": "FIXED"}, {"text": "Today is Monday 2026-10-19."}]}
     assert body["contents"] == [{"role": "user", "parts": [{"text": "How late were we?"}]}]
@@ -84,7 +82,6 @@ def test_inline_refs_replaces_refs_and_drops_defs_and_titles() -> None:
 
     assert "$defs" not in inlined and "title" not in inlined
     assert "last_12_months" in inlined["properties"]["preset"]["enum"]
-    # The field's own description survives the inlining.
     assert inlined["properties"]["preset"]["description"].startswith("The page's Period choice")
     assert inlined["additionalProperties"] is False
 
@@ -111,16 +108,12 @@ async def test_reply_sends_history_its_own_turn_unchanged_and_named_results() ->
         {"role": "model", "parts": [{"text": "a1"}]},
         {"role": "user", "parts": [{"text": "q2"}]},
     ]
-    # Its own turn goes back exactly as received, thought signature included.
     assert contents[3] == own_turn
     assert contents[4] == {"role": "user", "parts": [
         {"functionResponse": {"id": "fc_1", "name": "on_time", "response": {"result": {"figure": 42}}}},
-        # A made-up id is never sent; the name matches it instead.
         {"functionResponse": {"name": "cost", "response": {"error": "Invalid input"}}},
     ]}
 
-
-# ── Reading replies ──────────────────────────────────────────────────────────
 
 
 def test_reply_from_reads_text_skipping_thoughts() -> None:
@@ -144,7 +137,6 @@ def test_reply_from_reads_function_calls_and_makes_up_missing_ids() -> None:
 def test_reply_from_maps_usage_cached_and_thinking_tokens() -> None:
     usage = reply_from(_payload([{"text": "x"}])).usage
 
-    # 5000 prompt of which 2000 cached; 120 answer + 80 thinking billed as output.
     assert (usage.input_tokens, usage.cache_read_tokens, usage.output_tokens, usage.cache_write_tokens) == (3_000, 2_000, 200, 0)
 
 
@@ -166,8 +158,6 @@ def test_reply_from_blocked_prompt_is_a_refusal() -> None:
 
     assert reply.stop == "refusal"
 
-
-# ── Failures ─────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
@@ -201,7 +191,6 @@ async def test_reply_busy_twice_is_a_provider_error() -> None:
 
 @respx.mock
 async def test_reply_402_is_a_credit_error_and_never_retried() -> None:
-    # The exact body Google returned to Tom on 20 Oct 2026.
     route = respx.post(_URL).mock(return_value=httpx.Response(402, json={"error": {
         "code": 402, "status": "RESOURCE_EXHAUSTED",
         "message": "Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.",
@@ -220,7 +209,6 @@ async def test_reply_429_is_a_quota_error() -> None:
     with pytest.raises(AiQuotaError):
         await _reply()
 
-    # Never retried: the quota is spent.
     assert respx.calls.call_count == 1
 
 

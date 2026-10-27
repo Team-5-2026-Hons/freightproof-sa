@@ -137,7 +137,6 @@ async def test_changed_source_is_never_re_baselined(test_engine, committed):
         await session.commit()
 
     assert await _worker(test_engine, event_id) is False
-    # The sweep keeps trying and keeps failing; the original hash is never replaced.
     async with AsyncSession(test_engine) as session, session.begin():
         assert await recover_evidence_anchor(session, due_before=datetime.now(UTC)) is False
 

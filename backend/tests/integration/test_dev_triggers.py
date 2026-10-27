@@ -125,8 +125,6 @@ async def seeded(db_session):
     db_session.add(stop)
     await db_session.flush()
 
-    # WAY001 is a real fixture in parcel_perfect.MOCK_WAYBILLS with 5 parcels, so
-    # the PP trigger's real sync resolves against data that actually exists.
     consignment = Consignment(
         id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY001",
         parcel_count_expected=5, pickup_stop_id=stop.id, delivery_stop_id=stop.id,
@@ -149,9 +147,6 @@ async def seeded(db_session):
 
 
 def _token(seeded) -> str:
-    # sub must match the seeded User's id: get_current_dispatcher looks the user
-    # up by JWT subject, so an unbound sub 401s as "User account not found" on
-    # every authenticated call rather than actually testing the route.
     return make_token(sub=str(seeded["user"].id), role="dispatcher", org_id=str(seeded["org"].id))
 
 
@@ -180,8 +175,6 @@ async def second_waybill(db_session, seeded):
 
     return {"consignment": consignment, "barcodes": barcodes}
 
-
-# ── Router registration ───────────────────────────────────────────────────────
 
 
 def test_dev_router_present_in_production_when_flag_is_on():
@@ -247,8 +240,6 @@ def test_dev_router_present_when_both_conditions_hold(dev_app):
     assert any("/dev" in r.path for r in dev_app.routes)
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
-
 
 async def test_scan_trigger_requires_auth(dev_client, seeded, store):
     res = await dev_client.post("/api/v1/dev/scans", json={
@@ -257,9 +248,6 @@ async def test_scan_trigger_requires_auth(dev_client, seeded, store):
         "direction": "out",
     })
 
-    # get_current_dispatcher raises 403 (not 401) for a missing bearer token — see
-    # app/auth/dependencies.py — matching the convention used everywhere else in
-    # this suite (e.g. test_pp_endpoints.py::test_capabilities_no_auth_returns_403).
     assert res.status_code == 403
 
 
@@ -268,8 +256,6 @@ async def test_list_trips_requires_auth(dev_client):
 
     assert res.status_code == 403
 
-
-# ── Validation ────────────────────────────────────────────────────────────────
 
 
 async def test_scan_trigger_rejects_a_bad_direction(dev_client, seeded, store):
@@ -314,8 +300,6 @@ async def test_scan_trigger_404s_for_a_stop_with_no_consignments(dev_client, see
 
     assert res.status_code == 404
 
-
-# ── Scan triggers ─────────────────────────────────────────────────────────────
 
 
 async def test_full_scan_out_marks_every_parcel(dev_client, db_session, seeded, store):
@@ -380,8 +364,6 @@ async def test_unexpected_barcode_is_reported_and_recorded(dev_client, db_sessio
     assert "STRANGER-99" in exception.description
 
 
-# ── Close-session trigger (folded in from 2026-08-05-scan-driven-loading-unloading.md) ──
-
 
 async def test_close_session_marks_the_session_closed(dev_client, seeded, store):
     """The trigger drives the mock; the mock is what the gate reads."""
@@ -412,8 +394,6 @@ async def test_close_session_rejects_an_unknown_stop(dev_client, seeded, store):
 
     assert res.status_code == 404
 
-
-# ── PP triggers ───────────────────────────────────────────────────────────────
 
 
 async def test_pp_trigger_sets_the_manifest_number(dev_client, db_session, seeded, store):
@@ -469,8 +449,6 @@ async def test_mid_trip_waybill_edit_moves_the_baseline(dev_client, db_session, 
     assert consignment.parcel_count_expected == 27
 
 
-# ── Exception trigger ─────────────────────────────────────────────────────────
-
 
 async def test_exception_trigger_records_a_real_exception(dev_client, db_session, seeded, store):
     res = await dev_client.post(
@@ -517,8 +495,6 @@ async def test_exception_trigger_rejects_an_empty_description(dev_client, seeded
 
     assert res.status_code == 422
 
-
-# ── GET /dev/trips ────────────────────────────────────────────────────────────
 
 
 async def test_list_trips_returns_real_barcodes_sorted_under_pickup_and_delivery(
@@ -636,8 +612,6 @@ async def test_list_trips_preceding_departure_status_reflects_the_preceding_depa
     assert destination_body["preceding_departure_status"] == PhaseStatus.COMPLETED.value
 
 
-# ── Per-waybill scan selection (barcodes_by_reference) ──────────────────────────
-
 
 async def test_barcodes_by_reference_stages_exactly_the_listed_barcodes(
     dev_client, db_session, seeded, second_waybill, store,
@@ -722,8 +696,6 @@ async def test_barcodes_by_reference_rejects_an_oversized_total(dev_client, seed
 
     assert res.status_code == 422
 
-
-# ── The principle ─────────────────────────────────────────────────────────────
 
 
 async def test_flushing_mock_state_leaves_evidence_intact(dev_client, db_session, seeded, store):
@@ -854,8 +826,6 @@ async def test_pp_manifest_trigger_unknown_manifest_is_404(
 
     assert resp.status_code == 404
 
-
-# ── FP-83: after a driver handover ────────────────────────────────────────────
 
 
 async def test_dev_trigger_uses_current_driver_after_transfer(dev_client, db_session, seeded, store):

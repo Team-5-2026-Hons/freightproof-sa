@@ -2,9 +2,7 @@ import { cn } from '@shared/lib/utils/cn'
 import { Ic } from './Ic'
 
 interface StepRailProps {
-  /** Step labels in order. */
   steps: string[]
-  /** 1-indexed currently active step. */
   current: number
   /** Called when user clicks a completed step to navigate back. Optional. */
   onNavigate?: (step: number) => void
@@ -53,7 +51,6 @@ export function StepRail({ steps, current, onNavigate }: StepRailProps) {
               </span>
             </button>
 
-            {/* Connector line — aligns with circle centre via mt-4 (16px = half of 32px) */}
             {i < steps.length - 1 && (
               <div className="flex-1 h-px mx-3 mt-4 bg-outline-v/30 relative overflow-hidden">
                 <div

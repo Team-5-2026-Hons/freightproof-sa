@@ -35,31 +35,11 @@ from app.integrations.parcel_perfect.models import (
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Module-level token cache.
-# Alive for the process lifetime — avoids a getSalt/getSecureToken round-trip
-# on every waybill lookup. Cleared when get_single_waybill catches a ValueError,
-# which triggers a one-shot re-auth retry in case the token was invalidated
-# server-side (e.g. after a server restart or session expiry).
-#
-# Not protected by asyncio.Lock — concurrent requests may perform duplicate auth
-# handshakes if _cached_token is None. In practice this wastes one round-trip;
-# the resulting tokens are both valid and the last write wins. Acceptable for
-# the current traffic level; add asyncio.Lock if this becomes a bottleneck.
-# ---------------------------------------------------------------------------
 _cached_token: Optional[str] = None
 
 
-# ---------------------------------------------------------------------------
-# HTTP timeout for all PP calls.
-# PP's spec gives no explicit SLA; 15 s matches our Hedera bound as a safe cap.
-# ---------------------------------------------------------------------------
 _PP_TIMEOUT_SECONDS: float = 15.0
 
-
-# ---------------------------------------------------------------------------
-# Real client
-# ---------------------------------------------------------------------------
 
 
 class ParcelPerfectClient:
@@ -91,8 +71,6 @@ class ParcelPerfectClient:
         Raises ValueError if PP returns errorcode != 0.
         Raises httpx.HTTPStatusError on non-2xx HTTP responses.
         """
-        # urllib.parse.urlencode ensures special characters in param values
-        # are percent-encoded — manual string building breaks on addresses, etc.
         query: dict[str, str] = {
             "params": json.dumps(params),
             "method": method,
@@ -108,8 +86,6 @@ class ParcelPerfectClient:
 
         response.raise_for_status()
 
-        # httpx's .json() returns Any — we annotate the dict keys as str but leave
-        # values as Any because the PP response schema is not statically knowable here.
         body: dict[str, Any] = response.json()
         errorcode: int = body.get("errorcode", -1)
         errormessage: str = body.get("errormessage", "unknown PP error")
@@ -142,7 +118,6 @@ class ParcelPerfectClient:
         if _cached_token is not None:
             return _cached_token
 
-        # Use the pre-issued token directly if configured — no auth round-trip needed.
         if settings.PP_API_TOKEN:
             _cached_token = settings.PP_API_TOKEN
             logger.info("PP pre-issued token loaded from config")
@@ -151,7 +126,6 @@ class ParcelPerfectClient:
         email = settings.PP_API_KEY
         password = settings.PP_API_PASSWORD
 
-        # Step 1: fetch a per-session salt tied to the account email.
         salt_results = await self._make_call(
             class_name="Auth",
             method="getSalt",
@@ -161,10 +135,8 @@ class ParcelPerfectClient:
             raise ValueError("PP getSalt returned empty results")
         salt: str = salt_results[0]["salt"]
 
-        # Step 2: hash exactly as the v28 spec requires — MD5(password + salt).
         encrypted_password = hashlib.md5(f"{password}{salt}".encode()).hexdigest()
 
-        # Step 3: exchange credentials for a session token.
         token_results = await self._make_call(
             class_name="Auth",
             method="getSecureToken",
@@ -186,8 +158,6 @@ class ParcelPerfectClient:
         """
         details_raw: dict[str, Any] = raw.get("details", {})
 
-        # PP returns failtype as null (None) when no failure has been recorded.
-        # We preserve that distinction: None = no failure, string = failure reason.
         failtype_raw = details_raw.get("failtype")
         failtype: Optional[str] = str(failtype_raw) if failtype_raw is not None else None
 
@@ -197,28 +167,21 @@ class ParcelPerfectClient:
             pieces=int(details_raw.get("pieces", 0)),
             duedate=details_raw.get("duedate", ""),
             declared_value=float(details_raw["declaredvalue"]) if details_raw.get("declaredvalue") is not None else None,
-            # Destination
             dest_address=details_raw.get("destperadd1", ""),
             dest_town=details_raw.get("desttown", ""),
             dest_person=details_raw.get("destpers", ""),
             dest_contact=details_raw.get("destpertel", ""),
-            # Origin
             orig_person=details_raw.get("origpers", ""),
             orig_town=details_raw.get("origtown", ""),
             orig_address=details_raw.get("origperadd1", ""),
-            # Service
             service=details_raw.get("service", ""),
             actual_weight_kg=float(details_raw["actkg"]) if details_raw.get("actkg") is not None else None,
             freight_total=float(details_raw["total"]) if details_raw.get("total") is not None else None,
-            # POD / failure
             poddate=details_raw.get("poddate", ""),
             failtype=failtype,
-            # Client reference (first wayref, if present — also stored in wayrefs list)
             client_reference=details_raw.get("reference", ""),
-            # Customer account / name — resolves the client Organization downstream.
             accnum=details_raw.get("accnum", ""),
             custname=details_raw.get("custname", ""),
-            # 0 or absent means "not yet manifested" — normalise to None.
             manifest=int(m) if (m := details_raw.get("manifest")) and int(m) > 0 else None,
         )
 
@@ -239,7 +202,7 @@ class ParcelPerfectClient:
                 item=int(t["item"]) if t.get("item") is not None else 0,
             )
             for t in raw.get("tracks", [])
-            if t.get("trackno")  # skip malformed entries with no barcode
+            if t.get("trackno")
         ]
 
         wayrefs = [
@@ -270,14 +233,10 @@ class ParcelPerfectClient:
             )
         except ValueError as exc:
             err_str = str(exc).lower()
-            # Only retry when the failure looks like a token/session problem.
-            # Domain errors (e.g. "Waybill not found") must not trigger re-auth,
-            # as that would waste two extra network calls per bad waybill number.
             is_auth_failure = any(
                 kw in err_str for kw in ("token", "auth", "session", "invalid credentials")
             )
             if _cached_token is not None and is_auth_failure:
-                # Token invalidated server-side; clear cache and retry once.
                 logger.warning("PP auth failure detected; clearing token cache and retrying")
                 _cached_token = None
                 token = await self._get_token()
@@ -285,19 +244,11 @@ class ParcelPerfectClient:
                     "Waybill", "getSingleWaybill", {"waybillno": waybill_number}, token=token
                 )
             elif "not found" in err_str:
-                # PP returned errorcode != 0 with a "not found" message — this is a
-                # domain error (the waybill doesn't exist), not an auth/transport
-                # failure.  Surface it as PPWaybillNotFoundError so the endpoint
-                # returns 404 instead of 502.
                 raise PPWaybillNotFoundError(waybill_number) from exc
             else:
                 raise
 
         if not results:
-            # Empty results with errorcode 0 is PP's "no matching waybill" signal —
-            # distinguish this from genuine API/auth errors (raised above as ValueError)
-            # so callers can fail closed on a real not-found without conflating it
-            # with transport/auth failures.
             raise PPWaybillNotFoundError(waybill_number)
 
         return self._parse_waybill_response(results[0])

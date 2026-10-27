@@ -2,7 +2,6 @@
 
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 
-// Shared defaults for the fleet detail-page side panels (vehicle + driver).
 export const DETAIL_PANEL_DEFAULT_W = 520
 export const DETAIL_PANEL_MIN_W = 360
 export const DETAIL_PANEL_MAX_W = 720
@@ -73,7 +72,5 @@ export function useResizablePanel(
     window.addEventListener('mouseup', onUp)
   }
 
-  // Clamped on read too: `max` shrinks with the window, and state alone would keep
-  // overflowing until the user dragged it back by hand.
   return { width: clampPanelWidth(width, opts.min, opts.max), startResize }
 }

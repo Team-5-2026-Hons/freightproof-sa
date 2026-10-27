@@ -12,7 +12,6 @@ vi.mock('@/lib/api/client', () => ({
   api: { get: vi.fn() },
 }))
 
-// The rates card's Edit button checks the role; a plain dispatcher sees the read-only card.
 vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: { role: 'dispatcher' } }),
 }))
@@ -22,7 +21,6 @@ const mockedGet = vi.mocked(api.get)
 const TODAY = '2026-09-16'
 const QUERY: TabQuery = { start: '2026-08-31', end: TODAY, grain: 'week', grainAdjusted: false, disabledGrains: [] }
 const PATH = '/api/v1/analytics/fleet/cost?start=2026-08-31&end=2026-09-16&grain=week'
-// Intl's en-ZA groups thousands with a no-break space; \s matches it.
 const rand = (text: string): RegExp => new RegExp(`^${text.replace(/ /g, '\\s')}$`)
 
 const RATES: CostProfile = {

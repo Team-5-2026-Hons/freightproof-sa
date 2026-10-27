@@ -35,7 +35,6 @@ const SELECTED_TRIP_KEY = 'fp.selectedTripId'
 const driver = mockDrivers[0]
 const authValue: AuthState = { user: driver, isLoading: false, connectionFault: false, retryProfile: vi.fn(), requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
 
-// Two distinct real-shaped trips: the one handed over, and whatever the server says is next.
 const [handedOverTrip, nextTrip] = mockTrips.filter((t) => !['closed', 'cancelled'].includes(t.status))
 if (handedOverTrip === undefined || nextTrip === undefined) throw new Error('Fixture drift: need two open mock trips')
 
@@ -152,7 +151,6 @@ describe('TripContext handover handling', () => {
 
     renderProvider()
 
-    // Transient-or-unknown failures must never strip a mid-journey selection.
     await waitFor(() => expect(mockFetchMyTrip).toHaveBeenCalled())
     expect(window.sessionStorage.getItem(SELECTED_TRIP_KEY)).toBe(String(handedOverTrip.id))
     expect(screen.getByTestId('handed-over')).toHaveTextContent('none')

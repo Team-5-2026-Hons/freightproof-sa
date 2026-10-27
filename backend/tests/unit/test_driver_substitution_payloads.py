@@ -105,8 +105,6 @@ def test_a_photos_bytes_hash_is_committed():
 
 
 def test_stored_and_in_memory_decimals_and_offsets_hash_alike():
-    # The database hands back Decimal('-32.3500000') and a UTC offset; the request may carry a
-    # float and +02:00. Both must commit to the same values.
     assert canonical.location_hash(-32.35, 22.58, 8.0) == canonical.location_hash(
         Decimal("-32.3500000"), Decimal("22.5800000"), Decimal("8.00"),
     )
@@ -136,7 +134,6 @@ def test_the_correction_commitment_is_the_c3_v1_format_unchanged():
 
     payload = canonical.compute_correction_payload(record=correction)
 
-    # Exactly what substitutions.service wrote before C5, so existing hashes still verify.
     assert payload == {
         "payload_version": 1, "event_type": "driver_substitution_corrected",
         "correction_id": str(correction.correction_id), "substitution_id": str(correction.substitution_id),

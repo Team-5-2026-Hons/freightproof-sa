@@ -11,9 +11,6 @@ interface CountryCodeSelectProps {
   className?: string
 }
 
-// Flag + dial-code dropdown for the login phone field, matching the country
-// picker pattern used by Google/WhatsApp sign-in. No new dependency — built
-// on the country list in lib/constants/country-codes.ts.
 export function CountryCodeSelect({ value, onChange, className }: CountryCodeSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -59,8 +56,6 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        // Same filled, borderless 56px field as the number beside it on the sign-in
-        // screen: the pair reads as one phone-number control split in two.
         className={cn(
           'flex h-14 items-center gap-2 rounded-2xl px-4 text-body font-medium tabular-nums text-surface-on',
           'bg-surface-container-high',
@@ -88,7 +83,6 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search country or code"
             className={cn(
-              // 16px+ so iOS doesn't zoom.
               'w-full px-4 py-3 text-base bg-transparent text-foreground',
               'placeholder:text-muted-foreground/80',
               'border-b border-input focus:outline-none',

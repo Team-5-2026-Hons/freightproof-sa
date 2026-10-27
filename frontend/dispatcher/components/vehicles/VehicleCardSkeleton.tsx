@@ -5,10 +5,7 @@ import { InfoRowsSkeleton } from '@/components/ui/DetailSkeleton'
 import { SkeletonBar } from '@/components/ui/Skeleton'
 import { VEHICLE_GRID_CLASSES } from '@/components/vehicles/VehicleCard'
 
-// Enough cards to fill a desktop screen at the widest (four-column) layout, so the grid does not
-// visibly grow when data arrives.
 const SKELETON_CARDS = 8
-// VehicleCard shows four facts (device, VIN, GVM or length, licence disc).
 const CARD_INFO_ROWS = 4
 
 /** A VehicleCard's own structure with the content left blank: same container, header, subtitle
@@ -16,8 +13,6 @@ const CARD_INFO_ROWS = 4
 export function VehicleCardSkeleton() {
   return (
     <Card className="flex flex-col gap-3">
-      {/* Row heights match the real card's text lines (15px name, 11px subtitle) so a card is the
-          same height loading or loaded. */}
       <div className="flex min-h-[22.5px] items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <SkeletonBar className="h-4 w-4" />

@@ -10,8 +10,6 @@ import {
 } from '@/lib/theme'
 import { syncStatusBarToTheme } from '@/lib/status-bar'
 
-// The DOM class and the native status bar move together, so the clock and battery glyphs
-// always contrast with the screen under them.
 function applyCurrentTheme(): void {
   const pref = getThemePref()
   applyTheme(pref)
@@ -27,13 +25,10 @@ function applyCurrentTheme(): void {
  */
 export function ThemeManager() {
   useEffect(() => {
-    // Re-assert on mount: localStorage isn't always readable when the inline script runs.
     applyCurrentTheme()
 
     const unsubscribe = subscribeThemePref(applyCurrentTheme)
 
-    // matchMedia is absent in jsdom and older WebViews; preference still works, just
-    // stops tracking the OS.
     if (typeof window.matchMedia !== 'function') return unsubscribe
 
     const media = window.matchMedia(DARK_SCHEME_QUERY)

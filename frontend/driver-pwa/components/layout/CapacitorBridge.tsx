@@ -22,9 +22,6 @@ import { photoDataUrlFrom, receiveRestoredPhoto } from '@/lib/camera/restored-ph
 const CAMERA_PLUGIN_ID = 'Camera'
 const GET_PHOTO_METHOD = 'getPhoto'
 
-// Every modal surface in the app (Drawer and the Radix dialogs) closes on Escape, so back
-// over an open sheet closes the sheet — the platform's rule — rather than leaving the
-// screen underneath it.
 const OPEN_MODAL_SELECTOR = '[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]'
 
 function closeOpenModal(): boolean {
@@ -36,8 +33,6 @@ function closeOpenModal(): boolean {
 export function CapacitorBridge(): null {
   const router = useRouter()
   const pathname = usePathname()
-  // Read at event time; re-registering the native listener on every navigation would
-  // leave a window where back fell through to Capacitor's default and closed the app.
   const pathnameRef = useRef(pathname)
   pathnameRef.current = pathname
 
@@ -46,8 +41,6 @@ export function CapacitorBridge(): null {
 
     const handleBack = (): void => {
       if (closeOpenModal()) return
-      // The screen's own back control (SubpageHeader, StepHeader): the same action the
-      // chevron and the edge swipe take, so the three can never disagree.
       const screenBack = getEdgeBackHandler()
       if (screenBack !== null) {
         screenBack()
@@ -60,13 +53,10 @@ export function CapacitorBridge(): null {
         return
       }
       if (pathnameRef.current !== ROUTES.home) {
-        // A tab root: Home is the root of roots, as a tab switch would treat it.
         markTransition('none')
         router.replace(ROUTES.home)
         return
       }
-      // Minimise, not exit: an exited app cold-starts, losing the WebView a driver
-      // mid-trip expects to come back to.
       App.minimizeApp().catch((err: unknown) => console.warn('Could not minimise the app', err))
     }
 

@@ -95,7 +95,6 @@ async def build_world(
         operator_organization_id=org.id, client_organization_id=client_org.id,
         driver_id=a.id, horse_id=horse.id, origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=status, idvs_check_status=IdvsStatus.VERIFIED, created_by_user_id=user.id,
-        # An empty leg has no manifest to import, which the linehaul read would otherwise need.
         trip_type=TripType.EMPTY_LEG.value, planned_departure_at=departure or now,
         planned_arrival_at=arrival or now + timedelta(hours=PLANNED_HOURS),
     )
@@ -211,7 +210,6 @@ async def add_trip(
     db.add_all([
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION, sequence_number=0, status=PhaseStatus.COMPLETED),
         activation,
-        # A later phase, so completing activation leaves the trip ACTIVE instead of closing it.
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.LOADING, trip_stop_id=stop.id, sequence_number=2, status=PhaseStatus.PENDING),
     ])
     await db.flush()
@@ -244,10 +242,8 @@ async def tear_down(sessionmaker, world: SubWorld) -> None:
         )).scalars())
         if trip_ids:
             request_ids = select(Request.id).where(Request.trip_id.in_(trip_ids))
-            # Before the confirmations: a handover finding references its capture (CP4).
             await db.execute(delete(TripException).where(TripException.trip_id.in_(trip_ids)))
             late_ids = select(LateDriverEvidence.id).where(LateDriverEvidence.trip_id.in_(trip_ids))
-            # By actor too: an upload's operation names no request or late receipt.
             await db.execute(delete(DriverSubstitutionOperation).where(
                 DriverSubstitutionOperation.request_id.in_(request_ids)
                 | DriverSubstitutionOperation.late_evidence_id.in_(late_ids)

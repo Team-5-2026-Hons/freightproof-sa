@@ -24,7 +24,6 @@ import { DriverSubstitutionCard } from './DriverSubstitutionCard'
 import { cn } from '@/lib/utils'
 
 export const HANDOVER_SHEET_TITLE = 'Driver handover'
-// How many trip references the compact row names before it says "and N more".
 const SUMMARY_REFERENCE_LIMIT = 2
 
 interface NoticeRowProps {
@@ -40,8 +39,6 @@ function NoticeRow({ notice, driverId, onOpenTrip, onDismiss }: NoticeRowProps) 
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
   const [isDismissing, setIsDismissing] = useState(false)
 
-  // The arrangement as it stood, for a recipient who wants to know what was cancelled. The
-  // contract scopes this read to the snapshot: it never carries the trip's later progress.
   const viewArrangement = async () => {
     setSnapshotError(null)
     try {
@@ -70,9 +67,6 @@ function NoticeRow({ notice, driverId, onOpenTrip, onDismiss }: NoticeRowProps) 
       </StatusBanner>
       <div className="flex flex-wrap gap-2">
         {notice.kind === 'completed' && (
-          // Role-agnostic on purpose: the trip page asks the server, which answers with
-          // current work for the incoming driver and TRIP_HANDED_OVER → history for the
-          // outgoing one. The notice itself never decides who holds the trip.
           <Button variant="fill" size="pill-sm" onClick={() => onOpenTrip(notice.trip_id)}>Open trip</Button>
         )}
         {notice.kind === 'cancelled' && snapshot === null && (
@@ -119,7 +113,6 @@ export function DriverSubstitutionPanel({ className }: { className?: string }) {
   const router = useRouter()
   const { user } = useAuth()
   const { pending, notices, markNoticeRead } = useDriverSubstitutions()
-  // Optional, like the provider's own read: Home/Trips test harnesses render without it.
   const tripCtx = useContext(TripContext)
   const toastCtx = useContext(ToastContext)
   const handedOverTripId = tripCtx?.handedOverTripId ?? null
@@ -130,16 +123,12 @@ export function DriverSubstitutionPanel({ className }: { className?: string }) {
     .map((request) => ({ request, role: substitutionRoleFor(request, driverId) }))
     .filter((item): item is PendingCard => item.role !== null)
 
-  // One string per render so the effect below runs only when the SET of items changes, not
-  // on every poll that returns the same arrangements.
   const itemIds = attentionItemIds(cards.map((card) => card.request), notices, handedOverTripId)
   const itemKey = itemIds.join('|')
   useEffect(() => {
     if (itemKey === '') return
     const unseen = unseenAttentionItems(itemKey.split('|'))
     if (unseen.length === 0) return
-    // Marked seen as it opens, not as it closes: the sheet interrupts once per item, and
-    // navigating away from inside it must not count as "never shown".
     markAttentionSeen(unseen)
     setOpen(true)
   }, [itemKey])
@@ -153,8 +142,6 @@ export function DriverSubstitutionPanel({ className }: { className?: string }) {
     try {
       await markNoticeRead(noticeId)
     } catch (err: unknown) {
-      // Kept on screen: a notice that vanished locally but stayed unread on the server
-      // would come back on the next refresh looking like a new handover.
       console.error('Could not mark the handover notice read', err)
       toastCtx?.notify({ kind: 'error', title: 'Could not dismiss', body: 'Check your connection and try again.' })
     }
@@ -180,7 +167,6 @@ export function DriverSubstitutionPanel({ className }: { className?: string }) {
       </button>
 
       <Drawer open={open} onClose={() => setOpen(false)} side="bottom" title={HANDOVER_SHEET_TITLE}>
-        {/* The Drawer pads its own body, so only the gap between items is set here. */}
         <div className="flex flex-col gap-4">
           {handedOverTripId !== null && (
             <div className="flex flex-col gap-2">

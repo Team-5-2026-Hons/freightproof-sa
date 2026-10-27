@@ -24,28 +24,20 @@ export interface PhaseVerdict {
   headline: string
   reasons: readonly string[]
   nodeType: PhaseNodeType
-  /** True only when the outcome is `reviewed` and every exception on the phase was actually
-   *  reviewed. A phase whose exceptions were merely recorded has the same outcome but nobody
-   *  looked, so consumers must key the "reviewed" tick on this, never on the headline's words. */
   reviewed?: boolean
 }
 
 export interface PhaseVerdictInput {
   phase: PhaseDescriptor
   checks: readonly PhaseCheck[]
-  /** Already scoped to this phase by the caller (trip-level exceptions belong to no phase). */
   exceptions: readonly TripException[]
   actCounts: { uploads: number }
   isActive: boolean
   tripStatus: TripStatus
-  /** in_transit only (D41): `legDepartureAt(allPhases, phase)` and the phase's `completed_at`. */
   leg: { departedAt: string | null; arrivedAt: string | null } | null
-  /** Only used for an unfinished leg's "time on the road". */
   nowMs: number
 }
 
-// Wording lives here, once. "Checks passed" says what the evidence establishes rather than
-// passing a judgement on the phase (D44); the outcome key stays `clean`.
 export const VERDICT_WORDING = {
   overridden: { headline: 'Closed by dispatcher override', reason: 'Checks did not run' },
   attention: 'Needs attention',
@@ -58,16 +50,9 @@ export const VERDICT_WORDING = {
   unverified: {
     headline: 'Not fully verified',
     noChecks: 'No checks ran',
-    // The phase's own status says an exception was recorded, but none reached this module:
-    // asserting "no exceptions" would claim an absence nobody observed.
     exceptionNotLoaded: 'Exception recorded on this phase; details not loaded',
   },
-  // In transit nothing can pass: an empty list is absence of reports, not a safe route.
   transitUnverified: 'No exceptions recorded',
-  // A clean phase says how much was checked, not what: the Checked zone lists each passing check,
-  // so the header stays short and the phases that need reading stand out (distil, Batch 3).
-  // "3 of 3": clean is reached only when every check ran and passed, so the reason states that
-  // completeness without saying "checks" twice.
   clean: { headline: 'Checks passed', noExceptions: 'No exceptions', checked: (n: number): string => `${n} of ${n}` },
   inProgress: 'In progress',
   current: { headline: 'Current phase', reason: 'Waiting for the driver' },
@@ -81,8 +66,6 @@ export const VERDICT_WORDING = {
   onTheRoad: (duration: string): string => `${duration} on the road`,
 } as const
 
-// What the driver is asked to confirm in each phase (design note §7.5). "Confirm
-// Confirmation" would read as a bug, so the noun is per phase type.
 export const CONFIRM_VERBS: Record<PhaseType, string> = {
   trip_creation: 'creation',
   activation: 'arrival',
@@ -94,7 +77,6 @@ export const CONFIRM_VERBS: Record<PhaseType, string> = {
   confirmation: 'delivery',
 }
 
-// The only `blocked_on` value the backend writes today; matches acts.ts.
 const WAREHOUSE_SCAN_BLOCK = 'warehouse_scan'
 
 const MS_PER_MINUTE = 60_000
@@ -107,8 +89,6 @@ interface VerdictBody {
   reasons: readonly string[]
   reviewed?: boolean
 }
-
-// ── Time on the road (D41) ─────────────────────────────────────────────────────
 
 function parseMs(iso: string | null): number | null {
   if (iso === null) return null
@@ -133,8 +113,6 @@ function legReasons(input: PhaseVerdictInput, finished: boolean): string[] {
   const departedMs = parseMs(leg.departedAt)
   if (departedMs === null) return []
   const reasons: string[] = [VERDICT_WORDING.departed(fmtTime(leg.departedAt))]
-  // The clock stops at arrival (D41): a finished leg with no arrival time has no duration,
-  // rather than one that keeps ticking.
   if (finished && leg.arrivedAt === null) return reasons
   const endMs = leg.arrivedAt === null ? nowMs : parseMs(leg.arrivedAt)
   if (endMs !== null && Number.isFinite(endMs) && endMs >= departedMs) {
@@ -142,8 +120,6 @@ function legReasons(input: PhaseVerdictInput, finished: boolean): string[] {
   }
   return reasons
 }
-
-// ── Outcome bodies, tried strongest first ──────────────────────────────────────
 
 const needsReview = (exceptions: readonly TripException[]): TripException[] =>
   exceptions.filter(exception => exception.review_status === 'needs_review')
@@ -196,8 +172,6 @@ function reviewedBody(input: PhaseVerdictInput): VerdictBody | null {
   if (!isResolved(phase) || exceptions.length === 0) return null
   const wording = VERDICT_WORDING.reviewed
   const single = exceptions.length === 1
-  // Nothing needs review here, but an exception that was only recorded was never reviewed:
-  // say so rather than borrow the word.
   const allReviewed = exceptions.every(exception => exception.review_status === 'reviewed')
   const headline = allReviewed
     ? (single ? wording.reviewedOne : wording.reviewedMany)
@@ -219,8 +193,6 @@ function settledBody(input: PhaseVerdictInput): VerdictBody | null {
   const { phase, checks } = input
   if (!isResolved(phase)) return null
   if (phase.status === 'exception') {
-    // Reached only when `exceptions` is empty (reviewedBody ran first): the exceptions
-    // resource is still loading, failed or did not match, so absence is unproven.
     const leg = phase.phase_type === 'in_transit' ? legReasons(input, true) : []
     return {
       outcome: 'unverified',

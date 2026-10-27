@@ -34,7 +34,6 @@ describe('PositionDisagreement', () => {
 
     expect(screen.queryByTestId('gps-mismatch-trigger')).not.toBeInTheDocument()
     expect(screen.queryByText('Vehicle tracker outside the facility boundary')).not.toBeInTheDocument()
-    // The linked-phase-locations panel still renders regardless of source.
     expect(screen.getByText(/Linked phase locations/)).toBeInTheDocument()
   })
 
@@ -96,7 +95,6 @@ describe('PositionDisagreement', () => {
     )
 
     expect(screen.queryByRole('button', { name: VIEW_ON_MAP_LABEL })).not.toBeInTheDocument()
-    // Still shows the underlying comparison data — only the button is suppressed.
     expect(screen.getByText('1.1 km')).toBeInTheDocument()
   })
 

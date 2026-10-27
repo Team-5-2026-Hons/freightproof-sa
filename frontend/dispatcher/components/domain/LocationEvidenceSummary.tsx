@@ -8,17 +8,6 @@ interface Props {
   className?: string
 }
 
-// Chip colouring follows the stored verdict, not a browser-computed one: see
-// verdictFor() in lib/phase/location-evidence.ts. Every non-tolerance verdict (not
-// verified, not checked yet, no verdict for this phase) reads as 'pending': none of
-// them is a pass or a fail, they're all "nothing decisive is recorded".
-//
-// outside_tolerance deliberately does NOT use the 'exception' chip type here: this
-// summary sits on the phase card itself, right above the phase's own exception branch
-// (which already carries an amber 'exception'-type severity chip when the tolerance
-// breach produced a logged exception). Two amber chips stacked a few pixels apart for
-// the same fact read as duplicated errors, not two distinct signals — 'transit' (blue)
-// keeps this reading as "here's the live check result" rather than a second alarm.
 const VERDICT_CHIP_TYPE: Record<LocationEvidence['verdict'], ChipType> = {
   within_tolerance: 'complete',
   outside_tolerance: 'transit',

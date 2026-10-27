@@ -7,13 +7,9 @@ import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { PhaseNodeType } from '@/lib/phase/derive'
 import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
 
-// TimelinePhase's shared wrapper owns this anchor for both representations. Standalone
-// callers can still give PhaseTimelineItem an id; the timeline gives it none.
 export const PHASE_ANCHOR_PREFIX = 'phase-'
 export const TIMELINE_TOOLBAR_HEIGHT_VAR = '--timeline-toolbar-height'
 
-// See PhaseNodeType's doc comment in lib/phase/derive.ts — 'next' is the ledger's
-// current gate with nothing done yet, 'active' is genuinely under way.
 export const NODE_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-ok text-white',
   active:  'bg-sec text-white motion-safe:animate-pulse',
@@ -22,7 +18,6 @@ export const NODE_STYLE: Record<PhaseNodeType, string> = {
   pending: 'bg-surf-high text-on-surf-v border border-outline-v',
 }
 
-// The rail behind a completed phase is green; everything from the current gate onward is neutral.
 export const LINE_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-ok/40',
   active:  'bg-outline-v/30',
@@ -34,7 +29,6 @@ export const LINE_STYLE: Record<PhaseNodeType, string> = {
 export const CARD_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-surf-low',
   active:  'bg-sec-c border border-sec/20',
-  // A light outline (vs. `active`'s solid fill) says "waiting on", not "in progress".
   next:    'bg-surf-low border border-sec/30',
   warn:    'bg-surf-low',
   pending: 'border border-dashed border-outline-v/40',
@@ -44,30 +38,17 @@ interface Props {
   id?: string; label: string; meta: string; timestamp: string | null
   nodeType: PhaseNodeType; number: number; initialOpen: boolean; cancelled: boolean
   overridden: boolean; children?: ReactNode; warning?: string
-  /** Suppresses the trailing rail so the timeline ends on a node, not a dangling line. */
   isLast: boolean
-  /** Renders the body unconditionally and drops the toggle: the in-transit leg, which is where
-   *  theft signals arrive and is never worth hiding. */
   alwaysOpen?: boolean
-  /** The header's answer to "did this phase go cleanly?": icon, word and reasons. When present
-   *  it says what the old status chip said (Exception, Unable to complete, In progress), so the
-   *  chip is dropped; a card with no verdict (not started, not reached) keeps its chip.
-   *  Text only, so it is safe to nest inside the toggle button. */
   verdict?: ReactNode
-  /** Shown only while the card is collapsed, under the verdict and outside the toggle (it holds
-   *  buttons). A closed card must never hide an exception; open, the same rows live in the rail. */
   collapsedContent?: ReactNode
-  /** What the header shows instead of `verdict` while the card is collapsed (the minimised view). */
   collapsedVerdict?: ReactNode
-  /** A request counter: each new value opens the card (a page-originated "Show in timeline"). */
   openRequestId?: number | null
-  /** The phase is happening now: its node keeps a live ring whatever its verdict. */
   live?: boolean
 }
 
 interface RailColumnProps {
   nodeType: PhaseNodeType; number: number | null; overridden: boolean; isLast: boolean
-  /** The phase is happening now. Shown as a ring around the node, so it survives any verdict colour. */
   live?: boolean
 }
 
@@ -77,8 +58,6 @@ export function PhaseRailColumn({ nodeType, number, overridden, isLast, live = f
   return <div className="flex shrink-0 flex-col items-center">
     <div data-node-type={nodeType} data-live={live ? 'true' : undefined} className={`relative flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-meta font-bold ${NODE_STYLE[nodeType]}`}>
       {number === null ? <Ic n="file" s={14} /> : nodeType === 'done' && !overridden ? <Ic n="check" s={14} className="text-white" /> : number}
-      {/* The verdict owns the node's colour (amber once a live leg needs attention), so "now" is a
-          separate ring with a 2 px gap. Only the ring breathes, and only when motion is welcome. */}
       {live && <><span aria-hidden="true" data-live-ring className="pointer-events-none absolute -inset-1 rounded-full border-2 border-sec motion-safe:animate-pulse" /><span className="sr-only">Live</span></>}
     </div>
     {!isLast && <div className={`my-1 min-h-[20px] w-0.5 flex-1 ${LINE_STYLE[nodeType]}`} />}
@@ -107,15 +86,12 @@ export function PhaseTimelineItem({
   overridden, children, warning, isLast, alwaysOpen = false, verdict, collapsedContent, collapsedVerdict, openRequestId = null, live = false,
 }: Props): React.JSX.Element {
   const [open, setOpen] = useState(initialOpen)
-  // Adjusting state during render, not in an effect: React's own pattern for reacting to a changed
-  // prop, so the card opens in the same pass that delivers the request.
   const [seenRequest, setSeenRequest] = useState<number | null>(null)
   if (openRequestId !== seenRequest) {
     setSeenRequest(openRequestId)
     if (openRequestId !== null) setOpen(true)
   }
   const contentId = useId()
-  // An always-open card has nothing to toggle, so it gets no chevron either.
   const expandable = !!children && !alwaysOpen
   const status = verdict ? null : statusChip(nodeType, cancelled, overridden)
 
@@ -127,7 +103,6 @@ export function PhaseTimelineItem({
       </div>
       <div className="flex shrink-0 items-center gap-[8px]">
         {timestamp && <PhaseClock timestamp={timestamp} />}
-        {/* Absence is load-bearing: no chevron means nothing to open. Rotated when open. */}
         {expandable && <Ic n="chev" s={14} className={`text-on-surf-v transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />}
       </div>
     </div>
@@ -137,11 +112,8 @@ export function PhaseTimelineItem({
 
   return <div id={id} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }} className="relative flex min-w-0 gap-[14px]">
     <PhaseRailColumn nodeType={nodeType} number={number} overridden={overridden} isLast={isLast} live={live} />
-    {/* Same bottom gap on every row; the rail is a sibling stretching the row's full height. */}
     <div className="mb-3 min-w-0 flex-1">
       <div className={`rounded-lg px-4 py-3 ${CARD_STYLE[nodeType]} ${expandable ? 'transition-shadow duration-150 hover:shadow-md' : ''}`}>
-        {/* Wraps the header only: buttons (exception rows, thumbnails, Copy) cannot nest inside a <button>.
-            Opening another card to compare is reading around the selection, so it keeps it (H1). */}
         {expandable ? <button type="button" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)} {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }} className="block w-full select-none rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">{summaryContent}</button> : summaryContent}
         {!open && !alwaysOpen && collapsedContent}
         {warning && <p className="mt-3 text-body font-semibold text-warn">{warning}</p>}

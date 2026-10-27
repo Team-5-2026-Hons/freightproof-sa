@@ -18,11 +18,9 @@ describe('LandingNav', () => {
   it('signed_out_visitor_gets_sign_in_and_request_access', () => {
     render(<LandingNav onLanding />)
 
-    // Desktop bar link and mobile menu entry: both go to the login page.
     const signIns = screen.getAllByRole('link', { name: 'Sign in' })
     expect(signIns).toHaveLength(2)
     signIns.forEach(link => expect(link).toHaveAttribute('href', ROUTES.login))
-    // Bar link (375px and up) and the small-screen menu entry: same destination.
     screen.getAllByRole('link', { name: 'Request access' }).forEach(link => expect(link).toHaveAttribute('href', '#request-access'))
     expect(screen.queryByRole('link', { name: 'Open dashboard' })).not.toBeInTheDocument()
   })

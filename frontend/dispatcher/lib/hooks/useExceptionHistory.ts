@@ -17,8 +17,6 @@ const FIRST_CURSOR_STACK: (string | undefined)[] = [undefined]
 
 export interface ExceptionHistoryFilters {
   q?: string
-  // Full ExceptionReviewStatus union, not narrowed: the server already tolerates
-  // 'needs_review' by yielding zero rows for it.
   reviewStatus?: ExceptionReviewStatus
   severity?: ExceptionSeverity
   fromDate?: string
@@ -29,8 +27,6 @@ export interface UseExceptionHistoryResult {
   items: TripExceptionListItem[]
   isLoading: boolean
   error: string | null
-  // True when the last refresh failed but `items` still shows an earlier successful
-  // result, the UI must flag it as possibly out of date, not present it as current.
   isStale: boolean
   totalItems: number
   page: number
@@ -70,25 +66,18 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
-  // Read once per mount. Restored URLs are checked separately below because they can
-  // contain boundaries created before this browser's preference changed.
   const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
-  // cursorStack[0] is always undefined (page 1 needs no cursor); cursorStack[n] is the
-  // cursor that fetches page n + 1, recorded once on first visit.
   const [localCursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined])
   const [localPageIndex, setPageIndex] = useState(0)
 
   const [controlledPageReset, setControlledPageReset] = useState(false)
   if (controlledPageReset && navigation?.pageIndex === 0) setControlledPageReset(false)
-  // Legacy URLs have no size, so their range labels cannot safely be reconstructed either.
   const pageSizeChanged = !!navigation && navigation.cursorStack.length > 1 && navigation.pageSize !== pageSize
   const resetNavigation = controlledPageReset || pageSizeChanged
   const cursorStack = resetNavigation ? FIRST_CURSOR_STACK : navigation?.cursorStack ?? localCursorStack
   const pageIndex = resetNavigation ? 0 : navigation?.pageIndex ?? localPageIndex
 
-  // Primitive dependency key, not the filters object, so a fresh object literal every
-  // render doesn't trigger a refetch (mirrors useTrips.ts's statusKey pattern).
   const q = filters.q ?? ''
   const reviewStatus = filters.reviewStatus ?? ''
   const severity = filters.severity ?? ''
@@ -96,9 +85,6 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
   const toDate = filters.toDate ?? ''
   const filterKey = JSON.stringify([q, reviewStatus, severity, fromDate, toDate])
 
-  // Reset to page 1 the moment a filter changes, DURING render (React's sanctioned
-  // pattern), not in an effect, an effect-based reset would let the fetch effect below
-  // read the OLD cursor against the NEW filters for one pass.
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey)
@@ -116,13 +102,8 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
     }
   }, [filterKey, navigation, pageSizeChanged, pageSize])
 
-  // Bumped on every fetch kicked off below; a response is applied only if this counter
-  // has not moved on since, i.e. no newer request (a page change or a filter change)
-  // has started in the meantime. This is what makes a late, superseded response
-  // harmless instead of a race that overwrites fresher data with stale rows.
   const requestGenerationRef = useRef(0)
   const hasSuccessfulResultRef = useRef(false)
-  // During a filter change never send the previous page's cursor, even in controlled mode.
   const cursor = filterKey !== prevFilterKey ? undefined : cursorStack[pageIndex]
 
   const runFetch = useCallback((preserveCurrentResult: boolean) => {
@@ -131,9 +112,6 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
     setIsLoading(true)
     setError(null)
     if (!preserveCurrentResult) {
-      // A page or filter change is a different query. Clear the previous query's
-      // rows and cursor before starting it so a failed request cannot leave controls
-      // pointing at one result set while rendering another result set's data.
       setItems(EMPTY)
       setTotalItems(0)
       setNextCursor(null)
@@ -154,8 +132,6 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
       })
       .catch((err: unknown) => {
         if (requestGenerationRef.current !== generation) return
-        // A manual refresh of the same successful query may keep its last result.
-        // Foreground page/filter navigation was cleared before this request began.
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')
         setIsStale(canRetainStaleResult)
         setIsLoading(false)

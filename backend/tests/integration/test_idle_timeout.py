@@ -70,8 +70,6 @@ def _long_ago() -> datetime:
     return datetime.now(UTC) - timedelta(minutes=settings.SESSION_IDLE_TIMEOUT_MINUTES + 5)
 
 
-# ── Driver ───────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_an_active_driver_session_is_accepted(db_session) -> None:
@@ -79,7 +77,6 @@ async def test_an_active_driver_session_is_accepted(db_session) -> None:
     now = datetime.now(UTC)
     await enforce_single_device(db_session, driver_id=driver.id, payload=_token("session-a", now))
 
-    # No exception: the row was stamped a moment ago.
     await enforce_driver_idle_timeout(db_session, driver_id=driver.id, payload=_token("session-a", now))
 
 
@@ -89,7 +86,6 @@ async def test_an_idle_driver_session_is_refused(db_session) -> None:
     now = datetime.now(UTC)
     await enforce_single_device(db_session, driver_id=driver.id, payload=_token("session-a", now))
 
-    # Age the row rather than the clock — the same state as a handset left untouched.
     stored = (await db_session.execute(
         select(DriverSession).where(DriverSession.driver_id == driver.id)
     )).scalar_one()
@@ -143,8 +139,6 @@ async def test_a_driver_token_without_a_session_claim_is_allowed_through(db_sess
     await enforce_driver_idle_timeout(db_session, driver_id=driver.id, payload={})
 
 
-# ── Dispatcher ───────────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_a_first_dispatcher_request_records_the_session(db_session) -> None:
@@ -168,17 +162,12 @@ async def test_an_active_dispatcher_session_is_accepted_and_restamped(db_session
     stored = (await db_session.execute(
         select(UserSession).where(UserSession.session_id == "session-a")
     )).scalar_one()
-    # Push it back inside the window, then confirm a request moves it forward again.
     behind = datetime.now(UTC) - timedelta(minutes=1)
     stored.last_seen_at = behind
     await db_session.flush()
 
     await enforce_user_idle_timeout(db_session, user_id=user.id, payload=_token("session-a", now))
 
-    # Flush before refresh: the function assigns last_seen_at on the in-session object,
-    # and refresh() re-reads from the database — without the flush it would read back the
-    # pre-update row and the assertion would test nothing. Flushing also proves the new
-    # value actually reaches Postgres rather than only living in the identity map.
     await db_session.flush()
     await db_session.refresh(stored)
     assert stored.last_seen_at > behind
@@ -224,11 +213,9 @@ async def test_two_dispatcher_devices_keep_independent_clocks(db_session) -> Non
     idle.last_seen_at = _long_ago()
     await db_session.flush()
 
-    # The abandoned laptop is refused...
     with pytest.raises(HTTPException):
         await enforce_user_idle_timeout(db_session, user_id=user.id, payload=_token("laptop", now))
 
-    # ...while the desktop in front of them keeps working.
     await enforce_user_idle_timeout(db_session, user_id=user.id, payload=_token("desktop", now))
 
 
@@ -242,7 +229,6 @@ async def test_a_replayed_dispatcher_token_from_an_unknown_session_is_refused(db
         )
 
     assert exc_info.value.status_code == 401
-    # Nothing was recorded for a session that was refused.
     assert (await db_session.execute(
         select(UserSession).where(UserSession.session_id == "never-seen")
     )).scalar_one_or_none() is None
@@ -273,7 +259,6 @@ async def test_the_retention_sweep_leaves_recently_idle_rows_alone(db_session) -
     db_session.add(ancient)
     await db_session.flush()
 
-    # A new session triggers the sweep.
     await enforce_user_idle_timeout(db_session, user_id=user.id, payload=_token("fresh", now))
 
     remaining = set((await db_session.execute(
@@ -282,14 +267,6 @@ async def test_the_retention_sweep_leaves_recently_idle_rows_alone(db_session) -
     assert "ancient" not in remaining
     assert "idle-but-recent" in remaining
 
-
-# ── Activity-write throttle ──────────────────────────────────────────────────
-#
-# Every request from one signed-in user writes the same row. Refreshing a stamp that is
-# already seconds old costs a write and a commit and moves the idle deadline by nothing
-# anyone can perceive, so it is skipped — but only when skipping is genuinely free. These
-# hold both halves of that: that it skips, and that it stops skipping when the skip would
-# actually change an outcome.
 
 
 async def _stamped_at(db_session, session_id: str) -> datetime:
@@ -318,8 +295,6 @@ async def test_a_dispatcher_request_past_the_interval_does_rewrite_the_stamp(db_
     user = await _user(db_session)
     token = _token("session-stale", datetime.now(UTC))
     await enforce_user_idle_timeout(db_session, user_id=user.id, payload=token)
-    # Wind the stamp back past the throttle but nowhere near the idle cutoff, so the only
-    # thing under test is whether the write happens.
     stale = datetime.now(UTC) - timedelta(seconds=SESSION_ACTIVITY_WRITE_INTERVAL_SECONDS + 5)
     await db_session.execute(
         update(UserSession).where(UserSession.session_id == "session-stale").values(last_seen_at=stale)

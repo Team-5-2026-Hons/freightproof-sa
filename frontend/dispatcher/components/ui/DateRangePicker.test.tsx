@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DateRangePicker } from './DateRangePicker'
 
-// 23:30Z on the 22nd is 01:30 SAST on the 23rd: UTC and SAST disagree about "today".
 const JUST_AFTER_SAST_MIDNIGHT = new Date('2026-10-22T23:30:00Z')
 
 beforeEach(() => {

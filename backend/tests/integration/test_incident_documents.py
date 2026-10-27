@@ -26,7 +26,6 @@ from app.storage.supabase_storage import UploadResult
 
 from tests.conftest import auth_header, make_token
 
-# The smallest byte string the MIME sniffer accepts as a PDF.
 _PDF_BYTES = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
 
 
@@ -175,8 +174,6 @@ async def test_attach_document_not_allowed_type_422(client, db_session, seed, st
 
 async def test_attach_document_oversize_413(client, db_session, seed, stored, enabled, monkeypatch):
     incident_id = await _incident(client, db_session, seed)
-    # The real limit is pinned here, then lowered so the over-limit body is a few bytes, not 10 MiB:
-    # streaming 10 MiB through multipart parsing made this the slowest test in the suite (6 s).
     assert MAX_FILE_SIZE_BYTES == 10 * 1024 * 1024
     small_limit = len(_PDF_BYTES)
     monkeypatch.setattr("app.api.v1.endpoints.incidents.MAX_FILE_SIZE_BYTES", small_limit)

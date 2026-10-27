@@ -28,14 +28,11 @@ from scripts.db_timeout_load.config import database_target
 from scripts.db_timeout_load.metrics import RequestSpec
 
 SCHEMA_PREFIX = "fp299_"
-# The analytics views are not part of Base.metadata. Running these migrations' own
-# statements builds the current read models, as tests/integration/test_analytics.py does.
 VIEW_MIGRATIONS = (
     "2026_09_12_tom_analytics_read_models.py", "2026_09_12_tom_trailer_vehicle_analytics.py",
     "2026_09_13_tom_live_analytics_views.py", "2026_10_19_tim_substitution_driver_analytics.py",
     "2026_10_23_ciaran_driver_analytics_arrival.py",
 )
-# (phase, index of its stop) for a two-stop, single-leg trip: the 7-row plan.
 SINGLE_LEG = (
     (PhaseType.TRIP_CREATION, None), (PhaseType.ACTIVATION, 0), (PhaseType.LOADING, 0),
     (PhaseType.DEPARTURE, 0), (PhaseType.IN_TRANSIT, 0), (PhaseType.UNLOADING, 1),
@@ -43,20 +40,14 @@ SINGLE_LEG = (
 )
 DEPARTURE_INDEX = next(index for index, (phase, _) in enumerate(SINGLE_LEG) if phase == PhaseType.DEPARTURE)
 TRIP_COUNT = 3
-# The ledger starts three hours ago with one phase every 20 minutes, so departure (index 3)
-# completes two hours ago: the same moment as actual_departure_at. analytics_month() then
-# picks the month the views put that departure in, even just after midnight on the 1st.
 LEDGER_STARTED_HOURS_AGO = 3
 PHASE_SPACING_MINUTES = 20
 DEPARTED_HOURS_AGO = 2
 CLOSED_HOURS_AGO = 1
-# The setup/control engines get their own fixed bounds, independent of the budgets under test.
 CONTROL_CONNECT_ARGS = {"timeout": 10, "command_timeout": 30}
 
 
 def use_schema(engine: AsyncEngine, schema: str) -> None:
-    # The schema is generated here, never supplied by the CLI. No public-schema fallback
-    # means a missing fixture cannot accidentally read an unrelated test's tables.
     if not schema.startswith(SCHEMA_PREFIX) or not schema.removeprefix(SCHEMA_PREFIX).isalnum():
         raise ValueError("Invalid load-test schema")
 
@@ -64,8 +55,6 @@ def use_schema(engine: AsyncEngine, schema: str) -> None:
         cursor = connection.cursor()
         try:
             cursor.execute(f'SET search_path TO "{schema}"')
-            # SET is transactional. Commit this connection-initialization transaction
-            # so the first request's rollback cannot revert its private search path.
             connection.commit()
         finally:
             cursor.close()
@@ -97,7 +86,6 @@ class World:
     month: str
 
     def reads(self) -> list[RequestSpec]:
-        # Each expected payload names a seeded record, so a 200 must prove real data came back.
         return [
             RequestSpec("trip_list", "/api/v1/trips", expected=[{"id": str(self.trip_id)}]),
             RequestSpec("trip_detail", f"/api/v1/trips/{self.trip_id}", expected={"id": str(self.trip_id)}),
@@ -108,8 +96,6 @@ class World:
         ]
 
     async def reset_notice(self) -> RequestSpec:
-        # Reset through the control engine, so the API's write is the only thing that
-        # can set read_at again.
         async with self.control.begin() as db:
             await db.execute(update(DriverSubstitutionNotice).where(
                 DriverSubstitutionNotice.id == self.notice_id,
@@ -139,7 +125,6 @@ async def seed_ledger(db: AsyncSession, trips: list[Trip], precincts: list[Preci
         db.add_all(stops)
         await db.flush()
         for index, (phase, stop) in enumerate(SINGLE_LEG):
-            # Closed trips completed every phase; the active trip is in transit.
             completed = trip.status == TripStatus.CLOSED or index <= DEPARTURE_INDEX
             db.add(PhaseEvent(
                 id=uuid4(), trip_id=trip.id, trip_stop_id=stops[stop].id if stop is not None else None,
@@ -167,7 +152,6 @@ async def seed(control: AsyncEngine, schema: str) -> World:
                               latitude=0, longitude=n) for n in (1, 2)]
         db.add_all([user, *drivers, horse, *precincts])
         await db.flush()
-        # The first trip is active (the one every read targets); the others are closed.
         trips = [Trip(id=uuid4(), trip_reference=f"FP299-{uuid4().hex[:12]}", operator_organization_id=org.id,
                       driver_id=drivers[0].id, horse_id=horse.id, created_by_user_id=user.id,
                       origin_precinct_id=precincts[0].id, destination_precinct_id=precincts[1].id,
@@ -200,8 +184,6 @@ async def seed(control: AsyncEngine, schema: str) -> World:
 async def isolated_world(database: str) -> AsyncIterator[World]:
     database_target(database)
     schema = f"{SCHEMA_PREFIX}{uuid4().hex}"
-    # Two non-pooled engines outside the API pool: admin owns the schema's lifetime,
-    # control seeds and inspects data inside it.
     admin = create_async_engine(database, poolclass=NullPool, connect_args=CONTROL_CONNECT_ARGS)
     control = create_async_engine(database, poolclass=NullPool, connect_args=CONTROL_CONNECT_ARGS)
     use_schema(control, schema)

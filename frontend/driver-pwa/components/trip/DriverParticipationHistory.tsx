@@ -33,8 +33,6 @@ const SEAL_LABEL: Record<SubstitutionSealCondition, string> = {
 
 function periodLabel(startedAt: string | null, endedAt: string | null): string {
   const start = startedAt === null ? 'Start not recorded' : formatDateTime(startedAt)
-  // An open period is the driver's CURRENT custody — only possible here on A→B→A, where a
-  // driver is both a former and the current participant on the same trip.
   const end = endedAt === null ? 'now' : formatDateTime(endedAt)
   return `${start} – ${end}`
 }
@@ -121,7 +119,6 @@ export function DriverParticipationHistory({ history, onBack }: DriverParticipat
             {history.artifacts.map((artifact) => (
               <li key={artifact.id} className="aspect-square overflow-hidden rounded-xl bg-fill">
                 {artifact.signed_url === null ? (
-                  // Storage declined to sign: the record still exists and says so.
                   <span className="flex h-full items-center justify-center p-2 text-center text-footnote text-surface-on-variant">
                     Photo unavailable
                   </span>

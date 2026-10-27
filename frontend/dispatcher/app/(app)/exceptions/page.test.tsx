@@ -9,23 +9,17 @@ import type { UseExceptionQueueResult } from '@/lib/hooks/useExceptions'
 import type { UseExceptionHistoryResult } from '@/lib/hooks/useExceptionHistory'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 
-// client.ts imports the Supabase client at module scope, which throws without real env
-// vars — mocked the same way the exceptions/[id] page test does.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// ForensicModeProvider (mounted via TopBar -> ForensicControls) reads the signed-in
-// user. Nothing these tests assert depends on who that is, so identity is stubbed
-// rather than standing up a real AuthProvider — same approach as the [id] page test.
 const mockUser = vi.hoisted(() => ({ current: { id: 'me' } as { id: string } | null }))
 vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockUser.current }),
 }))
 
 const push = vi.fn()
-// A stable object per test: the page re-parses its state whenever the string form changes.
 const searchParams = vi.hoisted(() => ({ current: '' }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, back: vi.fn() }),
@@ -208,8 +202,6 @@ describe('Unreviewed tab', () => {
     expect(screen.getByText(/In Transit/)).toBeInTheDocument()
     expect(screen.getByText(/Recorded stop 2/)).toBeInTheDocument()
 
-    // Degrades cleanly for the null phase/stop row — no literal "null" text and no
-    // dangling "· " fragment left over from a half-built label.
     expect(screen.queryByText(/null/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/^\s*·\s*$/)).not.toBeInTheDocument()
   })
@@ -428,7 +420,6 @@ describe('History tab', () => {
     renderPage()
     goToHistoryTab()
 
-    // The date inputs live in the shared range picker's popover.
     fireEvent.click(screen.getByRole('button', { name: /→/ }))
     const dateInputs = document.querySelectorAll('input[type="date"]')
     expect(dateInputs).toHaveLength(2)
@@ -461,7 +452,6 @@ describe('History tab', () => {
         fireEvent.change(searchInput, { target: { value: 'abc' } })
       })
 
-      // Before the debounce window elapses, no call should carry the fully-typed value.
       const callsBeforeSettle = mockedUseExceptionHistory.mock.calls.map(c => c[0]?.q)
       expect(callsBeforeSettle).not.toContain('abc')
 

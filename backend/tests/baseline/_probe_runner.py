@@ -11,14 +11,8 @@ from typing import Any
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
-# A cold import of the whole app plus openapi generation; generous so a loaded CI runner
-# does not turn a slow start into a false failure.
 PROBE_TIMEOUT_SECONDS = 120
 
-# Pinned so a developer's .env cannot change the snapshot. Environment variables win over
-# .env in pydantic-settings. APP_VERSION and ENVIRONMENT show up in the OpenAPI document
-# (info.version, and whether the docs routes exist); the two dev flags decide which
-# routers app/main.py registers.
 _PINNED_ENV = {"APP_VERSION": "baseline", "ENVIRONMENT": "development"}
 _DEV_ON_ENV = {"DEV_PANEL_ENABLED": "true", "PULSE_USE_MOCK": "true"}
 _DEV_OFF_ENV = {"DEV_PANEL_ENABLED": "false", "PULSE_USE_MOCK": "false"}

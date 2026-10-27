@@ -20,8 +20,6 @@ describe('parseSealCandidates', () => {
     expect(parseSealCandidates('AB\u20141234')).toEqual(['AB-1234'])
   })
 
-  // A letter half with no real letter in it is a run of digits (a date, a lot number),
-  // and mapping every digit to a look-alike letter would turn it into a fake seal.
   it.each(['151025', 'LOT 001234', '05 5B1L'])('does not read the all-digit %j as a seal', (text) => {
     expect(parseSealCandidates(text)).toEqual([])
   })

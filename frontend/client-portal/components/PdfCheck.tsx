@@ -10,8 +10,6 @@ type Result = { matches: boolean; actual: string; name: string } | { error: stri
 
 interface Props {
   seal: PublicPackSeal
-  // The browser's own check of the seal against Hedera. A PDF can match the fingerprint inside
-  // the seal payload and still be unproven if that payload was never confirmed on the ledger.
   sealCheck: AnchorCheckResult | null
 }
 
@@ -28,7 +26,6 @@ function unconfirmedReason(sealCheck: AnchorCheckResult | null): string {
 export function PdfCheck({ seal, sealCheck }: Props) {
   const [result, setResult] = useState<Result | null>(null)
   const [busy, setBusy] = useState(false)
-  // Memoised: reading a malformed payload logs a warning, which must not repeat on every render.
   const sealRead = useMemo(() => readSealPayload(seal), [seal])
   const expected = sealedString(sealRead, 'pdf_sha256')
   const sealVerified = sealCheck?.state === 'verified'
@@ -63,13 +60,11 @@ export function PdfCheck({ seal, sealCheck }: Props) {
   function onChange(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget
     const file = input.files?.[0]
-    // Cleared so choosing the same file again (after a failed read, say) fires onChange again.
     input.value = ''
     void onFile(file)
   }
 
   function onDrop(event: DragEvent<HTMLLabelElement>) {
-    // Without preventDefault the browser opens the dropped PDF in this tab and leaves the page.
     event.preventDefault()
     void onFile(event.dataTransfer.files[0])
   }
@@ -85,7 +80,6 @@ export function PdfCheck({ seal, sealCheck }: Props) {
         <span className="block text-muted">Choose or drop the PDF you were sent. It is hashed here in your browser and never uploaded.</span>
         <input type="file" accept="application/pdf" className="sr-only" disabled={busy} onChange={onChange} />
       </label>
-      {/* aria-live rather than role=status: the result below is the page's one status message. */}
       {busy && <p aria-live="polite" className="mt-2 text-small text-muted">Hashing…</p>}
       {result && 'error' in result && <p role="alert" className="mt-2 text-small text-warn">{result.error}</p>}
       {result && 'matches' in result && (

@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react'
 
-// iOS Body at the first accessibility text size (AX1). Below it the app's layouts hold
-// as designed; from it up, pinned footers stop pinning and wide labels reflow.
 export const ACCESSIBILITY_ROOT_FONT_PX = 28
 
 /** The root font size in px, which follows the iOS Text Size setting (globals.css). */

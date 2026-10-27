@@ -17,8 +17,6 @@ interface Base {
   tier: EvidenceTier
   pending: boolean
   positions: PositionFix[]
-  // True when a field the anchor receipt commits to no longer matches it. The tier is already
-  // downgraded; this lets the detail panel say why the Anchored badge is missing.
   anchorWarning: boolean
 }
 
@@ -42,7 +40,6 @@ export function instantMs(iso: string | null | undefined): number {
 export function compareInstants(a: string | null | undefined, b: string | null | undefined): number {
   const left = instantMs(a)
   const right = instantMs(b)
-  // Not `left - right`: Infinity - Infinity is NaN, which makes sort order undefined.
   return left < right ? -1 : left > right ? 1 : 0
 }
 
@@ -57,8 +54,6 @@ export function exceptionLabel(index: number, exception: ExceptionRecord): strin
 export function buildTimeline(manifest: AuditPackManifest): TimelineItem[] {
   const timed: TimelineItem[] = [
     ...manifest.phases.map((p): TimelineItem => {
-      // A field that no longer matches its receipt means the stored record changed after
-      // anchoring, so the Anchored tier the server computed must not be shown for it.
       const anchorWarning = p.anchored_fields.some((f) => f.matches_anchor === false)
       return {
         kind: 'phase', id: p.phase_event_id, at: p.completed_at, record: p,
@@ -79,8 +74,6 @@ export function buildTimeline(manifest: AuditPackManifest): TimelineItem[] {
     })),
   ]
 
-  // Completed events by time; pending phases after them in plan order — they have no
-  // time because they never happened, and that absence is itself the finding.
   const done = timed.filter((item) => !item.pending).sort((a, b) => compareInstants(a.at, b.at))
   const pending = timed
     .filter((item): item is Extract<TimelineItem, { kind: 'phase' }> => item.pending && item.kind === 'phase')

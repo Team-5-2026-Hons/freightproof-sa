@@ -12,12 +12,9 @@ import { MONTH_ABBREVIATIONS, addMonths } from '@/lib/format/month'
 import type { Grain } from '@shared/lib/types/fleet-analytics'
 import { sastCalendarDay } from '@shared/lib/utils/datetime'
 
-/** Mirrors the backend's MAX_TREND_BUCKETS: one year of weeks. */
 export const MAX_TREND_BUCKETS = 53
-/** Below this many trips a chart still draws, with a "read with care" line. */
 export const LOW_SAMPLE_TRIPS = 5
 
-/** Finest first, so "the next coarser grain" is the next entry. */
 export const GRAINS: readonly Grain[] = ['week', 'month', 'year']
 
 const DAYS_PER_WEEK = 7
@@ -25,8 +22,6 @@ const MS_PER_MINUTE = 60_000
 const MINUTES_PER_HOUR = 60
 const HOURS_PER_DAY = 24
 const ISO_DATE_LENGTH = 10
-// The trend presets end with the current bucket, so "Last 12 weeks" by week is exactly 12
-// bars: this week and the 11 before it.
 const PRESET_WEEKS = { last_4_weeks: 4, last_12_weeks: 12, last_26_weeks: 26 } as const
 const PRESET_MONTHS = { last_3_months: 3, last_6_months: 6, last_12_months: 12 } as const
 const PRESET_YEARS = { last_3_years: 3 } as const
@@ -37,18 +32,14 @@ export type PresetId =
   | 'last_3_months' | 'last_6_months' | 'last_12_months'
   | 'this_year' | 'last_3_years' | 'all_time'
 
-/** The Period presets each View by offers: only ranges that make sense in that unit, so
- *  View by Year is never offered "Last 4 weeks", which would draw one part-year bar. */
 export const PRESETS_BY_GRAIN: Record<Grain, readonly PresetId[]> = {
   week: ['last_4_weeks', 'last_12_weeks', 'last_26_weeks', 'this_year', 'all_time'],
   month: ['last_3_months', 'last_6_months', 'last_12_months', 'this_year', 'all_time'],
   year: ['this_year', 'last_3_years', 'all_time'],
 }
 
-/** For a period with no View by: Routes & sites and the busy patterns. */
 export const GENERAL_PRESETS: readonly PresetId[] = ['last_4_weeks', 'last_12_weeks', 'last_12_months', 'this_year', 'all_time']
 
-/** Where switching View by lands when the current preset isn't offered in the new unit. */
 const DEFAULT_PRESET_BY_GRAIN: Record<Grain, PresetId> = { week: 'last_12_weeks', month: 'last_12_months', year: 'all_time' }
 
 /** The period to keep after switching View by: unchanged if the new unit offers it (or it is a
@@ -64,14 +55,12 @@ export type PeriodSelection =
   | { preset: 'custom'; start: string; end: string }
 
 export interface ResolvedPeriod {
-  /** null means All time: the API is sent no start and begins at the first trip. */
   start: string | null
   end: string
 }
 
 /** The SAST calendar date at `now`. */
 export function todaySast(now: Date = new Date()): string {
-  // A valid Date always yields a day; keeps the parameter so callers can ask about any instant.
   return sastCalendarDay(now)!
 }
 
@@ -95,7 +84,6 @@ export function bucketStart(date: string, grain: Grain): string {
   const [year, month] = date.split('-')
   if (grain === 'month') return `${year}-${month}-01`
   if (grain === 'year') return `${year}-01-01`
-  // getUTCDay() is 0 on Sunday; shift so Monday is 0.
   const daysSinceMonday = (toDate(date).getUTCDay() + DAYS_PER_WEEK - 1) % DAYS_PER_WEEK
   return addDays(date, -daysSinceMonday)
 }
@@ -167,14 +155,10 @@ export function fitGrain(grain: Grain, start: string | null, end: string): Grain
 }
 
 export interface TabQuery {
-  /** null = All time. */
   start: string | null
   end: string
-  /** The grain to request and draw: the chosen one, or the next coarser one that fits. */
   grain: Grain
-  /** True when the chosen grain had too many bars for the period and `grain` replaced it. */
   grainAdjusted: boolean
-  /** Grains with too many bars for this period: shown, but not selectable. */
   disabledGrains: Grain[]
 }
 

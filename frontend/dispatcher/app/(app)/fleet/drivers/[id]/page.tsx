@@ -43,8 +43,6 @@ type EditState = {
   is_active: boolean
 }
 
-// Unlike the vehicle page, every driver gets both views: there is no driver equivalent of
-// a trailer, which has no analytics at all.
 const RIGHT_PANEL_TABS = [
   { id: 'history', label: 'Immutable History' },
   { id: 'analytics', label: 'Analytics' },
@@ -81,8 +79,6 @@ export default function DriverDetailPage() {
     )
   }
 
-  // Only an empty page is a load failure. With driver details on screen a failed background
-  // refresh keeps them and says so inline (below), rather than discarding what was loaded.
   if (!driver) {
     return (
       <div className="flex flex-col flex-1">
@@ -94,9 +90,6 @@ export default function DriverDetailPage() {
 
   const latestReceipt = driver.receipts[0] ?? null
 
-  // Derived each render — validateDriverForm is pure and cheap. id_number is
-  // immutable and never edited here, so the stored value is passed straight
-  // through (always valid); its error never surfaces.
   const formValues: DriverFormValues | null = form
     ? {
         full_name: form.full_name,
@@ -108,7 +101,6 @@ export default function DriverDetailPage() {
     : null
   const errors = formValues ? validateDriverForm(formValues) : null
   const hasErrors = errors ? Object.values(errors).some((e) => e !== null) : false
-  // Phone gets live feedback the moment the user types (not touched-gated), like VIN.
   const phoneFeedback = form ? phoneFieldFeedback(form.phone_number) : null
 
   function startEdit() {
@@ -136,8 +128,6 @@ export default function DriverDetailPage() {
   async function handleSave() {
     if (!form) return
 
-    // Defensive re-validate: the disabled Save button blocks this in the common
-    // path, but guard here too (e.g. a future Enter-key submit).
     if (errors && hasErrors) {
       setTouched(new Set(DRIVER_FIELD_ORDER))
       const firstInvalidField = DRIVER_FIELD_ORDER.find((field) => errors[field] !== null)
@@ -152,8 +142,6 @@ export default function DriverDetailPage() {
     try {
       const body: Record<string, unknown> = {}
       if (form.full_name !== driver!.full_name) body.full_name = form.full_name
-      // Normalise before diffing so a re-typed local number that equals the
-      // stored +27 form isn't sent as a spurious change.
       const normalisedPhone = normalisePhone(form.phone_number)
       if (normalisedPhone !== driver!.phone_number) body.phone_number = normalisedPhone
       if (form.license_number !== driver!.license_number) body.license_number = form.license_number
@@ -162,7 +150,6 @@ export default function DriverDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/drivers/${driver!.id}`, body)
-      // Not awaited: refetchSilent returns void, so the panel closes before fresh data lands.
       refetchSilent()
       setIsEditing(false)
     } catch (err) {
@@ -190,13 +177,11 @@ export default function DriverDetailPage() {
 
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT — resizable driver info column, drag-to-resize */}
         <div
           style={{ width: panelWidth }}
           className="relative shrink-0 overflow-y-auto bg-surf-low border-r border-outline-v/20 p-5"
         >
 
-          {/* Resize handle — hover to reveal, drag to resize */}
           <div
             onMouseDown={startResize}
             className="absolute top-0 right-0 -mr-2 h-full w-4 cursor-col-resize flex items-center justify-center group z-10"
@@ -204,7 +189,6 @@ export default function DriverDetailPage() {
             <div className="w-[2px] h-10 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
 
-          {/* Driver info */}
           <div className="flex items-center justify-between mb-3">
             <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
               Driver Info
@@ -271,7 +255,6 @@ export default function DriverDetailPage() {
             </>
           )}
 
-          {/* Blockchain — forensic detail; hidden for non-admin / forensic-off dispatchers. */}
           <ForensicOnly>
             <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
               Blockchain
@@ -297,7 +280,6 @@ export default function DriverDetailPage() {
             </div>
           </ForensicOnly>
 
-          {/* Trips */}
           {driver.trip_ids.length > 0 && (
             <>
               <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
@@ -320,8 +302,6 @@ export default function DriverDetailPage() {
 
         </div>
 
-        {/* RIGHT — scrollable immutable history, takes remaining space. Switchable to the
-            driver's analytics. */}
         <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
           <Tabs
             tabs={RIGHT_PANEL_TABS}

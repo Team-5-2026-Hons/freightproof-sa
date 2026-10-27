@@ -8,8 +8,6 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useLocation } from '../useLocation'
 
-// Mocked per-test via vi.mocked() below — default browser/dev behaviour is
-// non-native, so isNativePlatform() resolves false unless a test overrides it.
 vi.mock('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: vi.fn().mockReturnValue(false) },
 }))
@@ -18,9 +16,6 @@ vi.mock('@capacitor/geolocation', () => ({
   Geolocation: { getCurrentPosition: vi.fn() },
 }))
 
-// jsdom does not implement navigator.geolocation at all, so each browser-path test
-// installs its own stub and removes it afterwards rather than relying on a global one
-// — a leftover stub would silently change behaviour for unrelated tests.
 function stubBrowserGeolocation(geolocation: Geolocation | undefined) {
   Object.defineProperty(window.navigator, 'geolocation', {
     value: geolocation,
@@ -76,8 +71,6 @@ describe('useLocation', () => {
   })
 
   it('browser path failure in a non-development build surfaces as an error, never the LINBRO_PARK stub', async () => {
-    // Vitest itself runs with NODE_ENV === 'test' by default, which already exercises
-    // this — stubbing it explicitly makes the "not development" intent unambiguous.
     vi.stubEnv('NODE_ENV', 'production')
     const getCurrentPosition = vi.fn((_success: PositionCallback, error: PositionErrorCallback) => {
       error({ code: 2, message: 'position unavailable' } as GeolocationPositionError)
@@ -93,7 +86,6 @@ describe('useLocation', () => {
 
     expect(captured).toBeNull()
     await waitFor(() => expect(result.current.status).toBe('error'))
-    // Must never silently substitute the fabricated dev coordinate for a real reading.
     expect(result.current.coords).toBeNull()
     expect(result.current.errorReason).toBe('position_unavailable')
   })

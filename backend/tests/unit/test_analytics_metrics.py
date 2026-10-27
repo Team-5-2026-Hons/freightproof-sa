@@ -53,8 +53,6 @@ def _lane_metrics() -> LaneMetrics:
     )
 
 
-# ── check_month_range ────────────────────────────────────────────────────────
-
 
 def test_check_month_range_accepts_first_of_month_bounds() -> None:
     check_month_range(date(2026, 6, 1), date(2026, 8, 1))
@@ -71,8 +69,6 @@ def test_check_month_range_rejects_a_range_the_views_cannot_answer(
     with pytest.raises(ValueError):
         check_month_range(start_month, end_month)
 
-
-# ── attach_driver_names ──────────────────────────────────────────────────────
 
 
 def test_attach_driver_names_names_each_driver() -> None:
@@ -112,14 +108,11 @@ def test_attach_driver_names_keeps_every_count_and_rate() -> None:
 
     [response] = attach_driver_names([row], {row.driver_id: "Thandi Mokoena"})
 
-    # Stored counts AND computed rates identical to FP-153's row — nothing reinterpreted.
     assert response.model_dump(exclude={"driver_name"}) == row.model_dump()
     assert response.exception_trip_rate == pytest.approx(0.25)
     assert response.confirmation_dwell_minutes_avg == pytest.approx(15.0)
     assert response.on_time_departure_rate is None
 
-
-# ── Vehicles, lanes, facilities ──────────────────────────────────────────────
 
 
 def test_attach_vehicle_registrations_sets_registration_and_type() -> None:

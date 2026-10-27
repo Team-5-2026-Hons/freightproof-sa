@@ -23,7 +23,6 @@ PHASE = uuid.UUID("55555555-5555-4555-8555-555555555555")
 ART_1 = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 ART_2 = uuid.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 HASH_1, HASH_2 = "1" * 64, "2" * 64
-# Non-ASCII on purpose: text is hashed as UTF-8, so an encoding slip changes the digest.
 DESCRIPTION = "Zinc-seal gebreek – Südafrika 🚚"
 CAUSE = f"Cancelled by user {USER}: Kliënt het gekanselleer"
 RAISED_AT = datetime(2026, 10, 14, 8, 30, tzinfo=UTC)
@@ -78,8 +77,6 @@ def _cancellation() -> c.CancellationRecord:
     )
 
 
-# ── Golden hashes ─────────────────────────────────────────────────────────────
-
 def test_text_hash_is_utf8_sha256_of_the_exact_string() -> None:
     assert c.text_sha256(DESCRIPTION) == GOLDEN_DESCRIPTION_SHA
 
@@ -111,8 +108,6 @@ def test_cancelled_payload_matches_golden_hash() -> None:
 
     assert compute_payload_hash(payload) == GOLDEN_CANCELLED_HASH
 
-
-# ── Shape ─────────────────────────────────────────────────────────────────────
 
 def test_payloads_carry_exactly_the_allowlisted_keys() -> None:
     raised = c.exception_raised_payload(event_id=EVT, record=_record())
@@ -156,8 +151,6 @@ def test_changing_a_photo_hash_changes_the_record_hash() -> None:
     assert c.exception_record_sha256(changed) != GOLDEN_RECORD_SHA
 
 
-# ── Timestamps ────────────────────────────────────────────────────────────────
-
 def test_non_utc_timestamps_normalise_to_the_same_utc_instant() -> None:
     sast = timezone(timedelta(hours=2))
     local = RAISED_AT.astimezone(sast)
@@ -172,8 +165,6 @@ def test_naive_timestamp_is_rejected() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         c.exception_raised_payload(event_id=EVT, record=_record(created_at=datetime(2026, 10, 14, 8, 30)))
 
-
-# ── Text semantics ────────────────────────────────────────────────────────────
 
 def test_null_and_empty_review_note_hash_differently() -> None:
     null_note = c.exception_reviewed_payload(
@@ -200,8 +191,6 @@ def test_authored_statement_is_hashed_only_for_dispatcher_authored_rows() -> Non
     assert ordinary["authored_statement_sha256"] is None
 
 
-# ── Never-hashed data ─────────────────────────────────────────────────────────
-
 def test_record_types_have_no_gps_or_location_fields() -> None:
     """GPS is structurally unreachable: the value records the builders read carry none."""
     banned = ("gps", "lat", "lng", "location", "coordinate", "assessment", "s3_", "url", "path")
@@ -221,8 +210,6 @@ def test_payload_contains_no_raw_text_or_identity_values() -> None:
     for secret in (DESCRIPTION, "Südafrika", "Rang die bestuurder", "Phase overridden", "Kliënt", str(USER)):
         assert secret not in blob
 
-
-# ── Version and kind validation ───────────────────────────────────────────────
 
 @pytest.mark.parametrize("version", [None, True, "1", 1.0, 2, 0, -1])
 def test_bad_payload_versions_are_rejected(version: object) -> None:

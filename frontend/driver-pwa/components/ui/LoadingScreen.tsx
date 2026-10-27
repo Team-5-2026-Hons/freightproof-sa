@@ -3,7 +3,6 @@
 import { TruckLoader } from '@/components/ui/TruckLoader'
 
 interface LoadingScreenProps {
-  /** Announced to assistive tech, e.g. "Loading trip". */
   label?: string
 }
 

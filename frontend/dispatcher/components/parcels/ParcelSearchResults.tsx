@@ -12,7 +12,6 @@ import { ParcelOverview } from './ParcelOverview'
 interface Props {
   barcode: string
   waybill: string
-  /** True after an in-page transition (submit, waybill choice, Back/Forward); false for a deep-link first load. */
   moveFocus: boolean
   onSelectWaybill: (waybill: string) => void
   /** Lets the search form's button show the lookup in progress; the form lives in the parent. */
@@ -34,7 +33,6 @@ export function parcelSearchUrl(barcode: string, waybill?: string): string {
  */
 export function ParcelSearchResults({ barcode, waybill, moveFocus, onSelectWaybill, onLoadingChange }: Props): JSX.Element {
   const { lookup, trace, busy, error, search, moreMatches, moreJourneys } = useParcelTrace()
-  // Consumed by the first settled outcome so pagination and later re-renders never steal focus.
   const focusPending = useRef(moveFocus)
   const summaryRef = useRef<HTMLHeadingElement>(null)
   const chooserRef = useRef<HTMLHeadingElement>(null)
@@ -44,8 +42,6 @@ export function ParcelSearchResults({ barcode, waybill, moveFocus, onSelectWaybi
   useEffect(() => { void search(barcode, waybill || undefined) }, [barcode, waybill, search])
 
   const loading = busy === 'lookup' || busy === 'trace'
-  // Cleanup clears it as well: a new query unmounts this component mid-request, and the button
-  // must not be left spinning for a request nobody is waiting on.
   useEffect(() => {
     onLoadingChange(loading)
     return () => onLoadingChange(false)
@@ -80,7 +76,6 @@ export function ParcelSearchResults({ barcode, waybill, moveFocus, onSelectWaybi
     : ''
   const returnTo = trace ? parcelSearchUrl(trace.barcode, trace.waybill_reference) : ROUTES.parcels
   return <div aria-busy={loading} className="space-y-5">
-    {/* One concise announcement; the evidence tree itself is deliberately not a live region. */}
     <p role="status" className="sr-only">{announcement}</p>
     {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-err-c p-4 text-sm text-err-onc">
       <div><h2 ref={errorRef} tabIndex={-1} className="font-bold">Parcel evidence not loaded</h2><p className="mt-1">{error}</p></div>

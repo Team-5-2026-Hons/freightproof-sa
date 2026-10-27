@@ -5,15 +5,12 @@ import { cn } from '@shared/lib/utils/cn'
 export interface LegendItem {
   label: string
   color: string
-  /** The key mirrors the mark: a small square for bars, a short stroke for lines. */
   mark: 'bar' | 'line'
-  /** For status colours that must never be told apart by colour alone; a small (12px) icon. */
   icon?: ReactNode
 }
 
 interface ChartLegendProps {
   items: readonly LegendItem[]
-  /** A short line after the keys, e.g. what the faded bars mean. */
   note?: string
 }
 

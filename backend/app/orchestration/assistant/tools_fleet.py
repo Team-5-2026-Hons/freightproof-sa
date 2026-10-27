@@ -47,9 +47,7 @@ from app.orchestration.assistant.tools_trips import incident_line, incident_row,
 from app.orchestration.assistant.when import INSTANT_WIDTH
 from app.schemas.assistant import DiscState, NeedsReview, RecordRef, VehicleCard
 
-# The drivers list's red band: a disc this close to expiring needs renewing now.
 DISC_WARNING_DAYS = EXPIRY_BAND_EDGES_DAYS[0]
-# "Having problems" is about now: a breakdown in the last quarter is relevant, one a year ago isn't.
 BREAKDOWN_LOOKBACK_DAYS = 90
 ALL_TRIPS_SCOPE = (
     "exceptions_on_all_its_trips counts every trip this vehicle has been on, past and present, not only its current "
@@ -125,7 +123,6 @@ async def _findings(context: ToolContext, used_on: set[uuid.UUID], since: dateti
             ),
         ),
     )).all()
-    # Through the enums: a String column can hand back a plain str or the enum member.
     return [
         _Finding(
             exception_type=ExceptionType(row.exception_type), severity=ExceptionSeverity(row.severity),

@@ -29,13 +29,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-invalid={showError ? true : undefined}
         aria-describedby={showError || helperText ? `${inputId}-note` : undefined}
         className={cn(
-          // Field: a fill, no border — on a white page the fill is the
-          // edge, as with the grey buttons. 16px+ text, not smaller: iOS auto-zooms the
-          // viewport on a focused input under 16px, and in a packaged app that zoom never
-          // resets.
           'h-14 w-full rounded-[14px] border-0 bg-fill px-4 text-body font-medium text-surface-on',
-          // Placeholders carry instructions ("e.g. Durban"), so they must read: the
-          // on-variant ink clears 4.5:1 on the fill (contrast.test.ts).
           'placeholder:text-surface-on-variant',
           'outline-none focus-visible:ring-2 focus-visible:ring-primary',
           'transition-shadow duration-150',

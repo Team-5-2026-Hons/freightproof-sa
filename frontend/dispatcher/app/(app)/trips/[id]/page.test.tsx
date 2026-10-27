@@ -44,7 +44,6 @@ vi.mock('@/lib/api/auditPacks', async () => {
   return { ...actual, listAuditPacks: vi.fn().mockResolvedValue([]), listIncidentDeclarations: vi.fn().mockResolvedValue([]) }
 })
 
-// The evidence modal's read never settles here: these tests are about who opens it, not its content.
 vi.mock('@/lib/api/driverSubstitutions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/driverSubstitutions')>('@/lib/api/driverSubstitutions')
   return { ...actual, getCompletedSubstitution: vi.fn(() => new Promise(() => {})) }
@@ -70,8 +69,6 @@ vi.mock('@/lib/hooks/useTripArtifacts', () => ({
   }),
 }))
 
-// ExceptionSummary reads the signed-in user to word a claim as mine or a colleague's.
-// Nothing this file asserts depends on who that is, so the identity is stubbed.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-me' } }) }))
 
 vi.mock('@/lib/hooks/useToast', () => ({
@@ -127,7 +124,6 @@ describe('Trip detail expanded timeline', () => {
     expect(facts).not.toHaveClass('hidden')
     fireEvent.click(screen.getByRole('button', { name: 'Expand timeline' }))
     expect(timeline).not.toHaveClass('max-w-4xl')
-    // Only the facts grid collapses: the trip title stays, and so does the docked panel.
     expect(screen.getByRole('heading', { level: 1 })).toBeVisible()
     expect(facts).toHaveClass('hidden')
     expect(screen.getByRole('complementary', { name: 'Trip detail' })).toBeInTheDocument()
@@ -172,7 +168,6 @@ describe('Trip detail expanded timeline', () => {
     fireEvent.click(within(panel.querySelector<HTMLElement>('[data-exception-id="expand-4"]')!).getByRole('button', { name: 'Show in timeline' }))
     await waitFor(() => expect(document.activeElement).toHaveAttribute('id', 'exception-row-expand-4'))
     expect(document.activeElement?.closest('[hidden]')).toBeNull()
-    // Minimised only changes collapsed cards, so revealing a row opens its card and leaves the view alone.
     expect(screen.getByRole('tab', { name: 'Minimised' })).toHaveAttribute('aria-selected', 'true')
     expect(within(screen.getByRole('group', { name: 'Loading phase and exceptions' })).getByRole('button', { name: /^Loading/ })).toHaveAttribute('aria-expanded', 'true')
     expect(within(screen.getByRole('group', { name: /^Departure phase/ })).getByRole('button', { name: /^Departure/ })).toHaveAttribute('aria-expanded', 'false')
@@ -265,7 +260,6 @@ describe('Trip detail Evidence and Minimised navigation', () => {
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`)
     const rendered = render(<TripDetailPage />)
     fireEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
-    // The pane opens compact; "Show in timeline" lives on the full card.
     fireEvent.click(screen.getByRole('tab', { name: 'Detailed' }))
     const overlay = screen.getByRole('dialog', { name: 'Trip exceptions' })
     const record = overlay.querySelector<HTMLElement>('[data-exception-id="mini-4"]')!
@@ -383,8 +377,6 @@ function tripWithLoadingExceptionsOutOfOrder(): Trip {
 
   return {
     ...trip,
-    // Deliberately newest-first: the page, not fixture insertion order, owns the
-    // chronological presentation contract.
     exceptions: [laterException, earlierException],
   }
 }
@@ -438,7 +430,6 @@ describe('Trip detail phase timeline', () => {
     const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
     const rows = within(loadingGroup).getAllByRole('button', { name: /Cargo Damage|Checkpoint Timeout/ })
 
-    // Collapsed, the rows sit under the verdict: an exception is never hidden behind a closed card.
     expect(rows).toHaveLength(2)
     expect(within(loadingGroup).getByRole('button', { name: /Loading/, expanded: false })).toBeInTheDocument()
     expect(rows[0]).toHaveTextContent('System recorded')
@@ -467,7 +458,6 @@ describe('Trip detail phase timeline', () => {
     mockedUseTripDetail.mockReturnValue({
       trip: {
         ...base,
-        // The Audit trail belongs to a resolved phase: nothing is anchored before one completes.
         phases: base.phases.map(phase => phase.phase_event_id === evidencePhase.phase_event_id
           ? { ...phase, blockchain_receipt_id: receiptId, status: 'completed' as const, completed_at: phase.completed_at ?? '2026-05-09T17:00:00Z' }
           : phase),
@@ -491,7 +481,6 @@ describe('Trip detail phase timeline', () => {
     render(<TripDetailPage />)
 
     const phaseGroup = screen.getByRole('group', { name: new RegExp(`^${phaseType} phase$`, 'i') })
-    // The receipt and Verify live in the card's Audit trail, so the card is opened first.
     fireEvent.click(within(phaseGroup).getByRole('button', { name: new RegExp(`^${phaseType}`, 'i'), expanded: false }))
     const verification = within(phaseGroup).getByTestId('verify-subject')
     expect(verification).toHaveTextContent(
@@ -560,8 +549,6 @@ describe('Trip detail in-transit disclosure', () => {
 
     const inTransit = screen.getByRole('group', { name: /In Transit phase/i })
 
-    // No disclosure at all: the drive is the live part of the page, so there is nothing
-    // to open and therefore no chevron to suggest something is hidden.
     expect(within(inTransit).queryByRole('button', { expanded: false })).toBeNull()
     expect(within(inTransit).queryByRole('button', { expanded: true })).toBeNull()
   })
@@ -585,9 +572,6 @@ describe('Trip detail hash-anchored phase scroll', () => {
     const loading = trip.phases.find(phase => phase.phase_type === 'loading')
     if (!loading) throw new Error('TRIP_0040 loading phase is missing')
 
-    // getBoundingClientRect is always zeroed in jsdom, which would make the scroll math
-    // a silent no-op either way; stub it so the hash-anchored row and everything else
-    // report distinguishable positions, the same way a real layout would.
     const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       return { top: this.id.startsWith('phase-') ? 250 : 0 } as DOMRect
     })
@@ -600,8 +584,6 @@ describe('Trip detail hash-anchored phase scroll', () => {
       if (!scrollParent) throw new Error('timeline scroll container not found')
       expect(scrollParent.scrollTop).toBe(250)
 
-      // Landing on the row is not the same as opening it: PhaseTimelineItem's own
-      // toggle state is untouched, same as the "Jump to current phase" button.
       const loadingRow = screen.getByRole('group', { name: 'Loading phase and exceptions' })
       expect(within(loadingRow).getAllByRole('button', { expanded: false })[0]).toBeInTheDocument()
     } finally {
@@ -622,7 +604,6 @@ describe('Trip detail hash-anchored phase scroll', () => {
 })
 
 describe('Trip detail summary and panels', () => {
-  // The exceptions panel scrolls a selected record into view; jsdom has no layout to do it.
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn()
   })
@@ -651,7 +632,6 @@ describe('Trip detail summary and panels', () => {
     const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
     fireEvent.click(within(loadingGroup).getByRole('button', { name: /Cargo Damage/ }))
 
-    // The record's id AND its phase: a phase-scoped view with that one record selected.
     expect(push).toHaveBeenCalledWith(
       `/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&phase=${loading.phase_event_id}&exception=${earlierId}`,
       { scroll: false },
@@ -678,7 +658,6 @@ describe('Trip detail summary and panels', () => {
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=needs_review&phase=${loading.phase_event_id}`)
     rendered.rerender(<TripDetailPage />)
 
-    // This rerender models browser Back/Forward restoring an older query string.
     const allRecorded = screen.getByRole('tab', { name: /^All\s*2$/ })
     expect(allRecorded).toHaveAttribute('aria-selected', 'true')
   })
@@ -853,7 +832,6 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     expect(dialog).toContainElement(selectedRecord())
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce())
 
-    // A reload is a fresh mount of the same URL: it must land on the same record.
     first.unmount()
     scrollIntoView.mockReset()
     render(<TripDetailPage />)
@@ -890,7 +868,6 @@ describe('Trip detail exceptions panel opened on one exception', () => {
       navigation.search.delete('exception')
       rerender(<TripDetailPage />)
       expect(document.querySelector('[aria-current="true"]')).toBeNull()
-      // Deselected, the record is no longer the open card: it drops back to its one-line row.
       expect(selectedRecord()).toBeNull()
       expect(document.getElementById(`exception-panel-row-${EARLIER_ID}`)).not.toBeNull()
       expect(screen.getByText(line('2 of 2 trip exceptions'))).toBeInTheDocument()
@@ -940,7 +917,6 @@ describe('Trip detail exceptions panel opened on one exception', () => {
 
     render(<TripDetailPage />)
 
-    // Both fixture exceptions are already past review, so the narrow filter alone would show none.
     expect(selectedRecord()).toBeInTheDocument()
   })
 
@@ -1120,7 +1096,6 @@ describe('Trip detail header: "N need review" lands on the first unreviewed row'
   it('opens the card, un-caps the row and focuses the first unreviewed exception', async () => {
     const base = tripWithLoadingExceptionsOutOfOrder()
     const loading = base.phases.find(phase => phase.phase_type === 'loading')!
-    // Five unreviewed on Loading: the earliest sits under the cap only because it is pinned.
     const exceptions = Array.from({ length: 5 }, (_, index) => ({ ...base.exceptions[0]!,
       id: `owed-${index}` as TripException['id'], review_status: 'needs_review' as const, phase_event_id: loading.phase_event_id,
       severity: index === 0 ? 'info' as const : 'critical' as const, created_at: `2026-05-09T1${index}:00:00Z`,

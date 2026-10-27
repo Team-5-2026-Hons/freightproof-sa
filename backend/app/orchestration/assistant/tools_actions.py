@@ -56,11 +56,8 @@ from app.schemas.pp_manifest import PPManifestPreviewResponse
 
 OPEN_FORM_LABEL = "Open trip form"
 NOTHING_SAVED = "Nothing is saved: the dispatcher checks the form and presses Create. Never say a trip was created."
-# What the form's datetime-local fields hold, on the operator's clock.
 _FORM_TIME = "%Y-%m-%dT%H:%M"
-# Two trailers is an interlink; more is not a combination the form allows.
 MAX_TRAILERS = 2
-# Detail pages and the record kind each shows.
 _DETAIL_PAGES: dict[str, EntityKind] = {"trip": "trip", "driver": "driver", "vehicle": "vehicle", "precinct": "precinct"}
 _PAGE_WORDS: dict[str, str] = {
     "dashboard": "the Dashboard", "history": "Trip History", "exceptions": "Exceptions", "incidents": "Incidents",

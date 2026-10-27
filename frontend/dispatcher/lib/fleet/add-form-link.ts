@@ -12,7 +12,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ADD_FORM_PARAM, ADD_FORM_VALUE } from '@/lib/fleet/add-form-href'
 import { useAuth } from '@/lib/hooks/useAuth'
 
-// The role the pages' Add buttons are shown to (components/auth/AdminOnly.tsx).
 const ADD_ROLE = 'admin_dispatcher'
 
 /** Open a list page's Add pop-up when its address asks for it, for the same people who see its Add button, then
@@ -23,7 +22,6 @@ export function useAddFormLink(listPath: string, open: () => void): void {
   const router = useRouter()
   const [handled, setHandled] = useState(false)
 
-  // Adjusted during render, not in an effect (the react-hooks rule), as the trip form's prefill is.
   if (asked && user?.role === ADD_ROLE && !handled) {
     setHandled(true)
     open()
@@ -31,7 +29,6 @@ export function useAddFormLink(listPath: string, open: () => void): void {
   if (!asked && handled) setHandled(false)
 
   useEffect(() => {
-    // Wait for the user, so an admin's link isn't tidied away before it could open the pop-up.
     if (asked && user) router.replace(listPath, { scroll: false })
   }, [asked, user, listPath, router])
 }

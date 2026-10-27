@@ -44,14 +44,8 @@ from app.orchestration.phases.service import complete_phase
 from app.orchestration.trips.administration import cancel_trip
 from app.schemas.phases import ActivationCompleteRequest
 
-# How long the test waits to decide that the second transaction is queued rather than merely
-# slow. A queued transaction stays pending for as long as the first one is held open; an
-# unlocked one finishes in a few milliseconds, so a fraction of a second separates the two
-# without making the suite wait.
 _BLOCKED_PROBE_SECONDS = 0.5
 
-# Upper bound for anything that should complete once the hold is released. A deadlock would
-# otherwise surface as a hung test; Postgres breaks one after deadlock_timeout (1s) anyway.
 _COMPLETION_TIMEOUT_SECONDS = 10
 
 
@@ -142,7 +136,6 @@ async def _tear_down(world: World) -> None:
     async with world.sessionmaker() as db:
         trip = (await db.execute(select(Trip).where(Trip.id == world.trip_id))).scalar_one()
         horse_id, origin_id, client_id = trip.horse_id, trip.origin_precinct_id, trip.client_organization_id
-        # Events reference their receipts and the cancellation note, so they go first.
         await db.execute(delete(EvidenceAnchorEvent).where(EvidenceAnchorEvent.trip_id == world.trip_id))
         await db.execute(delete(BlockchainReceipt).where(BlockchainReceipt.trip_id == world.trip_id))
         await db.execute(delete(TripException).where(TripException.trip_id == world.trip_id))
@@ -339,7 +332,6 @@ async def test_a_replayed_completion_does_not_deadlock_with_the_anchor_worker(
         await asyncio.wait_for(worker.flush(), _COMPLETION_TIMEOUT_SECONDS)
         await worker.commit()
 
-    # The replay carries a fresh idempotency key against a resolved row: an idempotent 200.
     outcome = await asyncio.wait_for(asyncio.gather(replay, return_exceptions=True), _COMPLETION_TIMEOUT_SECONDS)
     assert not isinstance(outcome[0], BaseException), f"replay failed: {outcome[0]!r}"
 

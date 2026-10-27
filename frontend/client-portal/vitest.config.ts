@@ -15,7 +15,6 @@ export default defineConfig({
     exclude: ['node_modules', '.next'],
   },
   resolve: {
-    // Mirror the tsconfig path aliases; '@shared' must precede the broader '@'.
     alias: [
       { find: '@shared', replacement: resolve(root, '../shared') },
       { find: '@', replacement: root },

@@ -6,11 +6,8 @@ type SortScalar = string | number
 export type SortValue = SortScalar | readonly SortScalar[] | null
 export interface Sort<K extends string> { key: K; dir: SortDir }
 
-// Natural order, so "FP-9" comes before "FP-10", and case never splits "aisha" from "Aisha".
 const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 
-// A number that is not a real number (an unparseable date is NaN) is "no data", not a value that
-// poisons every comparison it meets.
 const normalise = (value: SortValue): SortValue => (typeof value === 'number' && !Number.isFinite(value) ? null : value)
 
 const isList = (value: SortScalar | readonly SortScalar[]): value is readonly SortScalar[] => Array.isArray(value)
@@ -19,7 +16,6 @@ function compareScalars(left: SortScalar, right: SortScalar): number {
   return typeof left === 'number' && typeof right === 'number' ? left - right : collator.compare(String(left), String(right))
 }
 
-// A single value is a list of one, so a column compares the same way whichever it returns.
 function compareValues(left: SortScalar | readonly SortScalar[], right: SortScalar | readonly SortScalar[]): number {
   const a = isList(left) ? left : [left]
   const b = isList(right) ? right : [right]

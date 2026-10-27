@@ -34,7 +34,6 @@ function makeStore(initial: Record<string, string> = {}): ActivityStore {
   }
 }
 
-/** A store whose every operation throws — Safari private mode, or a full quota. */
 const brokenStore: ActivityStore = {
   getItem: () => { throw new Error('storage unavailable') },
   setItem: () => { throw new Error('storage unavailable') },
@@ -83,8 +82,6 @@ describe('recording and reading activity', () => {
   })
 
   it('survives a storage backend that throws', () => {
-    // An unwritable timestamp must not break the app: the in-tab timer still runs, and
-    // the server enforces its own window regardless.
     expect(() => recordActivity(brokenStore)).not.toThrow()
     expect(() => clearActivity(brokenStore)).not.toThrow()
     expect(readLastActivity(brokenStore)).toBeNull()
@@ -111,15 +108,10 @@ describe('deciding whether the session has expired', () => {
   })
 
   it('does not expire a session with no stored history', () => {
-    // This is the "signed in on a fresh browser profile" case. Signing them straight back
-    // out would make the app unusable, and the caller records activity right after this
-    // check — so being wrong here is bounded to one window, and the server enforces its
-    // own timeout against a record the client cannot touch.
     expect(isSessionExpired(null, now)).toBe(false)
   })
 
   it('tolerates a timestamp in the future rather than clamping it', () => {
-    // A clock adjustment is not evidence of anything; the next tick re-evaluates.
     expect(isSessionExpired(now + 60_000, now)).toBe(false)
   })
 })
@@ -146,9 +138,6 @@ describe('scheduling the next check', () => {
 
 describe('the reload case', () => {
   it('an expired session is not revived by refreshing the page', () => {
-    // The whole reason the timestamp lives in localStorage rather than sessionStorage:
-    // it has to outlive the tab, or closing and reopening the browser would present no
-    // history at all and a dead session would be treated as fresh.
     const now = 1_700_000_000_000
     const store = makeStore()
     recordActivity(store, now - CLIENT_IDLE_TIMEOUT_MS - 1)

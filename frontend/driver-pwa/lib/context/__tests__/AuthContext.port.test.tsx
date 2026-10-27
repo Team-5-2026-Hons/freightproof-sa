@@ -19,8 +19,6 @@ import { getSupabase } from '@/lib/supabase'
 import { api } from '@/lib/api/client'
 import type { DriverUser } from '@/lib/types/user'
 
-// Stubs that record any call: the assertions below require them to stay untouched. With an
-// injected port the real Supabase client must never even be built.
 vi.mock('@/lib/supabase', () => ({ getSupabase: vi.fn() }))
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() }, ApiError: class ApiError extends Error {} }))
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
@@ -175,8 +173,6 @@ describe('AuthProvider with injected ports', () => {
     expect(result.current.user).toBeNull()
   })
 
-  // The guard that stops a re-fired SIGNED_IN from creating a new `user` object and
-  // sending every consumer into a refetch loop.
   it('does not reload the profile for a change that keeps the same identity', async () => {
     const port = new FakeOtpAuth()
     port.session = { userId: String(DRIVER.id) }

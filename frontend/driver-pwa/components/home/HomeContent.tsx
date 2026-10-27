@@ -18,31 +18,22 @@ import { firstName, partOfDayGreeting } from '@/lib/utils/greeting'
 import { formatLongDate } from '@/lib/utils/format-time'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// Route to the first step of the current phase.
 function firstStepRoute(phase: PhaseDescriptor): string {
   const steps = stepsFor(phase)
-  // Defensive: only trip_creation has an empty recipe, and it resolves before the
-  // driver is ever involved — currentPhase should never surface it as "current" here.
   return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
 }
 
 export function HomeContent() {
   const router = useRouter()
-  // The context list, not trip.exceptions: it includes everything logged this session.
   const { trip, isLoading, exceptions } = useTrip()
   const { user } = useAuth()
   const { trips, isLoading: tripsLoading, loadError: tripsError } = useMyTrips()
 
   if (isLoading) {
-    // Canonical loading state — the one LoadingScreen component every waiting screen in
-    // the app now renders. Returning null here flashed a blank screen on every cold load
-    // of Home, which reads as a crash on a slow connection.
     return <LoadingScreen label="Loading your trip" />
   }
 
   const name = user ? firstName(user.full_name) : null
-  // The screen's visible heading: today's date over the greeting. The tab's
-  // own "Home" title stays for screen readers only (AppShell).
   const header = (
     <div>
       <p className="text-subhead text-surface-on-variant">{formatLongDate(new Date())}</p>
@@ -57,10 +48,6 @@ export function HomeContent() {
     return (
       <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
         {header}
-        {/* Above "No trip assigned": an incoming collection is real work even before custody
-            transfers, and it must be the first thing a driver without a trip sees. */}
-        {/* First: the trip the driver was on just ended, and this says so rather than the
-            trip quietly turning into "No trip assigned". */}
         <TripEndedByDispatchBanner />
         <DriverSubstitutionPanel />
         <section aria-label="No trip" className="flex flex-col items-center rounded-[22px] bg-fill px-6 pb-6 pt-7 text-center">
@@ -89,7 +76,6 @@ export function HomeContent() {
       {header}
       <TripEndedByDispatchBanner />
       <DriverSubstitutionPanel />
-      {/* Hold, driving and next-phase rules live in NowCard — see its header comment. */}
       <NowCard
         trip={trip}
         exceptions={openDriverExceptions(exceptions)}

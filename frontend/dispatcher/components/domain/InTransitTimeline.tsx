@@ -13,13 +13,7 @@ import type { TripException } from '@shared/lib/types/exception'
 
 interface Props {
   phase: PhaseDescriptor
-  // Needed to date this leg from its OWN departure — see legDepartureAt. The in-transit
-  // row cannot date itself: its created_at is plan-generation time, not departure time.
   allPhases: readonly PhaseDescriptor[]
-  // Exceptions belonging to this leg, already scoped to its phase_event_id and sorted
-  // chronologically by the caller. Rendered here as dated markers only: the full card
-  // (description, source, artifacts, review link) lives in the phase's exception branch
-  // below the row, so nothing is duplicated and nothing is dropped.
   exceptions: readonly TripException[]
   originName: string
   destinationName: string
@@ -46,10 +40,6 @@ type MiniNode = {
 export function InTransitTimeline({ phase, allPhases, exceptions, originName, destinationName }: Props) {
   const departedAt = legDepartureAt(allPhases, phase)
 
-  // Built in three cases rather than two nested ternaries, because "not yet departed" is
-  // a real third state: the truck is still at origin, so it is neither departed NOR en
-  // route, and claiming either would be the same class of lie as dating the departure
-  // from plan-generation time.
   const nodes: MiniNode[] = []
 
   if (departedAt === null) {
@@ -66,8 +56,6 @@ export function InTransitTimeline({ phase, allPhases, exceptions, originName, de
     exception: exc,
   })))
 
-  // An overridden leg has completed_at stamped by the override, not by an arrival, so
-  // it must not read as "Arrived" — see legStateFor's precedent in the phase card.
   if (phase.completed_at && phase.status !== 'overridden') {
     nodes.push({ key: 'arrived', kind: 'arrived', label: `Arrived ${destinationName}`, timestamp: phase.completed_at })
   } else if (departedAt !== null) {
@@ -113,9 +101,6 @@ export function InTransitTimeline({ phase, allPhases, exceptions, originName, de
         </div>
       ))}
 
-      {/* Named absence. Without this the card silently implies nothing happened en
-          route. Deliberately generic rather than naming a specific integration: this
-          line must never read as a promise that a continuous live route exists. */}
       <div className="flex items-center gap-[6px] text-[10px] text-on-surf-v mt-[2px]">
         <Ic n="clock" s={10} className="text-on-surf-v" />
         Only recorded journey events are shown.

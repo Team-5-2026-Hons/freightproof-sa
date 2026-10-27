@@ -6,16 +6,11 @@ import { overridePhase } from '@/lib/api/client'
 import type { PhaseDescriptor, PhaseEventId, PhaseStatus } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
 
-// client.ts (even mocked below via importActual, which re-evaluates the real module)
-// imports the Supabase client at module scope, which throws without real env vars in
-// the test environment — mock it the same way lib/api/client.test.ts does.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// Isolate the component from the real HTTP layer — client.ts's own request/retry
-// logic is covered by lib/api/client.test.ts.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
   return { ...actual, overridePhase: vi.fn() }
@@ -23,9 +18,6 @@ vi.mock('@/lib/api/client', async () => {
 
 const mockedOverridePhase = vi.mocked(overridePhase)
 
-// A minimal but fully-typed PhaseDescriptor — only `status` varies per test, matching
-// this component's own gate. Every other field is a harmless default since nothing else
-// here reads them.
 function buildPhase(status: PhaseStatus): PhaseDescriptor {
   return {
     phase_event_id: 'phase-9' as PhaseEventId,
@@ -93,9 +85,6 @@ describe('PhaseOverrideAction — availability', () => {
     expect(screen.getByText('Record as unable to complete')).toBeInTheDocument()
   })
 
-  // cancel_trip leaves phase rows PENDING on purpose, so a cancelled trip's rows still
-  // look overridable by phase status alone — the backend 409s, and the UI must not offer
-  // a control that can only fail.
   it.each(['cancelled', 'closed'] as const)('renders nothing when the trip is %s', (tripStatus) => {
     renderAction('pending', vi.fn(), tripStatus)
     expect(screen.queryByText('Record as unable to complete')).not.toBeInTheDocument()

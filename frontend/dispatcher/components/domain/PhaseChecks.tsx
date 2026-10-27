@@ -24,7 +24,6 @@ interface ResultStyle {
   iconText: string
 }
 
-// Icon, word and colour together: a result is never colour alone.
 const RESULT_STYLE: Record<CheckResult, ResultStyle> = {
   pass: { icon: 'check', text: 'text-on-surf', iconText: 'text-ok' },
   flag: { icon: 'warn', text: 'text-warn', iconText: 'text-warn' },
@@ -32,8 +31,6 @@ const RESULT_STYLE: Record<CheckResult, ResultStyle> = {
   in_progress: { icon: 'clock', text: 'text-on-surf', iconText: 'text-sec' },
 }
 
-// Static copy, not checks: no record says which on-road checks ran, so an empty list is
-// absence of reports, never a pass (design note §6).
 const TRANSIT_ABSENCE = 'Only recorded journey events are shown. A tracker check appears here only when it raises an exception.'
 const TRANSIT_NO_VERDICT = 'No location verdict is recorded for transit legs'
 

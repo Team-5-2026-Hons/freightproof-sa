@@ -126,7 +126,6 @@ async def test_list_my_trips_returns_every_status(client: AsyncClient, db_sessio
     assert by_status["active"] == ["FP-ACTIVE"]
     assert sorted(by_status["created"]) == ["FP-UPCOMING-A", "FP-UPCOMING-B"]
     assert by_status["closed"] == ["FP-CLOSED"]
-    # Newest first, so the list reads as a reverse-chronological assignment feed.
     assert [r["trip_reference"] for r in body] == [
         "FP-UPCOMING-B", "FP-UPCOMING-A", "FP-ACTIVE", "FP-CLOSED",
     ]
@@ -351,12 +350,8 @@ async def test_list_my_trips_runs_the_same_number_of_queries_for_one_trip_or_man
         for i in range(5)
     ])
     await db_session.flush()
-    # One token per driver, reused: each make_token is a new device session, and the
-    # one-device-per-driver rule (auth/sessions.py) can refuse a second one minted in the same second.
     one_token = make_token(sub=str(one.id), role="driver")
     many_token = make_token(sub=str(many.id), role="driver")
-    # Warm-up, uncaptured: the first request per driver records its session, a write the
-    # comparison must not count. Both drivers warm up so each captured request is a repeat.
     await _statements_for_trip_list(client, db_session, one_token)
     await _statements_for_trip_list(client, db_session, many_token)
 

@@ -7,8 +7,6 @@ import type { FacilityMetrics } from '@shared/lib/types/analytics'
 import { ANALYTICS_COPY } from './copy'
 import { PrecinctAnalyticsSummary } from './PrecinctAnalyticsSummary'
 
-// The hook's fetching, range keying and stale-reply handling are covered by
-// useAnalytics.test.tsx. Here it is stubbed so each test sets the state it needs.
 vi.mock('@/lib/hooks/useAnalytics', () => ({
   useFacilityAnalytics: vi.fn(),
 }))
@@ -89,7 +87,6 @@ describe('PrecinctAnalyticsSummary — loading and errors', () => {
   it('keeps the month range control on screen after a failure', () => {
     renderSummary({ rows: [], error: 'Request failed' })
 
-    // From month, From year, To month, To year.
     expect(screen.getAllByRole('combobox')).toHaveLength(4)
   })
 })
@@ -110,7 +107,6 @@ describe('PrecinctAnalyticsSummary — populated', () => {
   it('shows the rate with its counts, leaving unwitnessed out of the denominator', () => {
     renderSummary()
 
-    // 2 confirmed of 3 checked. Counting the 4 unwitnessed would make it 2/7.
     expect(valueOf(RATE)).toBe('67% (2/3)')
   })
 
@@ -127,7 +123,6 @@ describe('PrecinctAnalyticsSummary — populated', () => {
     expect(valueOf(CONFIRMED)).toBe('2')
     expect(valueOf(MISMATCH)).toBe('1')
     expect(valueOf(UNWITNESSED)).toBe('4')
-    // Their total (7) must not appear anywhere.
     expect(screen.queryByText('7')).not.toBeInTheDocument()
   })
 

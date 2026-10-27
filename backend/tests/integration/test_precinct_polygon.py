@@ -21,7 +21,6 @@ from tests.conftest import auth_header, make_token
 
 _ANCHOR = "app.orchestration.fleet.precincts.anchor_subject"
 _BOX = [[-29.7937, 30.9815], [-29.7937, 30.9825], [-29.7947, 30.9825], [-29.7947, 30.9815]]
-# The same box ~1.1 km further north — a reshaped, not resized, fence.
 _BOX_NORTH = [[round(lat + 0.01, 7), lng] for lat, lng in _BOX]
 
 
@@ -126,7 +125,6 @@ async def test_reshaping_is_logged_as_geofence_reshaped_and_anchored(client: Asy
     assert resp.status_code == 200
     assert resp.json()["geofence_polygon"] == _BOX_NORTH
     update_event = (await _events(db_session, created["id"]))[-1]
-    # Relocation outranks reshaping in the heading; the diff carries both.
     assert update_event.event_type == "relocated"
     assert update_event.changed_fields["geofence_polygon"] == {"from": _BOX, "to": _BOX_NORTH}
     assert anchor.await_count == 2

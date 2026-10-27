@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { useArtifactUpload } from '../useArtifactUpload'
 
-// The hook only runs its real-upload branch outside demo mode.
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
 const mockUploadArtifact = vi.fn()
@@ -17,7 +16,6 @@ interface Deferred {
   resolve: (id: string) => void
 }
 
-// Lets a test decide when each upload "lands", so it can resolve them out of order.
 function deferredUpload(): Deferred {
   let resolveFn: (value: { id: string; file_hash: string }) => void = () => {}
   const promise = new Promise<{ id: string; file_hash: string }>((resolve) => {
@@ -48,7 +46,6 @@ describe('useArtifactUpload', () => {
       firstResult = result.current.uploadNow('data:a', 'photo', CAPTURED_AT, 'seal_photo')
       secondResult = result.current.uploadNow('data:b', 'photo', CAPTURED_AT, 'seal_photo')
     })
-    // Out of order on purpose: the older request lands last, which is the bug this guards.
     await act(async () => {
       second.resolve('retake-id')
       first.resolve('stale-id')

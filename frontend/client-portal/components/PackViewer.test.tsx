@@ -45,15 +45,12 @@ function stubMatchMedia(matching: string[]) {
 
 describe('PackViewer', () => {
   it('shows the pack, its recipient and the observations', async () => {
-    // Arrange
     fetchPack.mockResolvedValue(makeView(makeManifest({
       observations: [{ code: 'seal.continuity', level: 'info', text: 'Seal SEAL-001 applied at departure matched.', evidence_ids: [] }],
     })))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
     expect(screen.getByText('FP-AUDIT-AP1')).toBeInTheDocument()
     expect(screen.getByText(/issued to Jane Adjuster, Santam Claims/)).toBeInTheDocument()
@@ -62,19 +59,15 @@ describe('PackViewer', () => {
   })
 
   it('explains a revoked or expired link', async () => {
-    // Arrange
     fetchPack.mockRejectedValue(new PackError(410, 'This audit pack link has expired.'))
 
-    // Act
     render(<PackViewer token="old" />)
 
-    // Assert
     expect(await screen.findByRole('heading', { name: 'This link is no longer active' })).toBeInTheDocument()
     expect(screen.getByText('This audit pack link has expired.')).toBeInTheDocument()
   })
 
   it('shows an event’s detail when it is picked on the timeline', async () => {
-    // Arrange
     const user = userEvent.setup()
     fetchPack.mockResolvedValue(makeView(makeManifest({
       phases: [makePhase(3, 'departure', { seal_number: 'SEAL-001', tier: 'anchored' })],
@@ -83,10 +76,8 @@ describe('PackViewer', () => {
     render(<PackViewer token="tok" />)
     const timeline = await screen.findByRole('list', { name: 'Trip timeline' })
 
-    // Act
     await user.click(within(timeline).getByRole('button', { name: /P3 · Departure/ }))
 
-    // Assert
     expect(screen.getByText('SEAL-001')).toBeInTheDocument()
     await waitFor(() => expect(within(timeline).getByRole('button', { name: /P3 · Departure/ })).toHaveAttribute('aria-current', 'true'))
   })
@@ -94,7 +85,6 @@ describe('PackViewer', () => {
 
 describe('PackViewer incident', () => {
   it('shows declared police facts under the Declared tier and offers the fact sheet', async () => {
-    // Arrange
     const panic = makeException('panic_button', 'critical', { description: 'Panic held' })
     fetchPack.mockResolvedValue(makeView(makeManifest({
       exceptions: [panic],
@@ -110,10 +100,8 @@ describe('PackViewer incident', () => {
       }],
     })))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     const incident = await screen.findByRole('region', { name: 'Incident summary' })
     expect(within(incident).getByText(/123\/09\/2026/)).toBeInTheDocument()
     expect(within(incident).getByText(/Harrismith SAPS/)).toBeInTheDocument()
@@ -124,7 +112,6 @@ describe('PackViewer incident', () => {
 
 describe('PackViewer mailed password (FP-291)', () => {
   it('asks for the mailed password instead of showing an error, then opens the pack', async () => {
-    // Arrange
     const user = userEvent.setup()
     fetchPack
       .mockRejectedValueOnce(new PackError(401, 'Enter the mailed password to open this pack.', 'j***@santam.example'))
@@ -134,11 +121,9 @@ describe('PackViewer mailed password (FP-291)', () => {
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument()
     expect(screen.getByText('j***@santam.example')).toBeInTheDocument()
 
-    // Act
     await user.type(await screen.findByLabelText('Password'), 's3cretPass')
     await user.click(screen.getByRole('button', { name: 'Open pack' }))
 
-    // Assert
     expect(verifyPassword).toHaveBeenCalledWith('tok', 's3cretPass')
     expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
     expect(fetchPack).toHaveBeenCalledTimes(2)
@@ -149,30 +134,24 @@ describe('PackViewer — load failures', () => {
   it.each([[0, 'a network error'], [503, 'a server error'], [429, 'rate limiting']])(
     'offers "Try again" after %i (%s), and loads the pack when it works',
     async (status) => {
-      // Arrange
       const user = userEvent.setup()
       fetchPack
         .mockRejectedValueOnce(status === 0 ? new TypeError('network down') : new PackError(status, 'Try again shortly.'))
         .mockResolvedValueOnce(makeView(makeManifest()))
       render(<PackViewer token="tok" />)
 
-      // Act
       await user.click(await screen.findByRole('button', { name: 'Try again' }))
 
-      // Assert
       expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
       expect(fetchPack).toHaveBeenCalledTimes(2)
     },
   )
 
   it.each([[410], [404]])('offers no retry for %i, where trying again cannot help', async (status) => {
-    // Arrange
     fetchPack.mockRejectedValue(new PackError(status, 'Gone.'))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     await screen.findByText('Gone.')
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
   })
@@ -196,21 +175,17 @@ describe('PackViewer — seal and PDF check', () => {
   }
 
   it('says the pack was not sealed instead of showing a green banner, when it carries no seal', async () => {
-    // Arrange
     const record = await makeAnchoredRecord(1)
     mirror(() => new Response(JSON.stringify({ message: btoa(record.data_hash) }), { status: 200 }))
     fetchPack.mockResolvedValue(makeView(makeManifest({ anchored_records: [record] })))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     expect(await screen.findByText('Pack not sealed · 1 of 1 record verified in your browser')).toBeInTheDocument()
     expect(screen.getByText('Pack seal · FP-AUDIT-AP1').closest('section')).not.toHaveClass('border-ok')
   })
 
   it('goes green only for a verified seal with verified records', async () => {
-    // Arrange
     const { view, seal, records } = await sealedView()
     mirror((url) => {
       const sequence = Number(url.split('/').pop())
@@ -219,16 +194,13 @@ describe('PackViewer — seal and PDF check', () => {
     })
     fetchPack.mockResolvedValue(view)
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     expect(await screen.findByText('Seal verified · 1 of 1 record verified in your browser')).toBeInTheDocument()
     expect(screen.getByText('Pack seal · FP-AUDIT-AP1').closest('section')).toHaveClass('border-ok')
   })
 
   it('passes the seal result to the PDF check: a matching PDF is "unaltered" only once the seal is verified', async () => {
-    // Arrange
     const user = userEvent.setup()
     const view = await sealedForPdf('%PDF-issued')
     mirror(() => new Response(JSON.stringify({ message: btoa(view.seal.seal!.data_hash) }), { status: 200 }))
@@ -236,15 +208,12 @@ describe('PackViewer — seal and PDF check', () => {
     render(<PackViewer token="tok" />)
     await screen.findByText(/Seal verified/)
 
-    // Act
     await user.upload(screen.getByLabelText(/Check a PDF copy/), new File(['%PDF-issued'], 'pack.pdf', { type: 'application/pdf' }))
 
-    // Assert
     expect(await screen.findByText(/pack\.pdf is an unaltered copy of pack FP-AUDIT-AP1 \(seal verified on Hedera\)/)).toBeInTheDocument()
   })
 
   it('…and says the seal is not confirmed when Hedera could not be reached', async () => {
-    // Arrange
     const user = userEvent.setup()
     const view = await sealedForPdf('%PDF-issued')
     mirror(() => new Response('busy', { status: 503 }))
@@ -252,10 +221,8 @@ describe('PackViewer — seal and PDF check', () => {
     render(<PackViewer token="tok" />)
     await screen.findByText(/Seal not confirmed/)
 
-    // Act
     await user.upload(screen.getByLabelText(/Check a PDF copy/), new File(['%PDF-issued'], 'pack.pdf', { type: 'application/pdf' }))
 
-    // Assert
     const result = await screen.findByText(/but the seal itself is not confirmed/)
     expect(result).toHaveClass('text-warn')
     expect(result).not.toHaveTextContent('unaltered copy')
@@ -272,47 +239,35 @@ describe('PackViewer — layout behaviour', () => {
   }
 
   it('scrolls to the Evidence card on a small screen, smoothly', async () => {
-    // Arrange
     stubMatchMedia(['max-width: 1279px'])
 
-    // Act
     await pickEvent()
 
-    // Assert
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })
 
   it('scrolls without animation when the reader prefers reduced motion', async () => {
-    // Arrange
     stubMatchMedia(['max-width: 1279px', 'prefers-reduced-motion'])
 
-    // Act
     await pickEvent()
 
-    // Assert
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' })
   })
 
   it('does not scroll on a wide screen, where the Evidence card is already beside the timeline', async () => {
-    // Arrange
     stubMatchMedia([])
 
-    // Act
     await pickEvent()
 
-    // Assert
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: /E1 · Panic button/ })).toBeInTheDocument()
   })
 
   it('makes the right-hand column sticky and the timeline scrollable on wide screens only', async () => {
-    // Arrange
     fetchPack.mockResolvedValue(makeView(makeManifest()))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     const route = (await screen.findByRole('region', { name: 'Route' })).parentElement!
     expect(route).toHaveClass('lg:sticky', 'lg:top-4', 'lg:self-start')
     const timelineBody = screen.getByRole('list', { name: 'Trip timeline' }).parentElement!
@@ -322,13 +277,10 @@ describe('PackViewer — layout behaviour', () => {
 
 describe('PackViewer — sections', () => {
   it('numbers its six sections the way the PDF does and lists them in the contents', async () => {
-    // Arrange
     fetchPack.mockResolvedValue(makeView(makeManifest()))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     const nav = await screen.findByRole('navigation', { name: 'Sections' })
     const links = within(nav).getAllByRole('link')
     expect(links.map((l) => l.getAttribute('href'))).toEqual([
@@ -343,50 +295,38 @@ describe('PackViewer — sections', () => {
 
 describe('PackViewer — notices', () => {
   it('tells the reader when the browser blocks site storage', async () => {
-    // Arrange
     storageBlocked.mockReturnValue(true)
     fetchPack.mockResolvedValue(makeView(makeManifest()))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     expect(await screen.findByText('This browser blocks site storage, so you may be asked for a code again next time.')).toBeInTheDocument()
   })
 
   it('says nothing about storage otherwise', async () => {
-    // Arrange
     fetchPack.mockResolvedValue(makeView(makeManifest()))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })
     expect(screen.queryByText(/blocks site storage/)).not.toBeInTheDocument()
   })
 
   it('shows investigations in the exceptions section instead of only counting them', async () => {
-    // Arrange
     fetchPack.mockResolvedValue(makeView(makeManifest({ investigations: [makeInvestigation({ summary: 'Reported by phone' })] })))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     const section = await screen.findByRole('region', { name: 'Exceptions and response' })
     expect(within(section).getByRole('region', { name: 'Investigations' })).toHaveTextContent('Reported by phone')
     expect(screen.queryByRole('region', { name: 'Not shown in this viewer' })).not.toBeInTheDocument()
   })
 
   it('gives the PDF download a 44 px tap target', async () => {
-    // Arrange
     fetchPack.mockResolvedValue(makeView(makeManifest()))
 
-    // Act
     render(<PackViewer token="tok" />)
 
-    // Assert
     expect(await screen.findByRole('button', { name: 'Download PDF' })).toHaveClass('min-h-11')
   })
 })

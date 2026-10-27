@@ -17,9 +17,6 @@ import { countAtStop, precinctAtPhase } from '@/lib/phase/trip-detail'
 import { originScannedCount } from '@/lib/phase/derive'
 import type { ExceptionType } from '@shared/lib/types/exception'
 
-// The three seal findings recorded on an ARRIVAL row. A single
-// arrival can carry seal_compromised (broken/missing) AND seal_mismatch (wrong number)
-// together, so ArrivalDetail is handed every match, never just the first.
 const SEAL_EXCEPTION_TYPES: readonly ExceptionType[] = ['seal_mismatch', 'seal_unverified', 'seal_compromised']
 
 /** The stop this in-transit leg is travelling TO — the trip's next stop after the one
@@ -50,9 +47,6 @@ export function PhaseEvidence({ trip, phase, precincts, onChanged, ...evidence }
     case 'unloading': content = <UnloadingDetail {...shared} scannedInCount={countAtStop(trip, phase, 'in', 'scanned')} expectedAtStopCount={countAtStop(trip, phase, 'in', 'expected')} precinct={precinct} />; break
     case 'confirmation': content = <ConfirmationDetail {...shared} precinct={precinct} originScannedCount={originScannedCount(trip.phases)} />; break
     case 'in_transit':
-      // The journey mini-timeline sits OUTSIDE disclosure (TripTimeline renders it as
-      // the row's persistentContent, using this module's nextTripStop for the
-      // destination), so the only thing left behind the toggle is the arrival fix.
       content = <InTransitArrivalLocation phase={phase} />
       break
   }

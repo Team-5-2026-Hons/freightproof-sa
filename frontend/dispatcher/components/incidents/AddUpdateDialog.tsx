@@ -14,7 +14,6 @@ export type UpdateMode = 'note' | 'external_action' | 'confidence_changed'
 
 interface Props {
   open: boolean
-  /** Which kind of entry the dialog opens on; the hijacking guide opens it on an action. */
   initialMode?: UpdateMode
   initialAction?: IncidentExternalAction
   currentConfidence: IncidentConfidence

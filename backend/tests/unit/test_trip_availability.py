@@ -16,7 +16,7 @@ from app.orchestration.trips.availability import (
 )
 from app.schemas.availability import BusyEntry, CrewResourceType
 
-_T0 = datetime(2026, 10, 16, 6, 0, tzinfo=UTC)  # 08:00 SAST, Fri 16 Oct 2026
+_T0 = datetime(2026, 10, 16, 6, 0, tzinfo=UTC)
 _HOUR = timedelta(hours=1)
 
 
@@ -29,8 +29,6 @@ def _entry(**overrides: object) -> BusyEntry:
     fields.update(overrides)
     return BusyEntry.model_validate(fields)
 
-
-# ── windows_overlap: half-open [start, end) ─────────────────────────────────────
 
 def test_windows_overlap_touching_end_to_start_is_not_a_clash():
     assert windows_overlap(_T0, _T0 + 8 * _HOUR, _T0 + 8 * _HOUR, _T0 + 12 * _HOUR) is False
@@ -60,8 +58,6 @@ def test_windows_overlap_open_end_does_not_reach_back_before_its_start():
     assert windows_overlap(_T0, None, _T0 - 2 * _HOUR, _T0) is False
 
 
-# ── planned_window: the same fallbacks the creation schema uses ─────────────────
-
 def test_planned_window_prefers_trip_level_times():
     assert planned_window(_T0, _T0 + 8 * _HOUR, [_T0 - _HOUR, _T0 + 20 * _HOUR]) == (_T0, _T0 + 8 * _HOUR)
 
@@ -77,8 +73,6 @@ def test_planned_window_single_timed_stop_has_no_end():
 def test_planned_window_with_nothing_scheduled_is_empty():
     assert planned_window(None, None, []) == (None, None)
 
-
-# ── busy_until: live trips hold their crew until closed ─────────────────────────
 
 def test_busy_until_created_trip_frees_at_its_planned_end_even_when_past():
     assert busy_until(TripStatus.CREATED, _T0, now=_T0 + 5 * _HOUR) == _T0
@@ -106,10 +100,6 @@ def test_busy_until_accepts_a_status_read_back_as_a_plain_string():
     (a str-Enum member hashes by name), which is why LIVE_STATUSES is a tuple."""
     assert busy_until("active", _T0, now=_T0 + _HOUR) is None  # type: ignore[arg-type]
 
-
-# ── Wording ────────────────────────────────────────────────────────────────────
-
-# ── hold_start: when a trip starts holding its crew ─────────────────────────────
 
 
 @pytest.mark.parametrize("status", [TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD])

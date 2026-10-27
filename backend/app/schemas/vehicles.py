@@ -8,13 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from app.db.models.enums import VehicleType
 
-# Mirrors DB column widths (app/db/models/vehicles.py) so over-length input is a 422, not a 500.
 _REGISTRATION_MAX_LENGTH = 50
 _PULSIT_DEVICE_ID_MAX_LENGTH = 100
 _MAKE_MODEL_MAX_LENGTH = 100
 
-# VIN is always exactly 17 chars. Per explicit product decision, any alphanumeric
-# 17-char string is accepted — no ISO 3779 I/O/Q exclusion is enforced.
 _VIN_PATTERN = r"^[A-Za-z0-9]{17}$"
 
 _MIN_YEAR = 1900
@@ -41,8 +38,6 @@ def _validate_year(value: Optional[int]) -> Optional[int]:
 
 
 class VehicleBase(BaseModel):
-    # Shared by the read schemas; deliberately unconstrained types so legacy rows
-    # (e.g. a sub-17-char VIN) don't get rejected on read.
     model_config = ConfigDict(from_attributes=True)
 
     organization_id: UUID
@@ -128,7 +123,6 @@ class VehicleRead(VehicleBase):
     created_at: datetime
 
 
-# Imported here, not at module top, to keep the schema dependency graph acyclic.
 from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
 from app.schemas.events import VehicleEventRead  # noqa: E402
 

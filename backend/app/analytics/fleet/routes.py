@@ -61,7 +61,6 @@ async def site_counts(db: AsyncSession, *, organization_id: uuid.UUID, period: P
     return [
         SiteCounts(precinct_id=precinct_id, pickup_count=pickups, delivery_count=deliveries)
         for precinct_id, pickups, deliveries in result.tuples().all()
-        # A site whose only steps were empty-run unloadings saw neither.
         if pickups + deliveries > 0
     ]
 
@@ -144,7 +143,6 @@ async def incident_pins(
             lng=float(lng),
         )
         for exception_id, trip_id, reference, exception_type, severity, created_at, lat, lng in located.tuples().all()
-        # The query already excludes NULL coordinates; this narrows the type.
         if lat is not None and lng is not None
     ]
     return pins, unlocated.scalar_one()

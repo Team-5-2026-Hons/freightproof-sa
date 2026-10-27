@@ -42,32 +42,19 @@ from app.integrations.mock_state import MockStateStore, build_key, get_mock_stat
 logger = logging.getLogger(__name__)
 
 _IDVS_KEY_KIND = "idvs"
-# The provider name stamped on verification rows and quota ledger entries.
 PROVIDER_DIDIT = "didit"
 
-# --- The quarantined guesses -------------------------------------------------
 _DIDIT_SESSION_PATH = "/v3/session/"
 _DIDIT_DECISION_PATH = "/v3/session/{session_id}/decision/"
 _DIDIT_API_KEY_HEADER = "x-api-key"
 _DIDIT_FIELD_SESSION_ID = "session_id"
-# The two endpoints spell the hosted-flow URL differently (`url` on create,
-# `session_url` on decision) — read in order so a future unified vendor
-# response doesn't break us.
 _DIDIT_FIELDS_SESSION_URL = ("url", "session_url")
 _DIDIT_FIELD_STATUS = "status"
-# Webhook deliveries nest the whole decision under `decision`, a sibling of
-# envelope fields; the decision endpoint puts the same arrays at top level.
-# _extracted_identity handles both.
 _DIDIT_FIELD_DECISION = "decision"
-# A plural feature ARRAY, observed as JSON null (not []) before completion,
-# so every read here has to survive None.
 _DIDIT_FIELD_ID_VERIFICATIONS = "id_verifications"
 _DIDIT_FIELD_SURNAME = "last_name"
 _DIDIT_FIELD_ID_NUMBER = "document_number"
-# Where the receiver returns when the hosted flow finishes; Didit appends
-# ?verificationSessionId=&status= to whatever we give it.
 _DIDIT_FIELD_CALLBACK = "callback"
-# -----------------------------------------------------------------------------
 
 
 class IdvsError(Exception):
@@ -183,9 +170,6 @@ class MockIdvsClient:
             )
 
     async def create_session(self, *, reference: str, callback_url: str) -> IdvsSession:
-        # callback_url is accepted and ignored: the mock has no hosted flow
-        # to redirect, but keeping the parameter keeps this substitutable
-        # for DiditIdvsClient.
         session_id = f"mock-{uuid.uuid4().hex}"
         await self._store.set_json(
             self._key(session_id),
@@ -193,7 +177,6 @@ class MockIdvsClient:
         )
         return IdvsSession(
             session_id=session_id,
-            # Our own receiver app, not a vendor domain — no hosted flow in mock mode.
             session_url=f"{settings.HANDOVER_RECEIVER_BASE_URL.rstrip('/')}/mock-idvs/{session_id}",
         )
 
@@ -313,10 +296,7 @@ class DiditIdvsClient:
         url = settings.IDVS_API_URL.rstrip("/") + _DIDIT_SESSION_PATH
         body = {
             "workflow_id": settings.IDVS_WORKFLOW_ID,
-            # Our own handle, echoed back on the webhook to tie a callback to a handover.
             "vendor_data": reference,
-            # Didit appends ?verificationSessionId=&status= to this, which our
-            # route ignores — the token it needs is in the path.
             _DIDIT_FIELD_CALLBACK: callback_url,
         }
 
@@ -326,14 +306,10 @@ class DiditIdvsClient:
                 response.raise_for_status()
                 payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            # Re-raised, never swallowed: orchestration degrades the tier on
-            # IdvsError, and can only do that if told.
             logger.exception("IDVS session creation failed for reference=%s", reference)
             raise IdvsError("Could not create an IDVS session.") from exc
 
         session_id = payload.get(_DIDIT_FIELD_SESSION_ID)
-        # First key present wins — this endpoint answers with `url`, decision
-        # answers with `session_url` for the same value.
         session_url = next(
             (payload[field] for field in _DIDIT_FIELDS_SESSION_URL if payload.get(field)),
             None,

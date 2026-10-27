@@ -38,7 +38,6 @@ _NEW_TABLES = (
     "late_driver_evidence", "late_driver_evidence_artifacts",
     "driver_substitution_corrections", "driver_substitution_operations",
 )
-# Columns the migration adds to tables that already exist; dropped to rewind to legacy.
 _ADDED_COLUMNS: dict[str, tuple[str, ...]] = {
     "driver_substitutions": (
         "updated_at", "request_id", "sequence_number", "previous_substitution_id",
@@ -52,9 +51,6 @@ _ADDED_COLUMNS: dict[str, tuple[str, ...]] = {
     "exceptions": ("performed_by_driver_id", "custody_sequence"),
 }
 _SHAPE_TABLES = (*_NEW_TABLES, *_ADDED_COLUMNS)
-# Added to these tables by LATER revisions (tim_dsub_capture_findings and tim_dsub_anchor_index), so this
-# migration must not be judged on them: they are rewound with the legacy shape and left out of
-# both sides of the comparison. That revision has its own test.
 _LATER_COLUMNS: dict[str, tuple[str, ...]] = {
     "driver_substitution_confirmations": ("action_location_assessment",),
     "exceptions": ("substitution_confirmation_id",),
@@ -63,14 +59,13 @@ _LATER_NAMES = frozenset({
     "action_location_assessment", "substitution_confirmation_id",
     "uq_exceptions_substitution_separation", "uq_exceptions_substitution_seal",
     "fk_exceptions_substitution_confirmation_id",
-    "ix_driver_substitutions_anchor_status_updated",  # tim_dsub_anchor_index (C5)
+    "ix_driver_substitutions_anchor_status_updated",
 })
 _T0 = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
 
 
 @functools.cache
 def _load() -> ModuleType:
-    # Cached so the exception class the migration raises is the one tests catch.
     spec = importlib.util.spec_from_file_location("ciaran_driver_substitutions_migration", _PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -94,8 +89,6 @@ def _run(conn: Connection, step: str) -> None:
     module = _load()
     v2 = importlib.import_module('migrations.versions.2026_10_20_ciaran_driver_transfer_v2')
     with Operations.context(MigrationContext.configure(conn)):
-        # Current ORM inserts/shape assertions include v2 fields. Replaying C1 alone
-        # leaves a deliberately historical schema that those models cannot write.
         if step == 'upgrade':
             module.upgrade()
             v2.upgrade()
@@ -181,8 +174,6 @@ async def _downgrade(db: AsyncSession) -> None:
     await (await db.connection()).run_sync(_run, "downgrade")
 
 
-# ── chain position and DDL ───────────────────────────────────────────────────
-
 
 async def test_migration_chain_position() -> None:
     module = _load()
@@ -213,11 +204,8 @@ async def test_upgrade_matches_the_models_and_a_clean_downgrade_reverses_it(db_s
     assert await conn.run_sync(_shape) == model_shape
 
 
-# ── the pure legacy-chain ordering ───────────────────────────────────────────
-
 
 def _link(module: ModuleType, outgoing: uuid.UUID, incoming: uuid.UUID, at: datetime) -> Any:
-    # Any: LegacyLink belongs to a migration module loaded by path, so it has no importable type.
     return module.LegacyLink(id=uuid.uuid4(), outgoing_driver_id=outgoing, incoming_driver_id=incoming, at=at)
 
 
@@ -265,8 +253,6 @@ def test_a_legacy_chain_that_does_not_continue_is_refused(case: str) -> None:
         module.order_legacy_chain(trip_id=uuid.uuid4(), original_driver_id=a, links=links)
 
 
-# ── legacy rows through the real upgrade ─────────────────────────────────────
-
 
 async def test_a_valid_legacy_chain_migrates_with_deterministic_sequences_and_no_invented_facts(
     db_session: AsyncSession,
@@ -290,11 +276,11 @@ async def test_a_valid_legacy_chain_migrates_with_deterministic_sequences_and_no
         assert row.completion_mode is None and row.incoming_identity_status is None
         assert row.updated_at == row.created_at
     requests = await db_session.execute(select(func.count()).select_from(DriverSubstitutionRequest))
-    assert requests.scalar_one() == 0  # no request was fabricated for a legacy row
+    assert requests.scalar_one() == 0
     custody = await get_current_custody(db_session, trip=world.trip)
     assert (custody.driver_id, custody.sequence, custody.substitution_id) == (world.driver_id, 3, third)
     after = [r for r in await _legacy_snapshot(db_session)]
-    assert after == before  # every original column, FK and timestamp is untouched
+    assert after == before
 
 
 async def test_a_legacy_receipt_link_survives_the_migration(db_session: AsyncSession) -> None:
@@ -310,7 +296,7 @@ async def test_a_legacy_receipt_link_survives_the_migration(db_session: AsyncSes
 
     migrated = (await db_session.execute(select(DriverSubstitution).where(DriverSubstitution.id == row_id))).scalar_one()
     assert migrated.blockchain_receipt_id == receipt_id
-    assert migrated.anchor_status is None  # unknown, not guessed from the receipt link
+    assert migrated.anchor_status is None
 
 
 async def test_legacy_tie_with_one_possible_chain_migrates(db_session: AsyncSession) -> None:
@@ -336,7 +322,7 @@ async def test_ambiguous_legacy_chain_blocks_migration(db_session: AsyncSession)
     with pytest.raises(_load().LegacyChainError, match="ambiguous"):
         await _upgrade(db_session)
 
-    assert not await conn.run_sync(_has_new_schema)  # preflight ran before any DDL
+    assert not await conn.run_sync(_has_new_schema)
     assert await _legacy_snapshot(db_session) == before
     assert await conn.run_sync(lambda c: sorted(str(f["name"]) for f in inspect(c).get_foreign_keys("driver_substitutions"))) == fks_before
 
@@ -393,10 +379,8 @@ async def test_a_new_amendment_follows_a_migrated_legacy_link(db_session: AsyncS
 
     assert (custody.driver_id, custody.sequence, custody.substitution_id) == (world.driver_id, 3, amendment.id)
     legacy = (await db_session.execute(select(DriverSubstitution).where(DriverSubstitution.id == first))).scalar_one()
-    assert legacy.request_id is None and legacy.event_hash is None  # no prior hash invented for the chain
+    assert legacy.request_id is None and legacy.event_hash is None
 
-
-# ── downgrade never silently destroys recorded custody ───────────────────────
 
 
 async def test_downgrade_with_only_legacy_rows_restores_the_original_shape_and_keeps_every_row(
@@ -428,7 +412,7 @@ async def test_downgrade_refuses_while_a_request_exists(db_session: AsyncSession
     with pytest.raises(RuntimeError, match="recorded custody"):
         await _downgrade(db_session)
 
-    assert await conn.run_sync(_has_new_schema)  # nothing was dropped
+    assert await conn.run_sync(_has_new_schema)
 
 
 async def test_downgrade_refuses_while_a_new_style_completed_substitution_exists(db_session: AsyncSession) -> None:

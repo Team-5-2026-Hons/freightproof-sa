@@ -12,7 +12,6 @@ import type { Vehicle } from '@shared/lib/types/vehicle'
 import { cn } from '@shared/lib/utils/cn'
 import { CardTitle, FieldError, FieldLabel, FormCard } from './form-parts'
 
-// Past this many trailers, a filter box earns its space.
 const TRAILER_SEARCH_THRESHOLD = 5
 
 export interface CrewFieldsProps {
@@ -23,12 +22,10 @@ export interface CrewFieldsProps {
   trailers: readonly Vehicle[]
   combo: TrailerCombo
   errors: FieldErrors
-  /** Crew already busy in the chosen window: shown, greyed out, not choosable (FP-142). */
   busy: BusyById
   availability: AvailabilityStatus
 }
 
-// What the line above the crew cards says while there is no answer to show. Nothing once ready.
 const AVAILABILITY_LINE: Partial<Record<AvailabilityStatus, string>> = {
   idle: CREW_AVAILABILITY_COPY.needTimes,
   loading: CREW_AVAILABILITY_COPY.checking,
@@ -46,7 +43,6 @@ export function CrewFields(
   const driverErrorId = useId()
   const horseLabelId = useId()
   const horseErrorId = useId()
-  // Inactive vehicles cannot be put on a trip (the server answers 404), so they are not offered.
   const activeTrailers = trailers.filter(t => t.is_active)
   const driver = drivers.find(d => d.id === crew.driverId) ?? null
   const horse = horses.find(h => h.id === crew.horseId) ?? null
@@ -66,8 +62,6 @@ export function CrewFields(
 
   return (
     <>
-      {/* aria-live so a screen reader hears when the check finishes or fails. Not role=status:
-          the trailer card's combination verdict already is the step's status region. */}
       <p aria-live="polite" className="text-[12px] text-on-surf-v">{availabilityLine ?? ''}</p>
       <FormCard>
         <CardTitle icon="user">Driver</CardTitle>
@@ -164,8 +158,6 @@ export function CrewFields(
                 {shownTrailers.map(t => {
                   const checked = crew.trailerIds.includes(t.id)
                   const clash = busy.get(t.id)
-                  // Only an unticked trailer is blocked: one already ticked stays enabled, so the
-                  // dispatcher can untick it after the times change and it turns out to be busy.
                   const blocked = !checked && (clash !== undefined || crew.trailerIds.length >= MAX_TRAILERS)
                   return (
                     <label
@@ -204,7 +196,6 @@ export function CrewFields(
                 })}
               </fieldset>
             )}
-            {/* role=status so a screen reader hears the verdict change as trailers are ticked. */}
             <div
               role="status"
               className={cn(

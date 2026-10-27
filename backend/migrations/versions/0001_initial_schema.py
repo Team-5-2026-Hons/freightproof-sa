@@ -16,9 +16,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ------------------------------------------------------------------ #
-    # 1. organizations                                                      #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "organizations",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -29,9 +26,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 2. precincts, users, drivers, vehicles                               #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "precincts",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -92,9 +86,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("organization_id", "pulsit_device_id", name="uq_vehicles_org_pulsit"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 3. trip_templates                                                     #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "trip_templates",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -112,9 +103,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 4. evidence_artifacts — trip_id added via ALTER in step 13           #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "evidence_artifacts",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -134,9 +122,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 5. blockchain_receipts — trip_id added via ALTER in step 13          #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "blockchain_receipts",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -152,9 +137,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 6. merkle_batches — trip_id added via ALTER in step 13               #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "merkle_batches",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -168,9 +150,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 7. trips                                                              #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "trips",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -208,9 +187,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("trip_reference"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 8. trip_trailers, consignments, parcels                              #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "trip_trailers",
         sa.Column("trip_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -259,9 +235,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 9. handshake_events — deferred artifact/receipt FKs added in step 13 #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "handshake_events",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -296,9 +269,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("trip_id", "handshake_type", name="uq_handshake_events_trip_type"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 10. merkle_batch_leaves                                               #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "merkle_batch_leaves",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -313,9 +283,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("batch_id", "leaf_index", name="uq_merkle_batch_leaves_batch_index"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 11. checkpoints, exceptions, trailer_gps_snapshots                   #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "checkpoints",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -380,9 +347,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 12. sla_configs                                                       #
-    # ------------------------------------------------------------------ #
     op.create_table(
         "sla_configs",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -403,9 +367,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # ------------------------------------------------------------------ #
-    # 13. ALTER TABLE — add deferred FKs (use_alter=True in models)        #
-    # ------------------------------------------------------------------ #
     op.add_column("evidence_artifacts", sa.Column("trip_id", postgresql.UUID(as_uuid=True), nullable=False))
     op.create_foreign_key(
         "fk_evidence_artifacts_trip_id", "evidence_artifacts", "trips", ["trip_id"], ["id"]
@@ -442,9 +403,6 @@ def upgrade() -> None:
         ["blockchain_receipt_id"], ["id"],
     )
 
-    # ------------------------------------------------------------------ #
-    # 14. Indexes                                                           #
-    # ------------------------------------------------------------------ #
     op.create_index("ix_trips_driver_id", "trips", ["driver_id"])
     op.create_index("ix_trips_status", "trips", ["status"])
     op.create_index("ix_trips_order_number", "trips", ["order_number"])
@@ -458,9 +416,6 @@ def upgrade() -> None:
     op.create_index("ix_blockchain_receipts_trip_type", "blockchain_receipts", ["trip_id", "receipt_type"])
     op.create_index("ix_blockchain_receipts_hedera_tx", "blockchain_receipts", ["hedera_tx_id"])
 
-    # ------------------------------------------------------------------ #
-    # 15. updated_at trigger function + per-table triggers                 #
-    # ------------------------------------------------------------------ #
     op.execute("""
     CREATE OR REPLACE FUNCTION update_updated_at_column()
     RETURNS TRIGGER AS $$
@@ -483,14 +438,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop triggers first
     for _table in [
         "merkle_batches", "blockchain_receipts", "exceptions", "handshake_events",
         "trips", "parcels", "consignments", "drivers", "users",
     ]:
         op.execute(f"DROP TRIGGER IF EXISTS set_updated_at ON {_table};")
 
-    # Drop indexes
     for _idx in [
         "ix_blockchain_receipts_hedera_tx", "ix_blockchain_receipts_trip_type",
         "ix_parcels_barcode", "ix_parcels_consignment_id",
@@ -501,7 +454,6 @@ def downgrade() -> None:
     ]:
         op.drop_index(_idx)
 
-    # Drop deferred FK constraints before dropping columns
     op.drop_constraint("fk_handshake_blockchain_receipt", "handshake_events", type_="foreignkey")
     op.drop_constraint("fk_handshake_pod_photo", "handshake_events", type_="foreignkey")
     op.drop_constraint("fk_handshake_gate_photo", "handshake_events", type_="foreignkey")
@@ -517,7 +469,6 @@ def downgrade() -> None:
     op.drop_constraint("fk_evidence_artifacts_trip_id", "evidence_artifacts", type_="foreignkey")
     op.drop_column("evidence_artifacts", "trip_id")
 
-    # Drop tables in strict reverse creation order
     op.drop_table("sla_configs")
     op.drop_table("trailer_gps_snapshots")
     op.drop_table("exceptions")

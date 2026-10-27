@@ -42,7 +42,6 @@ export function TripRow({ trip, kind, onSelect }: TripRowProps) {
         <span className="text-title-3 font-bold leading-tight tabular-nums text-surface-on">{tile?.day ?? ''}</span>
       </span>
       <span className="min-w-0 flex-1">
-        {/* One text node, so the route reads (and is announced) as a single fact. */}
         <span className="block truncate text-headline text-surface-on">{`${origin.name} → ${destination.name}`}</span>
         {outcome === null ? (
           <span className="block truncate text-subhead text-surface-on-variant">
@@ -75,7 +74,6 @@ export function TripList({ trips, kind, onSelect }: TripListProps) {
     <ul>
       {trips.map((trip, i) => (
         <li key={trip.id}>
-          {/* 20 gutter + 48 tile + 14 gap: the rule starts where the text does. */}
           {i > 0 && <div data-list-rule aria-hidden className="ml-[82px] h-px bg-hairline" />}
           <TripRow trip={trip} kind={kind} onSelect={() => onSelect(trip)} />
         </li>

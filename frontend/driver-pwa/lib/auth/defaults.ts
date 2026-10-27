@@ -8,9 +8,6 @@ import { DemoOtpAuth } from './DemoOtpAuth'
 import type { DriverProfileSource } from './DriverProfileSource'
 import { SupabaseOtpAuth } from './SupabaseOtpAuth'
 
-// Chosen on first use, not at import: the demo/real switch and the Supabase client are
-// only needed once a provider renders without being handed its own, and the app's static
-// export imports this module long before any of that matters.
 let otpAuth: OtpAuthPort | undefined
 let profileSource: DriverProfileSource | undefined
 

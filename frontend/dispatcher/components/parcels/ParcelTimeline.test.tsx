@@ -16,7 +16,6 @@ function renderTimeline(journey: ParcelJourney, headingLevel?: HeadingLevel): HT
   return render(<ParcelTimeline journey={journey} returnTo={RETURN_TO} headingLevel={headingLevel} />).container
 }
 const step = (container: HTMLElement, key: string): HTMLElement => container.querySelector<HTMLElement>(`[data-step-key="${key}"]`)!
-// Label/value lists read as "Label: value", so a body can be asserted as the sentence a reader would take from it.
 const flat = (node: Element | null): string => {
   if (!node) return ''
   const copy = node.cloneNode(true) as Element
@@ -25,7 +24,6 @@ const flat = (node: Element | null): string => {
 }
 const exceptionLinks = (root: Element): HTMLAnchorElement[] => [...root.querySelectorAll<HTMLAnchorElement>('a[href^="/exceptions/"]')]
 const exceptionIds = (root: Element): string[] => exceptionLinks(root).map(link => hrefOf(link).pathname.replace('/exceptions/', ''))
-// Closed <details> content is still in the DOM; opening makes the intent of each body assertion explicit.
 function expand(element: HTMLElement): HTMLElement {
   element.querySelector('details')!.open = true
   return element
@@ -97,7 +95,6 @@ describe('ParcelTimeline step summaries', () => {
 
     expect(flat(step(container, 'phase-5').querySelector('summary'))).toBe('Arrived at Destination Depot (overridden)Overridden1 exception · 1 needs review08 Oct, 00:30 SAST · Destination Depot')
   })
-  // Chip is nowrap by default; a long pill would push past a 320px card, so the step lets its pills wrap.
   it('lets the issue and overridden pills wrap rather than overflow a narrow card', () => {
     const container = renderTimeline(makeOverriddenArrivalJourney({ exceptions: [makeException(1, { phase_event_id: 'phase-5' })] }))
 
@@ -131,7 +128,6 @@ describe('ParcelTimeline step summaries', () => {
 })
 
 describe('ParcelTimeline expanded step detail', () => {
-  // The description is long forensic text that belongs on the exception page; the step shows a compact line like the trip page's rows.
   it('shows each exception as one compact link: icon, time, type, severity and review state, carrying returnTo', () => {
     const journey = makeJourney({
       phases: [makePhase('loading', 0)],
@@ -171,7 +167,6 @@ describe('ParcelTimeline expanded step detail', () => {
 
     const link = exceptionLinks(body)[0]
 
-    // One line tall to the eye (32px, as on the trip page); the 44px target comes from a pseudo-element reaching into the rows either side.
     expect(link).toHaveClass('min-h-8', 'hover:bg-sec-c/40', 'before:absolute', 'before:-inset-y-1.5')
     expect(link).not.toHaveClass('text-sec')
     expect(link).not.toHaveClass('underline')
@@ -458,8 +453,6 @@ describe('ParcelTimeline with several parcel records', () => {
   })
 })
 
-// --- Assertions moved from the retired ParcelSpine tests: the behaviour survives, the row model does not. ---
-
 describe('ParcelTimeline exceptions (moved from the spine)', () => {
   const withExceptions = (exceptions: ReturnType<typeof makeException>[]): HTMLElement => renderTimeline(makeMultiStopJourney({ exceptions }))
   const body = (container: HTMLElement, key: string): HTMLElement => expand(step(container, key))
@@ -576,8 +569,6 @@ describe('ParcelTimeline rows (moved from the spine)', () => {
     const summary = details.querySelector('summary')!
     expect(details.open).toBe(false)
 
-    // Focused directly rather than with user.tab(): user-event before 14.6.2 does not count <summary> as
-    // tabbable, so Tab skips it there. A real browser focuses a native <summary> from the keyboard.
     summary.focus()
     expect(summary).toHaveFocus()
     await user.click(summary)
@@ -684,7 +675,6 @@ describe('ParcelTimeline layout', () => {
 
     expect(container.firstElementChild).toHaveClass('max-w-3xl')
   })
-  // Rows are dense, so the line needs the row's own spacing and a gap no larger than the one under the node, or it reads as a stub.
   it('gives every row room for the rail and ends each line just above the next node', () => {
     const container = renderTimeline(makeWayJourney())
 
@@ -696,7 +686,6 @@ describe('ParcelTimeline layout', () => {
 })
 
 describe('ParcelTimeline step summary spacing and chevron', () => {
-  // A chevron at the row's far end is a long way from a short title once the timeline is wide; it sits right after the title and pills.
   it('puts the chevron right after the title and pills, in the title row, not at the far end of the summary', () => {
     const container = renderTimeline(makeWayJourney())
 

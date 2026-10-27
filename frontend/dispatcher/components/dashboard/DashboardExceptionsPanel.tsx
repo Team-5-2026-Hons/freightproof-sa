@@ -23,21 +23,15 @@ import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 
 const TABLE_ID = 'dashboard-exceptions'
-// Skeleton rows match what the panel will hold, so it does not change height when data arrives.
 const SKELETON_ROWS = PANEL_ROW_LIMIT
-// Ages stay honest without a new event to re-render them.
 const CLOCK_TICK_MS = 60_000
-// Panel width below which the age column folds away rather than the table scrolling sideways.
 const RAISED_HIDE_BELOW_PX = 480
 
-// Single-line rows: five of them have to fit the panel without it scrolling, and the panel is half
-// the page. Route, driver and the exception's description are one click away on its own page.
 function buildColumns(now: Date): TableColumn<TripExceptionListItem>[] {
   return [
     {
       id: 'raised', label: 'Raised', width: 83, minWidth: 80, hideBelow: RAISED_HIDE_BELOW_PX,
       render: item => (
-        // The exact time stays available on hover; the cell reads as how long it has been waiting.
         <span className="whitespace-nowrap tabular-nums text-on-surf-v" title={fmtExceptionRaised(item.created_at)}>
           {Number.isFinite(Date.parse(item.created_at)) ? `${fmtAge(item.created_at, now)} ago` : '—'}
         </span>
@@ -45,7 +39,6 @@ function buildColumns(now: Date): TableColumn<TripExceptionListItem>[] {
     },
     {
       id: 'incident', label: 'Exception', width: 262, minWidth: 170,
-      // Chip-sized, so placeholder rows are as tall as real ones.
       skeleton: <div className="flex items-center gap-2"><SkeletonBar className="h-6 w-16 rounded-md" /><SkeletonBar className="h-3 w-28" /></div>,
       render: item => {
         const severity = EXCEPTION_SEVERITY_META[item.severity]
@@ -53,7 +46,6 @@ function buildColumns(now: Date): TableColumn<TripExceptionListItem>[] {
         return (
           <div className="flex items-center gap-2">
             <Chip type={severity.chipType} label={severity.label} />
-            {/* The row's one link; its ::after covers the <tr> (as in the Exceptions queue) so the whole row opens it. */}
             <Link
               href={withReturnTo(ROUTES.exceptionDetail(item.id), ROUTES.home)}
               aria-label={`${title} · ${exceptionReference(item.id)} · ${item.trip_reference}`}
@@ -81,10 +73,8 @@ export function DashboardExceptionsPanel(): React.JSX.Element {
   const columns = useMemo(() => buildColumns(now), [now])
   const waiting = useMemo(() => exceptionsNeedingAttention(queue.items), [queue.items])
 
-  // Skeleton only on the first load: a live refetch swaps rows in place.
   const initialLoad = queue.isLoading && queue.items.length === 0
   const loadFailed = !!queue.error && queue.items.length === 0
-  // Old rows stay up through a failed refresh, but say so, as the Incidents panel does.
   const refreshFailed = !!queue.error && queue.items.length > 0
   const loadedAt = useLastLoadedAt(queue.items)
 

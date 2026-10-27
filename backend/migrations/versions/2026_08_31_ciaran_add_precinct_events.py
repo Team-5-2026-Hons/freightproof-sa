@@ -22,11 +22,6 @@ def upgrade() -> None:
         sa.Column("event_type", sa.String(length=40), nullable=False),
         sa.Column("changed_fields", JSONB, nullable=False),
         sa.Column("changed_by_user_id", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
-        # Plain column, no inline ForeignKey — an inline use_alter=True FK is silently
-        # dropped by op.create_table (that deferred-ALTER path only fires under
-        # MetaData.create_all(), not Table.create()). The constraint is added below
-        # via op.create_foreign_key instead, matching handshake_events in
-        # 0001_initial_schema.py.
         sa.Column("blockchain_receipt_id", UUID(as_uuid=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column(
@@ -48,8 +43,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # No explicit drop_constraint for fk_precinct_events_blockchain_receipt: DROP TABLE
-    # removes every constraint on the table along with it, so a separate drop here
-    # would be redundant, not a missing step.
     op.drop_index("ix_precinct_events_precinct_id", table_name="precinct_events")
     op.drop_table("precinct_events")

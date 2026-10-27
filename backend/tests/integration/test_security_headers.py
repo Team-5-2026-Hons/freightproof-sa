@@ -36,9 +36,6 @@ def stub_health_dependencies(monkeypatch: pytest.MonkeyPatch) -> Any:
     async def _dependency() -> AsyncGenerator[Any, None]:
         yield _StubSession()
 
-    # get_read_only_db, not get_db: /health depends on the read-only session. Stubbing
-    # get_db left the real one in place, so the probe dialled DATABASE_URL and sat out
-    # its timeout.
     app.dependency_overrides[get_read_only_db] = _dependency
     monkeypatch.setattr(main_module, "get_redis", lambda: _StubRedis())
 

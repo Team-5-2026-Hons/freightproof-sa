@@ -3,8 +3,6 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import { RESIZE_KEY_STEP_PX, ResizableHeight, nextHeight } from './ResizableHeight'
 
-// jsdom has no PointerEvent, so fired pointer events would drop clientY. A MouseEvent
-// subclass carries it, which is all the drag reads.
 beforeAll(() => {
   if (typeof window.PointerEvent === 'undefined') {
     window.PointerEvent = class extends MouseEvent {} as unknown as typeof PointerEvent

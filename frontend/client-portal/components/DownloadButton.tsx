@@ -11,8 +11,6 @@ interface DownloadButtonProps {
   children: string
 }
 
-// A button, not a link: the download has to carry the viewer grant header, which
-// a plain <a href> cannot send.
 export function DownloadButton({ token, file, filename, className, children }: DownloadButtonProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)

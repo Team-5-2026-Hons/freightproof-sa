@@ -21,16 +21,10 @@ class EvidenceArtifact(Base):
 
     __tablename__ = "evidence_artifacts"
     __table_args__ = (
-        # A role without a phase (or the reverse) would be an attribution nobody can check;
-        # the pair is set together or not at all.
         CheckConstraint(
             "(phase_event_id IS NULL) = (evidence_role IS NULL)",
             name="ck_evidence_artifacts_attribution_pair",
         ),
-        # Identical-content deduplication: the same bytes for the same phase and role are one
-        # artifact, so a fallback re-upload or queue replay cannot add a second row. Partial
-        # because unattributed rows (older apps, checkpoint and exception photos) predate the
-        # rule and may legitimately share a hash.
         Index(
             "uq_evidence_artifacts_phase_role_hash",
             "phase_event_id", "evidence_role", "file_hash",
@@ -60,9 +54,6 @@ class EvidenceArtifact(Base):
     captured_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    # Which phase and evidence role the capture was taken for; both NULL when unattributed.
-    # use_alter: phase_events already points at evidence_artifacts, so this FK closes a cycle
-    # and is added after both tables exist. No ON DELETE: evidence is never cascaded away.
     phase_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("phase_events.id", use_alter=True, name="fk_evidence_artifacts_phase_event_id"),

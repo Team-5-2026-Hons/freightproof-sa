@@ -15,23 +15,11 @@ interface Props {
   artifactError?: string | null
   onRetryArtifacts?: () => void
   phase: PhaseDescriptor
-  /** Parcels scanned onto the truck at this consignment's PICKUP stop — which on a
-   *  cross-dock trip is not the stop immediately before this one. */
   originScannedCount: number | null
-  // Both optional: the POD/location sections below are unaffected by the
-  // reconciliation redesign this component exists for, but the trip detail page's
-  // call site still has both to give, so they are defaulted rather than dropped.
   precinct?: Precinct | undefined
   artifactsById?: Map<string, EvidenceArtifactWithUrl>
 }
 
-// The reconciliation is parcel-grain on both sides and sourced from two independent depot
-// systems. The driver's count is parcels too (team decision) — it is excluded from the
-// verdict not because it counts a different unit, but because it is a BLIND, independent
-// observation: the driver is never shown an expected number before committing his own
-// (the F1 fence on unloading/VisualCount.tsx). Folding it into the automated verdict
-// would spend that independence for nothing, since the two depot scans already settle
-// the count. It is recorded and anchored as evidence in its own right.
 export function ConfirmationDetail({ artifactLoading, artifactError, onRetryArtifacts,
   phase, originScannedCount, precinct, artifactsById = new Map(),
 }: Props) {

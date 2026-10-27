@@ -31,7 +31,6 @@ from tests.integration._audit_pack_anchor_helpers import raise_critical as _rais
 from tests.integration._audit_pack_anchor_helpers import review_exception as _review
 from tests.integration.audit_pack_seed import T0, AuditTrip, seed_audit_trip
 
-# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
 pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 _GENERATED = T0 + timedelta(days=1)
@@ -162,7 +161,6 @@ async def test_editing_the_description_after_anchoring_drops_the_exception_to_re
 
     assert record.tier == "recorded"
     assert record.anchors[0].tier == "recorded"
-    # The photos the receipt committed are untouched, so they stay anchored.
     assert {p.tier for p in record.photos} == {"anchored"}
 
 
@@ -236,7 +234,7 @@ async def test_trip_level_cancellation_appears_in_every_scope(db_session, audit_
         reviewed_by_user_id=audit_trip.dispatcher.id, reviewed_at=audit_trip.trip.closed_at,
         created_at=audit_trip.trip.closed_at,
     )
-    audit_trip.trip.status = TripStatus.CANCELLED  # a cancellation receipt needs a cancelled trip
+    audit_trip.trip.status = TripStatus.CANCELLED
     db_session.add(note)
     await db_session.flush()
     events = await prepare_exception_anchors(db_session, exception=note, cancelled_trip=audit_trip.trip)
@@ -306,8 +304,6 @@ async def test_verify_subject_ignores_a_receipt_id_that_belongs_to_another_subje
 
     assert outcome.status == VerifyStatus.NO_RECEIPT
 
-
-# ── Review fixes: receipt links, receipt identity, cancellation status ─────────────
 
 
 async def test_a_photo_whose_hash_changed_is_not_linked_to_the_receipt_that_committed_the_old_hash(
@@ -391,8 +387,6 @@ async def test_a_cancellation_is_not_anchored_once_the_trip_is_no_longer_cancell
 
 
 async def test_a_receipt_owned_by_another_trip_does_not_make_an_action_anchored(db_session, audit_trip):
-    # The manifest loader only fetches this trip's receipts, so this exercises the tier rule
-    # itself: a receipt handed to it with a foreign trip_id must not be awarded "Anchored".
     from app.orchestration.audit_packs.anchor_tiers import assess_exception_anchors
     from app.orchestration.evidence_anchors.artifacts import load_exception_artifacts
 

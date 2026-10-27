@@ -132,7 +132,6 @@ describe('trip resource recovery', () => {
 })
 
 describe('refreshing only the resources an event changes', () => {
-  // Counts requests per resource, so a test can say which of the three refetched.
   function callsTo(suffix: string): number {
     return vi.mocked(api.get).mock.calls.filter(([path]) => path.endsWith(suffix)).length
   }
@@ -173,8 +172,6 @@ describe('refreshing only the resources an event changes', () => {
     const { rerender, unmount } = mountAllThree()
     await flush()
 
-    // The filter must not stop the reconnect refetch: it is the only recovery for an
-    // evidence_uploaded (or any other) event missed while the stream was down.
     vi.mocked(useRealtimeChannel).mockReturnValue({ status: 'live', subscribe, reconnectNonce: 1 })
     rerender()
     await act(async () => vi.advanceTimersByTime(200))
@@ -195,9 +192,6 @@ describe('forgetting the signed-in dispatcher\'s records', () => {
     expect(first.result.current.trip).toEqual(trip)
     first.unmount()
 
-    // Whoever signs in next must not be shown this from memory: the server would refuse
-    // the revalidation behind it, and the resource layer deliberately keeps the last
-    // successful response through a failure — so a cached record would simply stay.
     act(() => { clearTripResourceCache() })
     vi.mocked(api.get).mockRejectedValue(new ApiError(403, 'Forbidden'))
     const second = renderHook(() => useTripDetail('a'))
@@ -212,9 +206,6 @@ describe('forgetting the signed-in dispatcher\'s records', () => {
     await flush()
     expect(vi.mocked(api.get)).toHaveBeenCalledTimes(1)
 
-    // A mounted hook holds a direct reference to its cache entry, so emptying the Map
-    // alone would leave it bound to a record nothing will publish to again — showing the
-    // previous dispatcher's trip until something else forced a render.
     vi.mocked(api.get).mockResolvedValue({ id: 'trip-a', trip_reference: 'FP-B' })
     await act(async () => { clearSessionCaches(); await Promise.resolve() })
     expect(vi.mocked(api.get)).toHaveBeenCalledTimes(2)
@@ -247,9 +238,6 @@ describe('a record the server refuses to serve', () => {
     act(() => result.current.refetch())
     await flush()
 
-    // Answering a refusal by leaving the record on screen is the client overruling the
-    // server on access. 404 counts: it is how this backend replies for another
-    // organisation's trip, so that the response does not leak that it exists.
     expect(result.current.trip).toBeNull()
     expect(result.current.errorStatus).toBe(status)
   })
@@ -266,8 +254,6 @@ describe('a record the server refuses to serve', () => {
     vi.mocked(api.get).mockReturnValue(new Promise(() => {}) as never)
     const second = renderHook(() => useTripDetail('a'))
 
-    // lastUpdated had to be cleared alongside the data: it is what decides whether a
-    // mount shows a loading state or renders behind a silent revalidation.
     expect(second.result.current).toMatchObject({ trip: null, isLoading: true })
   })
 
@@ -281,8 +267,6 @@ describe('a record the server refuses to serve', () => {
     act(() => result.current.refetch())
     await flush()
 
-    // A 500 or a timeout means the fetch failed, not that the record stopped being this
-    // dispatcher's. Blanking an evidence page over a flaky network is the worse outcome.
     expect(result.current.trip).toEqual(trip)
     expect(result.current.errorStatus).toBe(500)
   })

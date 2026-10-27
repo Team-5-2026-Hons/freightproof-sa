@@ -51,10 +51,6 @@ class PhaseType(str, enum.Enum):
     LOADING       = "loading"
     DEPARTURE     = "departure"
     IN_TRANSIT    = "in_transit"
-    # The custody check at the gate: the seal as found, BEFORE anything is opened.
-    # Its own phase (not a step of unloading) so "inspected before opened" is a
-    # sequence rule the server enforces, and so it gets its own completed_at and
-    # anchor.
     ARRIVAL       = "arrival"
     UNLOADING     = "unloading"
     CONFIRMATION  = "confirmation"
@@ -119,61 +115,21 @@ class DriverPositionSource(str, enum.Enum):
 
 class ExceptionType(str, enum.Enum):
     SEAL_MISMATCH          = "seal_mismatch"
-    # Distinct from SEAL_MISMATCH: MISMATCH means two recorded seals differ (a
-    # theft indicator); UNVERIFIED means no departure seal exists to compare (a
-    # gap in the chain, not evidence of tampering).
     SEAL_UNVERIFIED        = "seal_unverified"
-    # A third seal finding, distinct from both: the seal at arrival is physically
-    # damaged or missing. MISMATCH is "the number differs" (a swap); COMPROMISED is
-    # "the seal is broken" (an opening). Different findings for an insurer, so the
-    # dispatcher must be able to tell them apart without reading descriptions.
     SEAL_COMPROMISED       = "seal_compromised"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
-    # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
-    # PRECINCT" (FP-145, evidence.geofence); this is "the driver's OWN PHONE
-    # disagrees with the vehicle tracker" (evidence.proximity.evaluate_proximity) —
-    # independent questions that can both fire, or either alone, on the same
-    # handshake. See evidence.action_location.record_separation_finding.
     DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
-    # A THIRD independent question, distinct from both of the above: "does the
-    # DRIVER'S OWN PHONE agree with the STOP'S PRECINCT?" (ActionLocationAssessment.
-    # driver_in_precinct, evidence.geofence). Closes a gap neither existing type can
-    # catch: DRIVER_VEHICLE_SEPARATION only fires once a real phone-to-tracker
-    # distance was measured (proximity == "separated"), so a driver's phone that is
-    # measurably outside the fence produces NOTHING today if the truck's tracker fix
-    # is stale or unavailable — the driver could be 50km away and the record shows
-    # nothing. GPS_MISMATCH cannot catch it either: it only ever judges the TRACKER's
-    # position, never the phone's. Only ever evaluated for a phase anchored to a stop
-    # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
-    # evidence.action_location.record_driver_location_finding.
     DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
-    # A FOURTH position question: is a TRAILER where its own HORSE is? Raised only when
-    # the horse was measured inside the stop's precinct, the trailer was measured
-    # outside it, and the two trackers are further apart than
-    # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
-    # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
-    # is about the horse. See phases.findings._raise_trailer_decoupling_if_unrecorded.
     TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
-    # On the ROAD, not at a stop: a trailer tracker is further than
-    # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
-    # on an in-transit leg. No fence is involved, which is what keeps it apart from
-    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See evidence.road_check.
     TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
-    # The horse's tracker is outside its stop's precinct while that stop's departure is
-    # still pending: the truck moved without a recorded seal. See evidence.road_check.
     MOVED_BEFORE_DEPARTURE = "moved_before_departure"
-    # A known tracker returned no position. A gap in the record, not a verdict: nothing
-    # else is inferred from it. See evidence.road_check.
     TRACKER_SILENT = "tracker_silent"
     ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"
     WAYBILL_COUNT_MISMATCH = "waybill_count_mismatch"
-    # Same MISMATCH/UNVERIFIED distinction as SEAL_MISMATCH/SEAL_UNVERIFIED above:
-    # MISMATCH means identity was checked and disagreed (fraud signal); UNVERIFIED
-    # means no check completed (a gap, often benign).
     RECEIVER_ID_MISMATCH   = "receiver_id_mismatch"
     RECEIVER_ID_UNVERIFIED = "receiver_id_unverified"
     SEQUENCE_VIOLATION     = "sequence_violation"
@@ -221,16 +177,11 @@ class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"
     DELIVERY            = "delivery"
-    # One per phase anchored since every phase started anchoring on completion.
-    # PICKUP (departure) and DELIVERY (confirmation) keep their names so existing
-    # receipts stay valid.
     ACTIVATION          = "activation"
     LOADING             = "loading"
     TRANSIT_ARRIVAL     = "transit_arrival"
     ARRIVAL_INSPECTION  = "arrival_inspection"
     UNLOADING           = "unloading"
-    # A dispatcher override of any phase. Its own type, so a receipt can never make
-    # an overridden phase read as one the driver actually evidenced.
     PHASE_OVERRIDE      = "phase_override"
     CHECKPOINT_BATCH    = "checkpoint_batch"
     EXCEPTION_BATCH     = "exception_batch"
@@ -241,15 +192,10 @@ class BlockchainReceiptType(str, enum.Enum):
     DRIVER_UPDATED      = "driver_updated"
     PRECINCT_CREATED    = "precinct_created"
     PRECINCT_UPDATED    = "precinct_updated"
-    # The seal on an issued audit pack: hash of its manifest and PDF hashes.
     AUDIT_PACK_ISSUED   = "audit_pack_issued"
-    # FP-290 evidence anchors: one receipt per action on an exception, never per trip.
-    # Their values are also the event_type inside each canonical payload.
     EXCEPTION_RAISED    = "exception_raised"
     EXCEPTION_REVIEWED  = "exception_reviewed"
     TRIP_CANCELLED      = "trip_cancelled"
-    # FP-83 C5: a clarification appended to a completed driver substitution. Also the event_type
-    # inside its payload. The substitution itself uses DRIVER_SUBSTITUTION above.
     DRIVER_SUBSTITUTION_CORRECTED = "driver_substitution_corrected"
 
 
@@ -262,9 +208,7 @@ class SubjectType(str, enum.Enum):
     PHASE_EVENT     = "phase_event"
     PRECINCT_EVENT  = "precinct_event"
     AUDIT_PACK      = "audit_pack"
-    # An EvidenceAnchorEvent id (one raise / review / cancel), never the exception or trip id.
     EVIDENCE_EVENT  = "evidence_event"
-    # FP-83 C5: a completed DriverSubstitution id, and a DriverSubstitutionCorrection id.
     DRIVER_SUBSTITUTION = "driver_substitution"
     DRIVER_SUBSTITUTION_CORRECTION = "driver_substitution_correction"
 
@@ -274,7 +218,7 @@ class VehicleEventType(str, enum.Enum):
     LICENSE_PLATE_CHANGED  = "license_plate_changed"
     LICENSE_DISC_RENEWED   = "license_disc_renewed"
     VIN_UPDATED            = "vin_updated"
-    VEHICLE_UPDATED        = "vehicle_updated"   # multiple critical fields changed at once
+    VEHICLE_UPDATED        = "vehicle_updated"
     DEACTIVATED            = "deactivated"
     COSMETIC_UPDATE        = "cosmetic_update"
 
@@ -288,12 +232,8 @@ class DriverEventType(str, enum.Enum):
 
 class PrecinctEventType(str, enum.Enum):
     CREATED          = "created"
-    # Coordinates moved; separate from a resize since one changes WHERE the
-    # facility is, the other changes HOW CLOSE a handshake must be to count as inside it.
     RELOCATED        = "relocated"
     GEOFENCE_RESIZED = "geofence_resized"
-    # The property outline was drawn, edited or removed. Separate from a resize because
-    # it changes the SHAPE a handshake is judged against, not just a distance.
     GEOFENCE_RESHAPED = "geofence_reshaped"
     SHARING_CHANGED  = "sharing_changed"
     COSMETIC_UPDATE  = "cosmetic_update"
@@ -304,7 +244,6 @@ class VerifyStatus(str, enum.Enum):
     DB_MISMATCH       = "db_mismatch"
     HEDERA_MISMATCH   = "hedera_mismatch"
     NO_RECEIPT        = "no_receipt"
-    # Mirror node unreachable, SDK misconfigured, or bad stored topic_id — not tamper evidence.
     ERROR             = "error"
 
 
@@ -385,10 +324,6 @@ class ExceptionReviewOutcome(str, enum.Enum):
     DATA_DISCREPANCY       = "data_discrepancy"
     REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
     LEGACY_REVIEW          = "legacy_review"
-    # Not a finding either: marks a dispatcher's own note (phase override, trip
-    # cancellation) as reviewed by its author the moment it is written. Only the
-    # author knows why they acted, so queueing it would have a colleague rubber-stamp
-    # it. Excluded from DispatcherReviewOutcome for the same reason as LEGACY_REVIEW.
     DISPATCHER_AUTHORED    = "dispatcher_authored"
 
 
@@ -439,7 +374,6 @@ class AuditPackAccessEventType(str, enum.Enum):
     VERIFY_RUN      = "verify_run"
     DENIED_EXPIRED  = "denied_expired"
     DENIED_REVOKED  = "denied_revoked"
-    # FP-291: a link alone no longer opens a pack issued to an email address.
     PASSWORD_EMAILED     = "password_emailed"
     PASSWORD_VERIFIED    = "password_verified"
     DENIED_BAD_PASSWORD  = "denied_bad_password"
@@ -481,7 +415,6 @@ class IncidentReporterRole(str, enum.Enum):
     TRACKING_COMPANY = "tracking_company"
     POLICE           = "police"
     OPERATOR_STAFF   = "operator_staff"
-    # Opened from FreightProof's own signals (an exception), not from a person's report.
     FREIGHTPROOF     = "freightproof"
     OTHER            = "other"
 
@@ -491,7 +424,6 @@ class IncidentReportChannel(str, enum.Enum):
     WHATSAPP  = "whatsapp"
     EMAIL     = "email"
     IN_PERSON = "in_person"
-    # Opened from an exception already in FreightProof (a panic alert, a short count).
     IN_APP    = "in_app"
 
 

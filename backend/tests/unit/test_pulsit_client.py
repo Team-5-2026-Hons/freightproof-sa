@@ -46,10 +46,6 @@ _TRAILER_A = "PLT-TRAILER-001"
 _TRAILER_B = "PLT-TRAILER-002"
 _ORG_ID = uuid.uuid4()
 
-# ---------------------------------------------------------------------------
-# Hand-built payloads in the ASSUMED response shape. Not recorded. See docstring.
-# ---------------------------------------------------------------------------
-
 _ONE_POSITION = json.dumps(
     {
         "positions": [
@@ -79,8 +75,6 @@ _NO_FIX_POSITION = json.dumps(
 _THREE_POSITIONS = json.dumps(
     {
         "positions": [
-            # Deliberately out of requested order: the client must answer by device
-            # id, not by the order Pulsit happens to list them in.
             {
                 "device_id": _TRAILER_B,
                 "latitude": -33.9250,
@@ -112,10 +106,6 @@ def pulsit_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", False)
 
 
-# ---------------------------------------------------------------------------
-# Happy path
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.asyncio
 @respx.mock
@@ -140,8 +130,6 @@ async def test_coordinates_keep_full_decimal_precision(pulsit_settings):
 
     fix = await LivePulsitClient().get_position(_HORSE)
 
-    # Parsed via str(), so the decimal value sent survives rather than the binary
-    # float approximation json.loads produced.
     assert fix.lat == Decimal("-33.9248765")
     assert fix.lng == Decimal("18.4241234")
 
@@ -183,10 +171,6 @@ async def test_bearer_credential_is_sent(pulsit_settings):
     assert route.calls.last.request.headers["Authorization"] == "Bearer test-bearer-key"
 
 
-# ---------------------------------------------------------------------------
-# A trailer set — several units in one call
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.asyncio
 @respx.mock
@@ -223,13 +207,8 @@ async def test_multiple_units_cost_a_single_request(pulsit_settings):
 
 @pytest.mark.asyncio
 async def test_empty_request_makes_no_call(pulsit_settings):
-    # No respx route registered: any outbound request would fail the test.
     assert await LivePulsitClient().get_positions([]) == []
 
-
-# ---------------------------------------------------------------------------
-# Absences — none of these may raise
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -267,8 +246,6 @@ async def test_timeout_reads_as_unavailable_for_every_device(pulsit_settings):
 
     fixes = await LivePulsitClient().get_positions([_HORSE, _TRAILER_A])
 
-    # A slow tracker API must not hold a driver at a gate, and it must not claim
-    # the vehicle was missing either.
     assert [f.status for f in fixes] == [PulsitFixStatus.UNAVAILABLE] * 2
     assert [f.device_id for f in fixes] == [_HORSE, _TRAILER_A]
 
@@ -299,15 +276,10 @@ async def test_transport_failure_reads_as_unavailable(pulsit_settings):
 async def test_missing_api_url_reads_as_unavailable_without_calling_out(pulsit_settings, monkeypatch):
     monkeypatch.setattr(settings, "PULSE_API_URL", "")
 
-    # No respx route registered: any outbound request would fail the test.
     fix = await LivePulsitClient().get_position(_HORSE)
 
     assert fix.status is PulsitFixStatus.UNAVAILABLE
 
-
-# ---------------------------------------------------------------------------
-# Malformed responses
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -331,8 +303,6 @@ async def test_missing_positions_list_reads_as_unavailable_for_all(pulsit_settin
 
     fixes = await LivePulsitClient().get_positions([_HORSE, _TRAILER_A])
 
-    # The envelope itself is unreadable, so nothing in it can be trusted — and that
-    # is not a claim about either vehicle.
     assert [f.status for f in fixes] == [PulsitFixStatus.UNAVAILABLE] * 2
 
 
@@ -361,7 +331,6 @@ async def test_one_malformed_entry_does_not_discard_the_others(pulsit_settings):
 
     fixes = await LivePulsitClient().get_positions([_HORSE, _TRAILER_A])
 
-    # One bad trailer must not cost the evidence for the rest of the set.
     assert fixes[0].status is PulsitFixStatus.UNAVAILABLE
     assert fixes[1].status is PulsitFixStatus.OK
 
@@ -376,23 +345,13 @@ async def test_entry_missing_its_timestamp_reads_as_unavailable(pulsit_settings)
 
     fix = await LivePulsitClient().get_position(_HORSE)
 
-    # A position with no time is not evidence of anything — it cannot be placed
-    # against a phase moment.
     assert fix.status is PulsitFixStatus.UNAVAILABLE
 
-
-# ---------------------------------------------------------------------------
-# A naive timestamp or an impossible coordinate must never become evidence
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_a_naive_timestamp_reads_as_unavailable(pulsit_settings):
-    # A timestamp with no UTC offset at all — evidence.corroboration compares fixed_at
-    # against the driver's own timezone-aware capture instant, and a naive value would
-    # silently be treated as UTC by the subtraction, manufacturing a skew verdict from
-    # a value that was never actually anchored to a real instant.
     payload = json.dumps(
         {
             "positions": [
@@ -414,7 +373,6 @@ async def test_a_naive_timestamp_reads_as_unavailable(pulsit_settings):
 @pytest.mark.asyncio
 @respx.mock
 async def test_an_out_of_range_latitude_reads_as_unavailable(pulsit_settings):
-    # 95 degrees north does not exist — evidence of a location must be a real location.
     payload = json.dumps(
         {
             "positions": [
@@ -455,9 +413,6 @@ async def test_an_out_of_range_longitude_reads_as_unavailable(pulsit_settings):
 @pytest.mark.asyncio
 @respx.mock
 async def test_a_non_finite_latitude_reads_as_unavailable(pulsit_settings):
-    # JSON has no NaN/Infinity literal, but Pulsit's payload is only ASSUMED — a feed
-    # that emits a non-standard extension (or a client library that decodes one) must
-    # not turn "not a number" into stored evidence.
     payload = '{"positions": [{"device_id": "%s", "latitude": NaN, "longitude": 18.4241, "timestamp": "2026-09-04T08:12:03+00:00"}]}' % _HORSE
     respx.get(url__startswith=_PULSIT_BASE).mock(return_value=httpx.Response(200, text=payload))
 
@@ -490,10 +445,6 @@ async def test_one_malformed_coordinate_does_not_discard_the_others_in_the_same_
     assert fixes[0].status is PulsitFixStatus.UNAVAILABLE
     assert fixes[1].status is PulsitFixStatus.OK
 
-
-# ---------------------------------------------------------------------------
-# The mock/live switch
-# ---------------------------------------------------------------------------
 
 
 def test_factory_returns_mock_when_mock_mode_is_on(monkeypatch: pytest.MonkeyPatch):

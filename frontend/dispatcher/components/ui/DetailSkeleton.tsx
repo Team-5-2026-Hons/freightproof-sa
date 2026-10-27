@@ -4,8 +4,6 @@ import { Skeleton, SkeletonBar } from '@/components/ui/Skeleton'
 import { DETAIL_PANEL_DEFAULT_W } from '@/lib/hooks/useResizablePanel'
 import { cn } from '@shared/lib/utils/cn'
 
-// Value bars vary in width so a column of them reads as rows of different data rather than one
-// repeated bar. Deterministic (by index), so a skeleton never changes between renders.
 const VALUE_WIDTHS = ['w-28', 'w-20', 'w-32', 'w-24', 'w-16'] as const
 const DEFAULT_INFO_ROWS = 8
 const DEFAULT_TIMELINE_ITEMS = 3
@@ -16,8 +14,6 @@ export function InfoRowsSkeleton({ rows = DEFAULT_INFO_ROWS, className }: { rows
   return (
     <div aria-hidden className={className}>
       {Array.from({ length: rows }, (_, index) => (
-        // InfoRow's own height, measured in the browser: 36.5px, or 35.5px for the last row, which
-        // has no divider.
         <div key={index} className="flex min-h-[36.5px] items-center justify-between gap-3 border-b border-outline-v/20 last:min-h-[35.5px] last:border-0">
           <SkeletonBar className="h-2.5 w-20" />
           <SkeletonBar className={cn('h-3', VALUE_WIDTHS[index % VALUE_WIDTHS.length])} />
@@ -31,7 +27,6 @@ export function InfoRowsSkeleton({ rows = DEFAULT_INFO_ROWS, className }: { rows
 export function TabsSkeleton() {
   return (
     <div aria-hidden className="mb-4 flex gap-2">
-      {/* 41px: the real tab bar's height, measured in the browser, so the content below starts at the same place. */}
       <Skeleton className="h-[41px] w-28 rounded-md" />
       <Skeleton className="h-[41px] w-24 rounded-md" />
     </div>
@@ -59,7 +54,6 @@ export function TimelineSkeleton({ items = DEFAULT_TIMELINE_ITEMS }: { items?: n
 }
 
 interface SplitDetailSkeletonProps {
-  /** Announced to screen readers, e.g. "Loading vehicle". */
   label: string
   infoRows?: number
 }

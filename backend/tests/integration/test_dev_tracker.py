@@ -70,7 +70,6 @@ async def pulsit_client(
 
 
 def _token_for(seed) -> str:
-    # sub must be the seeded user: get_current_dispatcher looks the user up by JWT subject.
     trip = seed["trip"]
     return make_token(sub=str(trip.created_by_user_id), role="dispatcher", org_id=str(trip.operator_organization_id))
 
@@ -90,8 +89,6 @@ async def test_scenario_requires_auth(pulsit_client, db_session):
 
     resp = await pulsit_client.post(_SCENARIO_URL, json={"trip_id": str(seed["trip"].id), "scenario": "en_route"})
 
-    # 403, not 401: a missing bearer is refused by HTTPBearer before auth runs — the same
-    # code test_dev_triggers.test_list_trips_requires_auth pins for the other dev routes.
     assert resp.status_code == 403
 
 
@@ -128,7 +125,7 @@ async def test_left_before_departure_at_final_stop_is_409_without_moving_tracker
 ):
     seed = await _seed(db_session, completed_through=PhaseType.ARRIVAL)
     tracker = get_pulsit_client(organization_id=seed["trip"].operator_organization_id)
-    assert isinstance(tracker, MockPulsitClient)  # staging exists only on the mock
+    assert isinstance(tracker, MockPulsitClient)
     for vehicle in (seed["horse"], seed["trailer"]):
         await tracker.stage_position(
             vehicle.pulsit_device_id, lat=Decimal("-33.7342000"), lng=Decimal("18.9621000"),

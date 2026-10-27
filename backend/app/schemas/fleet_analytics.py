@@ -28,14 +28,11 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
-# GET /tiles
-
 
 class CriticalWaiting(_Frozen):
     """Critical problems waiting for a dispatcher's review, right now."""
 
     count: int
-    # When the longest-waiting one was raised. None when nothing is waiting.
     oldest_created_at: datetime | None
 
 
@@ -73,13 +70,8 @@ class FleetTilesResponse(_Frozen):
     critical_waiting: CriticalWaiting
     licence_expiry: LicenceExpiry
     unused_vehicles: UnusedVehicles
-    # The first day "All time" covers: the SAST day of the organisation's first trip, or
-    # today with none. The page loads the tiles first, so it can tell which View-by
-    # options All time allows (at most 53 bars) before any chart asks for data.
     all_time_start: date
 
-
-# Shared by the endpoints that take a period
 
 
 class PeriodEcho(_Frozen):
@@ -90,8 +82,6 @@ class PeriodEcho(_Frozen):
     end: date
     grain: Grain | None
 
-
-# GET /activity
 
 
 class TripsBucket(_Frozen):
@@ -109,7 +99,6 @@ class CancellationsBucket(_Frozen):
     bucket_start: date
     is_partial: bool
     cancelled_count: int
-    # Closed plus cancelled trips whose end fell in the bucket: the "out of" for the rate.
     ended_count: int
 
     @computed_field  # type: ignore[prop-decorator]
@@ -132,11 +121,8 @@ class ActivityResponse(_Frozen):
     period: PeriodEcho
     trips: list[TripsBucket]
     cancellations: list[CancellationsBucket]
-    # Newest first.
     cancelled_trips: list[CancelledTrip]
 
-
-# GET /patterns
 
 
 class PatternBar(_Frozen):
@@ -144,8 +130,6 @@ class PatternBar(_Frozen):
 
     key: int
     event_count: int
-    # How many calendar days of the period had this hour / weekday / date / month: the
-    # divisor that keeps a rare bar (the 31st) from looking quiet just because it is rare.
     day_count: int
 
     @computed_field  # type: ignore[prop-decorator]
@@ -165,13 +149,10 @@ class PatternSet(_Frozen):
 
 
 class PatternsResponse(_Frozen):
-    # Both event types in one answer, so the page's Departures | Arrivals switch never refetches.
     period: PeriodEcho
     departures: PatternSet
     arrivals: PatternSet
 
-
-# GET /on-time
 
 
 class PunctualityBucket(_Frozen):
@@ -181,7 +162,6 @@ class PunctualityBucket(_Frozen):
     is_partial: bool
     departures_with_plan: int
     on_time_departures: int
-    # Closed trips with a planned arrival AND an attested final arrival.
     arrivals_with_plan: int
     on_time_arrivals: int
 
@@ -204,7 +184,6 @@ class LatenessBar(_Frozen):
 
 
 class Lateness(_Frozen):
-    # All six bands, always, in LatenessBand order (early first, 3 h+ last).
     departures: list[LatenessBar]
     arrivals: list[LatenessBar]
 
@@ -232,9 +211,6 @@ class OnTimeResponse(_Frozen):
     lateness: Lateness
     plan_spread: PlanSpread
 
-
-# GET /problems
-# Every count excludes dispatcher notes.
 
 _PER_100 = 100
 
@@ -305,10 +281,6 @@ class ProblemsResponse(_Frozen):
     risky_times: list[RiskyTimeBlock]
 
 
-# GET /review
-# Not limited to closed trips: reviewing is independent of trip status. The migration-only
-# legacy_review marker is left out everywhere (it records that a review happened, not what it found).
-
 
 class WaitingAgeBar(_Frozen):
     """Chart 4.1, right now: critical problems waiting for review, by how long they've waited."""
@@ -351,8 +323,6 @@ class ReviewResponse(_Frozen):
     outcomes: list[ReviewOutcomeCount]
 
 
-# GET /evidence
-
 
 class TrackerBucket(_Frozen):
     """Chart 5.1: attested stop steps of the closed-trip set, by what the tracker said. The
@@ -362,7 +332,6 @@ class TrackerBucket(_Frozen):
     is_partial: bool
     confirmed_count: int
     mismatch_count: int
-    # Kept, not dropped: a high count means tracker COVERAGE is broken, a different problem.
     unwitnessed_count: int
 
     @computed_field  # type: ignore[prop-decorator]
@@ -404,10 +373,7 @@ class ReceiverSignoffBucket(_Frozen):
 
 
 class SignoffFlags(_Frozen):
-    # Receiver confirmations in the period sent from a device already holding a FreightProof
-    # session, most plausibly the driver's own phone (FP-240's bearer_token_present).
     same_phone_count: int
-    # Rejected scan attempts in the period against the organisation's own trips.
     rejected_attempt_count: int
 
 
@@ -419,14 +385,11 @@ class EvidenceResponse(_Frozen):
     signoff_flags: SignoffFlags
 
 
-# GET /routes
-
 
 class SiteActivity(_Frozen):
     """Chart 1.6: attested pickups and deliveries at one site over the period."""
 
     precinct_id: UUID
-    # Looked up by id only: a site belongs to the client, not the operator.
     precinct_name: str | None
     pickup_count: int
     delivery_count: int
@@ -440,10 +403,7 @@ class LaneRisk(_Frozen):
     destination_precinct_id: UUID
     destination_name: str | None
     trip_count: int
-    # First attested departure to final arrival, per closed trip, pooled for the period: the
-    # lane view's actual_transit_minutes.
     driving_minutes: DurationStats
-    # Excludes dispatcher notes, unlike the lane view's exception_count.
     problem_count: int
 
     @computed_field  # type: ignore[prop-decorator]
@@ -454,13 +414,9 @@ class LaneRisk(_Frozen):
 
 class RoutesResponse(_Frozen):
     period: PeriodEcho
-    # Busiest first.
     sites: list[SiteActivity]
-    # Busiest first.
     lanes: list[LaneRisk]
 
-
-# GET /incidents
 
 
 class IncidentPin(_Frozen):
@@ -480,7 +436,5 @@ class IncidentPin(_Frozen):
 
 class IncidentsResponse(_Frozen):
     period: PeriodEcho
-    # Newest first.
     pins: list[IncidentPin]
-    # Reports in the period with no location, so an empty map is never mistaken for no problems.
     unlocated_count: int

@@ -10,12 +10,8 @@ import type {
   IncidentUpdateCreate,
 } from '@/lib/types/incident'
 
-// Reporting a hijacking may stop the trip, which cancels any pending driver handover in the
-// same request; give it more than the default budget on a slow day.
 const REPORT_TIMEOUT_MS = 30_000
-// An upload carries up to the evidence size limit over a dispatcher's office connection.
 const UPLOAD_TIMEOUT_MS = 60_000
-// The evidence view builds the trip's audit-pack manifest server-side.
 const EVIDENCE_TIMEOUT_MS = 30_000
 
 export function reportIncident(tripId: string, body: IncidentCreate): Promise<IncidentDetail> {

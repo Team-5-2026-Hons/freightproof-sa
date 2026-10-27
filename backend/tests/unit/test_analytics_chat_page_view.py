@@ -11,13 +11,11 @@ from app.orchestration.analytics_chat.tools import TOOLS
 from app.schemas.analytics_chat import ChatPreset, ChatTab, PageView
 from tests.page_copy import FRONTEND
 
-# Thursday 22 Oct 2026.
 _TODAY = date(2026, 10, 22)
 
 
 def test_the_page_view_choices_match_the_page_and_the_tools() -> None:
     assert set(get_args(ChatPreset)) == {preset.value for preset in PeriodPreset}
-    # Every tab id names a figure tool; the page's own tab list says the same ids.
     assert set(get_args(ChatTab)) == {tool.tab for tool in TOOLS if tool.tab is not None}
     page = (FRONTEND / "app" / "(app)" / "analytics" / "page.tsx").read_text(encoding="utf-8")
     for tab in get_args(ChatTab):

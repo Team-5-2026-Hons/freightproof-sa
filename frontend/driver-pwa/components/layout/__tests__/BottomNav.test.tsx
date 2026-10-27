@@ -36,7 +36,6 @@ describe('BottomNav', () => {
   })
 
   it('test_has_no_separate_profile_button_any_more', () => {
-    // Settings merged into the Profile tab (Tim, 14 Oct); the floating circle is gone.
     render(<BottomNav />)
 
     expect(screen.queryByRole('button', { name: 'Open driver profile' })).toBeNull()
@@ -46,12 +45,10 @@ describe('BottomNav', () => {
   it('test_profile_tab_shows_the_driver_not_a_generic_icon', () => {
     render(<BottomNav />)
 
-    // Initials until a photo is added; decorative, because the tab's label names it.
     expect(screen.getByRole('button', { name: 'Profile' })).toHaveTextContent('SD')
   })
 
   it('test_active_tab_is_ink_not_blue', () => {
-    // Blue means progress only (design system 0); a selected tab is ink.
     mockPathname = ROUTES.profile
     render(<BottomNav />)
 

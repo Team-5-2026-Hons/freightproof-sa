@@ -42,8 +42,6 @@ export interface CompletionAct {
 }
 export interface ExceptionAct { kind: 'exception'; key: string; exceptionId: string; at: string; trigger: 'handshake' | 'override' | 'event' }
 
-// System findings emitted by phases/completion.py (_finish_phase) and phases/findings.py.
-// override.py also emits seal_unverified when inspection was bypassed, so it is not a check.
 const HANDSHAKE_FINDING_TYPES: readonly TripException['exception_type'][] = [
   'driver_vehicle_separation', 'driver_location_mismatch', 'gps_mismatch', 'trailer_location_mismatch',
   'seal_mismatch', 'seal_unverified', 'seal_compromised', 'parcel_count_mismatch',
@@ -70,8 +68,6 @@ export interface TripEventAct { kind: 'trip_event'; key: string; at: string; eve
 
 export type PhaseAct = EvidenceAct | MilestoneAct | CompletionAct | ExceptionAct | AbsentAct | AnchorAct | ExpectedAct | TripEventAct
 
-// Roles whose upload is a file to open, not an image to draw: the receiver's attestation and
-// the linehaul PDF. Drawn as an <img>, a PDF reads as "Image failed to load".
 const DOCUMENT_ROLES: ReadonlySet<EvidenceRole> = new Set<EvidenceRole>(['pod_signature', 'linehaul_pdf'])
 
 /** True when this role's evidence is shown as a document (and counted as files), not a photo. */
@@ -81,25 +77,17 @@ export function isDocumentRole(role: EvidenceRole): boolean {
 
 export interface PhaseActsInput {
   phase: PhaseDescriptor
-  /** Leg-scoped departure time and seal (legDepartureAt, departureSealForLeg). */
   allPhases: readonly PhaseDescriptor[]
-  /** phase_event_id === currentTripPhase(trip)?.phase_event_id. */
   isActive: boolean
   tripStatus: TripStatus
-  /** Set by cancel_trip and by closure. */
   tripClosedAt: string | null
   artifacts: readonly EvidenceArtifactWithUrl[]
   exceptions: readonly TripException[]
   receipt: BlockchainReceipt | undefined
 }
 
-/** D16: "Received" is worth showing only when it differs from "Taken" by at least this
- *  much, in either direction; below it the gap is ordinary upload latency. */
 export const RECEIVED_GAP_DISPLAY_MS = 120_000
 
-// Optional by nature, so a phase without one is not "missing" it and is never expected or
-// reported absent: the waybill copy is optional paperwork, and the linehaul PDF is a derived
-// readable copy of the scan (the scan, linehaul_photo, is the evidence).
 const UNTRACKED_ROLES: ReadonlySet<EvidenceRole> = new Set<EvidenceRole>(['waybill_photo', 'linehaul_pdf'])
 const WAREHOUSE_SCAN_BLOCK = 'warehouse_scan'
 const ALL_ROLES = Object.keys(EVIDENCE_ROLE_FIELD) as EvidenceRole[]
@@ -138,13 +126,11 @@ interface Ctx {
   phase: PhaseDescriptor
   allPhases: readonly PhaseDescriptor[]
   resolved: boolean
-  /** The trip is live: not dormant (`created`), closed or cancelled. */
   running: boolean
   isActive: boolean
   tripStatus: TripStatus
   tripClosedAt: string | null
   artifactsById: Map<string, EvidenceArtifactWithUrl>
-  /** Artifact ids the phase's role columns cite, with the role of the column that cites them. */
   cited: Map<string, EvidenceRole>
   attributed: EvidenceArtifactWithUrl[]
   exceptions: TripException[]
@@ -162,8 +148,6 @@ function buildContext(input: PhaseActsInput): Ctx {
     const id = roleColumn(phase, role)
     if (id) cited.set(id, role)
   }
-  // Both halves of the attribution pair must be present: a half pair is rejected by the
-  // server, so anything else is unattributed and not this phase's to claim.
   const attributed = input.artifacts.filter(a => a.phase_event_id === phase.phase_event_id && a.evidence_role !== null)
   const exceptionsById = new Map<string, TripException>()
   for (const exception of input.exceptions) {
@@ -194,8 +178,6 @@ function rowsAreVisible(ctx: Ctx): boolean {
   return ctx.tripStatus === 'cancelled' && (ctx.attributed.length > 0 || ctx.exceptions.length > 0)
 }
 
-// ── Evidence rows ────────────────────────────────────────────────────────────
-
 function evidenceState(ctx: Ctx, id: string, artifact: EvidenceArtifactWithUrl | undefined): EvidenceActState {
   if (ctx.resolved) {
     if (ctx.cited.has(id)) return 'submitted'
@@ -224,8 +206,6 @@ function evidenceActFor(ctx: Ctx, id: string): EvidenceAct | null {
     artifactId: id,
     provenance: evidenceProvenance(ctx, artifact),
     state,
-    // A cited id missing from the list still yields a row (D25): losing submitted
-    // evidence because its metadata did not load would be dishonest.
     metadataAvailable: artifact !== undefined,
     takenAt: artifact?.captured_at ?? null,
     receivedAt: artifact?.created_at ?? null,
@@ -243,8 +223,6 @@ function evidenceActs(ctx: Ctx): EvidenceAct[] {
   return acts
 }
 
-// ── Milestone, completion, exceptions ────────────────────────────────────────
-
 function milestoneActs(ctx: Ctx): MilestoneAct[] {
   if (ctx.phase.phase_type !== 'in_transit') return []
   const at = legDepartureAt(ctx.allPhases, ctx.phase)
@@ -254,7 +232,6 @@ function milestoneActs(ctx: Ctx): MilestoneAct[] {
     key: `${ctx.phase.phase_event_id}:milestone:departed`,
     event: 'departed',
     at,
-    // Leg-scoped: a leg whose own departure recorded no seal shows none (D40).
     sealNumber: departureSealForLeg(ctx.allPhases, ctx.phase),
   }]
 }
@@ -318,8 +295,6 @@ export function buildExceptionActs(
   return toExceptionActs(phase, exceptions, artifactsById).sort(compareByEventTime)
 }
 
-// ── Absent, anchor, expected ─────────────────────────────────────────────────
-
 function hasAttributedUpload(ctx: Ctx, role: EvidenceRole): boolean {
   return ctx.attributed.some(a => a.evidence_role === role)
 }
@@ -371,8 +346,6 @@ function expectedActs(ctx: Ctx): ExpectedAct[] {
   return [...evidence, expectedAct(ctx, null, waiting)]
 }
 
-// ── Ordering ─────────────────────────────────────────────────────────────────
-
 function eventTime(act: PhaseAct): number | null {
   switch (act.kind) {
     case 'evidence': return toMillis(act.takenAt)
@@ -409,7 +382,6 @@ export function buildPhaseActs(input: PhaseActsInput): PhaseAct[] {
   const allTimed = [
     ...evidenceActs(ctx), ...milestoneActs(ctx), ...completionActs(ctx), ...exceptionActs(ctx),
   ].sort(compareByEventTime)
-  // Confirmation findings are attached to the tap, not fabricated road events a moment later.
   const attached = allTimed.filter((act): act is ExceptionAct => act.kind === 'exception' && act.trigger !== 'event')
   const timed = allTimed.filter(act => act.kind !== 'exception' || act.trigger === 'event')
     .flatMap<PhaseAct>(act => act.kind === 'completion' ? [act, ...attached] : [act])
@@ -421,8 +393,6 @@ export function buildPhaseActs(input: PhaseActsInput): PhaseAct[] {
   ]
 }
 
-// Rows that close a list rather than mark a point on it: what the completion found missing (it
-// sits just before the completion), the receipt and what is still expected.
 const TAIL_KINDS: ReadonlySet<PhaseAct['kind']> = new Set<PhaseAct['kind']>(['absent', 'anchor', 'expected'])
 
 /** Merges the leg's incidents and transfers into a card's rows by time, so "Departed", a panic,

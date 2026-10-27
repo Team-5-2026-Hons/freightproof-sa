@@ -34,7 +34,6 @@ from app.db.session import get_db
 from tests.conftest import auth_header, make_token
 
 
-# Override get_db so the endpoint uses the same rolled-back session as seed_data
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session: AsyncSession):
     async def _get_db():
@@ -43,8 +42,6 @@ async def override_get_db(db_session: AsyncSession):
     yield
     app.dependency_overrides.pop(get_db, None)
 
-
-# ─── Seed fixtures ──────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def seed_data(db_session: AsyncSession):
@@ -73,8 +70,6 @@ async def seed_data(db_session: AsyncSession):
     db_session.add(user)
     await db_session.flush()
 
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
         is_shared=True,
         id=uuid.uuid4(),
@@ -134,17 +129,10 @@ async def seed_data(db_session: AsyncSession):
     }
 
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
-
-# create_trip's phase plan (h1/activation) gates on the SAME operating day as this
-# value (phases.scheduling._reject_if_not_due) — "now" keeps every payload in this file
-# immediately activatable, which several tests below rely on.
 def _schedule_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-# Arrival is required at creation (FP-139). The length only has to be plausible and
-# clear MINIMUM_TRIP_DURATION.
 _PLANNED_TRIP_LENGTH = timedelta(hours=10)
 
 
@@ -168,8 +156,6 @@ def _auth_headers(seed: dict) -> dict:
     )
 
 
-# ─── Tests ──────────────────────────────────────────────────────────────────
-
 async def test_create_trip_returns_201(client: AsyncClient, seed_data, db_session):
     resp = await client.post(
         "/api/v1/trips",
@@ -192,20 +178,12 @@ async def test_create_trip_response_shape(client: AsyncClient, seed_data, db_ses
     assert body["trip_reference"].startswith("FP-")
     assert len(body["journey_lock_hash"]) == 64
     assert body["idvs_check_status"] == "pending"
-    # POST /trips now returns the trip's whole committed phase plan,
-    # not just the single trip_creation row — this fixture's single-leg
-    # (2-stop) trip yields 8 rows (length is data, but this fixture's own).
     assert len(body["phases"]) == 8
     assert body["phases"][0]["phase_type"] == "trip_creation"
-    # h0 completes inline in create_trip once its anchor succeeds —
-    # it's never "pending" in a real response.
     assert body["phases"][0]["status"] == "completed"
     assert body["phases"][0]["sequence_number"] == 0
     assert len(body["trailers"]) == 1
     assert body["exceptions"] == []
-    # Trip creation is P0 (fail-closed): the journey lock hash is anchored to
-    # Hedera synchronously as part of creation, so one receipt always exists
-    # by the time this response is returned (not zero, as it was pre-refactor).
     assert len(body["blockchain_receipts"]) == 1
     assert body["blockchain_receipts"][0]["receipt_type"] == "journey_lock"
     assert "created_at" in body
@@ -356,8 +334,6 @@ async def test_create_trip_422_same_origin_and_destination(client: AsyncClient, 
 
 
 async def test_create_trip_403_without_demo_mode(client: AsyncClient, seed_data, db_session, monkeypatch):
-    # FastAPI's HTTPBearer returns 403 (not 401) when the Authorization header
-    # is completely absent. 401 is reserved for an invalid/expired token.
     monkeypatch.setattr("app.core.config.settings.DEMO_MODE", False)
     resp = await client.post(
         "/api/v1/trips",
@@ -414,8 +390,6 @@ async def test_create_trip_hedera_timeout_returns_504_and_no_trip(client: AsyncC
 async def test_create_trip_hedera_service_error_returns_502_and_no_trip(client: AsyncClient, seed_data, db_session):
     payload = _make_payload(seed_data)
 
-    # HederaSubmitError subclasses HederaServiceError — the realistic failure
-    # shape for the endpoint's generic HederaServiceError → 502 handler.
     resp = await _post_trip_with_hedera_failure(
         client, payload, _auth_headers(seed_data),
         HederaSubmitError("Failed to submit hash to Hedera HCS."),
@@ -522,7 +496,6 @@ async def test_list_trips_counts_exception_and_overridden_phases_as_done(
 
     assert resp.status_code == 200
     row = resp.json()[0]
-    # trip_creation is completed at creation; the exception and override phases add two.
     assert row["phase_completed"] == 3
     assert row["phase_total"] == 8
 
@@ -552,9 +525,6 @@ async def test_list_trips_status_filter(client: AsyncClient, seed_data, db_sessi
         "/api/v1/trips?status=created",
         headers=_auth_headers(seed_data),
     )
-    # TripStatus.IN_TRANSIT (a LEGACY per-handshake value) was deleted — CLOSED
-    # is the coarse-model equivalent of "a status this freshly-created trip
-    # cannot have yet".
     resp_closed = await client.get(
         "/api/v1/trips?status=closed",
         headers=_auth_headers(seed_data),
@@ -577,9 +547,6 @@ async def test_get_trip_detail_returns_200(client: AsyncClient, seed_data, db_se
     body = resp.json()
     assert resp.status_code == 200
     assert body["id"] == trip_id
-    # create_trip now writes the full 8-row committed phase plan for this
-    # single-leg (2-stop) trip, and get_trip_detail returns every
-    # PhaseEvent row — not just H0 — ordered by sequence_number.
     assert len(body["phases"]) == 8
     assert body["phases"][0]["phase_type"] == "trip_creation"
 
@@ -688,9 +655,6 @@ async def test_get_trip_detail_phases_agree_with_creation_response(
 
     _assert_derived_phase_fields_populated(get_body["phases"])
 
-    # Same trip, same plan: POST's and GET's stop_sequence-by-phase must agree,
-    # keyed by (phase_type, sequence_number) since that pair is unique within
-    # one trip's plan and doesn't depend on row ordering matching exactly.
     post_stop_sequences = {
         (p["phase_type"], p["sequence_number"]): p["stop_sequence"] for p in post_body["phases"]
     }
@@ -707,8 +671,6 @@ async def test_get_trip_detail_not_found_returns_404(client: AsyncClient, seed_d
     )
     assert resp.status_code == 404
 
-
-# ─── Consignment loop / empty legs ──────────────────────────────────────────────
 
 async def test_create_trip_persists_consignments_and_parcels(client: AsyncClient, seed_data, db_session):
     """POST with two consignments persists a Consignment row per waybill (with the
@@ -783,8 +745,6 @@ async def test_get_trip_detail_scanned_counts_track_real_scans(
     trip_id = uuid.UUID(create_resp.json()["id"])
     consignment_id = uuid.UUID(create_resp.json()["consignments"][0]["id"])
 
-    # MOCKWAY001 (the seed payload's waybill) has 2 tracks — stamp one directly,
-    # mirroring what consignments.scans._stamp_parcel does on a real warehouse scan.
     parcels = (await db_session.execute(
         select(Parcel).where(Parcel.consignment_id == consignment_id)
     )).scalars().all()
@@ -839,8 +799,6 @@ async def test_create_trip_409_on_waybill_already_assigned_to_another_trip(
     assert first.status_code == 201
     first_trip_reference = first.json()["trip_reference"]
 
-    # Same crew, but booked from the moment trip A is due back, so the crew is free (FP-139)
-    # and the waybill is the only thing that can refuse trip B.
     later = datetime.fromisoformat(payload["planned_arrival_at"])
     second = await client.post(
         "/api/v1/trips",
@@ -920,8 +878,6 @@ async def test_create_trip_response_carries_seeded_position_cache(client: AsyncC
     body = resp.json()
     assert body["status"] == "created"
     assert body["current_phase"] == "activation"
-    # Stop sequences are 0-indexed (origin=0, destination=1) — activation
-    # happens at the origin stop, sequence 0.
     assert body["current_stop"] == 0
 
 
@@ -941,14 +897,10 @@ async def test_trip_list_item_carries_plan_counts(client: AsyncClient, seed_data
     assert resp.status_code == 200
     row = next(t for t in resp.json() if t["id"] == created["id"])
     assert row["phase_total"] == len(created["phases"])
-    assert row["phase_completed"] == 1          # trip_creation only
+    assert row["phase_completed"] == 1
     assert row["current_phase"] == "activation"
-    # Stop sequences are 0-indexed (origin=0, destination=1) — activation
-    # happens at the origin stop, sequence 0.
     assert row["current_stop"] == 0
 
-
-# ─── Global exception handler must not swallow deliberate errors ──────────────
 
 async def test_global_handler_preserves_http_exceptions(client: AsyncClient, seed_data, db_session):
     """main.py's new @app.exception_handler(Exception) hooks Starlette's outer
@@ -1008,11 +960,6 @@ async def test_create_trip_422_on_implausibly_short_duration(
     ).scalars().all()
     assert trips == []
 
-
-# ─── Crew clashes at creation (FP-139) ──────────────────────────────────────────
-#
-# Trip A is created through the API, so its window comes from the same code path as any
-# real trip's. Trip B is an empty leg: no waybill, so only the crew can refuse it.
 
 async def _another_crew(db_session: AsyncSession, seed: dict) -> dict[str, str]:
     """A second driver, horse and trailer in the same organisation."""

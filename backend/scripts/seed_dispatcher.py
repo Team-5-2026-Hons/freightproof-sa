@@ -30,7 +30,6 @@ from app.db.models.organisations import Organization
 from app.db.models.people import User
 from app.integrations.supabase_admin import create_dispatcher_auth_user
 
-# Env var checked for the password when --password is omitted, before prompting.
 _PASSWORD_ENV_VAR = "DISPATCHER_SEED_PASSWORD"
 
 
@@ -69,7 +68,6 @@ async def seed_dispatcher(
     role: DispatcherRole,
     password: str,
 ) -> None:
-    # DEMO_MODE bypasses auth entirely with a fixed stub user, so real accounts are pointless there.
     if settings.DEMO_MODE:
         raise SystemExit("DEMO_MODE is enabled; real dispatcher accounts only apply when DEMO_MODE=False.")
 
@@ -78,17 +76,14 @@ async def seed_dispatcher(
 
     try:
         async with async_session() as db:
-            # Guard: users.organization_id is a NOT NULL FK — the org must already exist.
             org = await db.execute(select(Organization).where(Organization.id == org_id))
             if org.scalar_one_or_none() is None:
                 raise SystemExit(f"No organization with id {org_id}. Provide an existing organizations.id.")
 
-            # Guard: users.email is unique — don't attempt a duplicate row.
             existing = await db.execute(select(User).where(User.email == email))
             if existing.scalar_one_or_none() is not None:
                 raise SystemExit(f"A users row already exists for {email}. Aborting.")
 
-            # 1) Supabase Auth account — carries the role claim; returns the UUID we link to.
             try:
                 auth_id = await create_dispatcher_auth_user(
                     email=email, password=password, full_name=full_name, role=role,
@@ -99,7 +94,6 @@ async def seed_dispatcher(
                     "Delete it in the dashboard or use a different email."
                 )
 
-            # 2) Public users row, linked by UUID so get_current_dispatcher resolves it.
             db.add(User(
                 id=auth_id,
                 organization_id=org_id,

@@ -43,13 +43,8 @@ import { captureActorLease, currentActorId, isActorLeaseCurrent } from '@/lib/se
 import { substitutionRoleFor } from '@/lib/utils/driver-substitution'
 import { isValidSealFormat, normalizeSeal } from '@/lib/utils/seal-format'
 
-// Contract bound for the not-applicable reason and the discrepancy note.
 export const SUBSTITUTION_TEXT_MAX_LENGTH = 1000
-// Shares the report lock registry so a background retry and an on-screen submit of the same
-// capture can never run at once.
 const LOCK_PREFIX = 'substitution:'
-
-// ── Pure rules (no I/O) ──────────────────────────────────────────────────────────
 
 /**
  * The vehicles that need a seal check: every trailer, or the horse when there are none
@@ -73,8 +68,6 @@ export function sealApplicableVehicles(vehicles: readonly VehicleRef[]): Vehicle
  */
 export type SealExpectation = 'none-yet' | 'possible' | 'expected' | 'unknown'
 
-// The seal is applied by the departure phase's `2-capture-seal` step (phase-meta STEP_SLUGS),
-// so every phase before departure runs with no seal on the load.
 const PHASES_BEFORE_SEAL: readonly PhaseType[] = ['trip_creation', 'activation', 'loading']
 const SEAL_APPLYING_PHASE: PhaseType = 'departure'
 
@@ -84,15 +77,12 @@ export function sealExpectation(context: Pick<DriverSubstitutionContextRead, 'cu
   return context.current_phase === SEAL_APPLYING_PHASE ? 'possible' : 'expected'
 }
 
-/** The recorded reason when the ledger says no seal exists yet; the driver may still edit it. */
 export const NO_SEAL_YET_REASON = 'No seal applied yet: the trip has not departed'
 
 function emptySealCheck(vehicleId: string): CaptureSealCheck {
   return { vehicleId, condition: null, sealNumber: '', notApplicableReason: '', photos: [] }
 }
 
-// Pre-filled from the ledger, never from trip_type: a loaded trip taken over before departure
-// genuinely has no seal, and asking the driver to read one invites an invented number.
 function noSealYetCheck(vehicleId: string): CaptureSealCheck {
   return { ...emptySealCheck(vehicleId), condition: 'not_applicable', notApplicableReason: NO_SEAL_YET_REASON }
 }
@@ -170,10 +160,8 @@ function sealCheckBody(check: CaptureSealCheck, condition: SubstitutionSealCondi
   return {
     vehicle_id: check.vehicleId,
     condition,
-    // Number only where a seal exists to read; normalised exactly as the phase rule expects.
     seal_number: condition === 'intact' || condition === 'damaged' ? normalizeSeal(check.sealNumber) : null,
     photo_artifact_ids: photoIds,
-    // Per vehicle, and only for the empty-leg answer — never one note copied onto every vehicle.
     not_applicable_reason: condition === 'not_applicable' ? check.notApplicableReason.trim() : null,
   }
 }
@@ -186,7 +174,6 @@ function legacyConfirmationBody(capture: SubstitutionCapture): ConfirmSubstituti
     client_request_id: capture.clientRequestId,
     expected_version: capture.expectedVersion,
     captured_at: capture.capturedAt,
-    // Null together when the phone had no position: absence is recorded, never invented.
     latitude: capture.position?.latitude ?? null,
     longitude: capture.position?.longitude ?? null,
     accuracy_metres: capture.position !== null ? capture.position.accuracyMetres : null,
@@ -210,20 +197,12 @@ export function ownConfirmation(
   return context.confirmations.find((confirmation) => confirmation.driver_id === actorId) ?? null
 }
 
-// ── Sending (module scope: shared by the screen and the background retry) ────────
-
 export type CaptureSendOutcome =
-  /** 200: saved. `result.state` says whether the transfer completed. */
   | { kind: 'saved'; result: SubstitutionRequestRead }
-  /** No answer (offline, 5xx, 429). Kept as sent; the same request is retried later. */
   | { kind: 'waiting' }
-  /** The arrangement changed under the capture; kept, and the driver decides again. */
   | { kind: 'version-changed'; note: string }
-  /** Cancelled, replaced or already completed; kept for review, never resent. */
   | { kind: 'not-pending'; note: string }
-  /** Refused for its content; back to draft with the server's reason. */
   | { kind: 'rejected'; note: string }
-  /** Another send of this capture is running, or it is not this driver's. */
   | { kind: 'busy' }
 
 const VERSION_CHANGED_NOTE = 'Dispatch changed this arrangement after you started your check. Your check is kept. Review the details and confirm again.'
@@ -232,8 +211,6 @@ const KEY_REUSED_NOTE = 'The server already holds a different version of this ch
 const PHOTO_REFUSED_NOTE = 'A photo was not accepted. Retake it and confirm again.'
 
 async function backToDraft(capture: SubstitutionCapture, note: string): Promise<void> {
-  // The sent body is dropped so the next press is a NEW intentional action with its own key;
-  // nothing the driver captured is lost.
   await saveCapture({ ...capture, status: 'draft', submittedBody: null, note })
 }
 
@@ -242,7 +219,6 @@ async function runSend(key: string): Promise<CaptureSendOutcome> {
   const capture = await getCapture(key)
   if (lease === null || !isActorLeaseCurrent(lease) || capture === null || capture.status !== 'sending' || capture.actorId !== lease.actorId) return { kind: 'busy' }
 
-  // Photos first, each with its own stable request id and its artifact id saved on landing.
   const working: SubstitutionCapture = { ...capture, sealChecks: capture.sealChecks.map((check) => ({ ...check, photos: [...check.photos] })) }
   for (const check of working.sealChecks) {
     for (const [index, photo] of check.photos.entries()) {
@@ -267,7 +243,6 @@ async function runSend(key: string): Promise<CaptureSendOutcome> {
     }
   }
 
-  // The body is fixed once and saved BEFORE the POST: every retry resends exactly it.
   if (!isActorLeaseCurrent(lease)) return { kind: 'waiting' }
   const body = working.submittedBody ?? (working.captureFormat === 'observation_v2' ? confirmationBody(working) : legacyConfirmationBody(working))
   if (working.submittedBody === null) {
@@ -278,7 +253,6 @@ async function runSend(key: string): Promise<CaptureSendOutcome> {
   try {
     if (!isActorLeaseCurrent(lease)) return { kind: 'waiting' }
     const result = await confirmDriverSubstitution(working.tripId, working.requestId, body)
-    // Bytes are on the server now; drop the local copies, keep the ids and the answer.
     await saveCapture({
       ...working,
       status: 'saved',
@@ -316,7 +290,6 @@ export async function sendSubstitutionCapture(key: string): Promise<CaptureSendO
   try {
     return await runSend(key)
   } catch (err: unknown) {
-    // A storage failure mid-send: the capture is still on disk as it was last saved.
     console.warn('useSubstitutionCapture: send interrupted; will retry', err)
     return { kind: 'waiting' }
   } finally {
@@ -347,20 +320,15 @@ export async function flushSubstitutionCaptures(): Promise<boolean> {
   return anySaved
 }
 
-// ── The hook ─────────────────────────────────────────────────────────────────────
-
 export interface SubstitutionCaptureState {
   context: DriverSubstitutionContextRead | null
   capture: SubstitutionCapture | null
   role: SubstitutionRole | null
-  /** This driver's confirmation the server already holds — rendered read-only. */
   submitted: SubstitutionConfirmationDetail | null
   problems: string[]
   isLoading: boolean
   loadError: string | null
-  /** True while a send is running on this screen. */
   isSending: boolean
-  /** The capture could not be stored on this phone, so it must not be sent. */
   storageError: boolean
   update: (patch: Partial<Pick<SubstitutionCapture, 'confirmedVehicleIds' | 'discrepancyNote'>>) => void
   updateSealCheck: (vehicleId: string, patch: Partial<Omit<CaptureSealCheck, 'vehicleId' | 'photos'>>) => void
@@ -390,8 +358,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
   const role = context !== null && actorId !== null ? substitutionRoleFor(context, actorId) : null
   const submitted = context !== null && actorId !== null ? ownConfirmation(context, actorId) : null
 
-  // Persist every edit before it can be sent. A failed write is surfaced, not swallowed: the
-  // contract requires the draft and its request id to be stored before upload/submit.
   const persist = useCallback(async (next: SubstitutionCapture) => {
     setCapture(next)
     try {
@@ -415,7 +381,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
     }
   }, [tripId, requestId])
 
-  // Load the server's arrangement, then this driver's local capture for it.
   useEffect(() => {
     if (actorId === null) return
     let live = true
@@ -443,7 +408,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
         else if (loaded.request_format === 'immediate_v2' && loadedRole === 'outgoing') setCapture(null)
         else if (stored === null) setCapture(newCapture(actorId, loaded, loadedRole))
         else if (stored.status === 'sending' && ownConfirmation(loaded, actorId) !== null) {
-          // The response was lost but the server has it: the original saved result stands.
           const saved: SubstitutionCapture = { ...stored, status: 'saved', result: loaded, note: null }
           setCapture(saved)
           void saveCapture(saved).catch((err: unknown) => console.warn('useSubstitutionCapture: could not record the saved check', err))
@@ -456,7 +420,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
     return () => { live = false }
   }, [tripId, requestId, actorId])
 
-  // Edits are allowed only on a draft. A sent capture is fixed until the server answers.
   const edit = useCallback((change: (current: SubstitutionCapture) => SubstitutionCapture) => {
     const current = captureRef.current
     if (current === null || current.status !== 'draft') return
@@ -499,13 +462,10 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
     setIsSending(true)
     try {
       const outcome = await sendSubstitutionCapture(key)
-      // A receipt may finish safely for its original actor; it must not launch a
-      // context read or replace another account's UI after that account changes.
       if (lease === null || !isActorLeaseCurrent(lease)) return outcome
       const reloaded = await getCapture(key).catch(() => null)
       if (!isActorLeaseCurrent(lease)) return outcome
       if (reloaded !== null) setCapture(reloaded)
-      // Every terminal answer changes what the server holds: read it again, never assume.
       if (outcome.kind !== 'waiting' && outcome.kind !== 'busy') await refetch()
       return outcome
     } finally {
@@ -519,8 +479,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
     if (lease === null || current === null || current.actorId !== lease.actorId || current.status !== 'draft' || context === null) return null
     if (context.state !== 'pending' || (context.request_format === 'immediate_v2' && current.role === 'outgoing')) return null
     if (captureProblems(current, context.vehicles).length > 0) return null
-    // The moment of the declaration, taken on this device. Position is best effort: a phone
-    // that cannot give one records "unavailable" (null), it never blocks or invents a fix.
     const capturedAt = new Date().toISOString()
     const observation = location !== null ? await location.captureObservation() : { position: null, unavailableReason: 'unknown' as const }
     const fix = observation.position
@@ -528,7 +486,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
     const sending: SubstitutionCapture = {
       ...current,
       status: 'sending',
-      // A NEW intentional action: its own key, made against the version on screen now.
       clientRequestId: crypto.randomUUID(),
       expectedVersion: context.version,
       submittedBody: null,
@@ -541,7 +498,6 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
     try {
       await saveCapture(sending)
     } catch (err: unknown) {
-      // Not stored means a retry could not be proven the same request: do not send.
       console.error('useSubstitutionCapture: could not store the confirmation before sending', err)
       setStorageError(true)
       return null

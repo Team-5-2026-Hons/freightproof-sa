@@ -12,17 +12,10 @@
  */
 export const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000
 
-/** Grace subtracted from the server's window so the client always fires first. */
 const CLIENT_LEAD_MS = 15 * 1000
 
-/** The effective client-side deadline. */
 export const CLIENT_IDLE_TIMEOUT_MS = SESSION_IDLE_TIMEOUT_MS - CLIENT_LEAD_MS
 
-/**
- * Storage key holding the last-activity timestamp, in ms since epoch.
- * localStorage, not sessionStorage: the timestamp must outlive the tab, and this also
- * gives cross-tab sync for free via the `storage` event.
- */
 export const LAST_ACTIVITY_KEY = 'fp:last-activity'
 
 /** The minimum subset of Storage this module needs. Lets tests pass a plain stub. */
@@ -37,8 +30,6 @@ export function recordActivity(store: ActivityStore, now: number = Date.now()): 
   try {
     store.setItem(LAST_ACTIVITY_KEY, String(now))
   } catch {
-    // Storage can throw (Safari private mode, full quota); silently ignored since this
-    // fires on every interaction and the in-memory timer/backend check still cover it.
   }
 }
 
@@ -47,7 +38,6 @@ export function clearActivity(store: ActivityStore): void {
   try {
     store.removeItem(LAST_ACTIVITY_KEY)
   } catch {
-    // A stale timestamp left behind is harmless — it can only expire the next session early.
   }
 }
 
@@ -94,10 +84,6 @@ export function msUntilExpiry(
   return Math.max(1, lastActivity + timeoutMs - now)
 }
 
-/**
- * DOM events counted as activity. Deliberately interaction events only — no `mousemove`
- * or `scroll`, which incidental cursor drift or animation would trigger.
- */
 export const ACTIVITY_EVENTS = [
   'pointerdown',
   'keydown',

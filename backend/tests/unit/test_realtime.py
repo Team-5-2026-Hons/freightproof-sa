@@ -12,8 +12,6 @@ from app.core import realtime
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 
 
-# ── TripEvent + channel ───────────────────────────────────────────────────────
-
 
 def test_trip_event_json_roundtrip_preserves_all_fields():
     event = TripEvent(id=uuid4(), kind=RealtimeKind.PHASE_COMPLETED)
@@ -46,8 +44,6 @@ def test_channel_key_uses_org_prefix():
     assert realtime._channel(org_id) == f"org:{org_id}"
 
 
-# ── Outbox: enqueue / drain / rollback ────────────────────────────────────────
-
 
 def test_enqueue_event_appends_to_session_outbox():
     session = SimpleNamespace(info={})
@@ -69,7 +65,6 @@ def test_drain_outbox_emits_each_event_and_pops_the_outbox():
     realtime._drain_outbox(info, lambda o, e: emitted.append((o, e)))
 
     assert emitted == [(org_id, event)]
-    # Popped, not just read — a second commit on the same session must not re-publish.
     assert "realtime_outbox" not in info
 
 
@@ -91,8 +86,6 @@ def test_on_rollback_discards_outbox_without_emitting():
 
     assert "realtime_outbox" not in session.info
 
-
-# ── publish_event / subscribe over a fake Redis ───────────────────────────────
 
 
 class _FakePubSub:
@@ -146,7 +139,7 @@ async def test_subscribe_yields_parsed_events_and_cleans_up(monkeypatch):
     org_id = uuid4()
     event = TripEvent(id=uuid4(), kind=RealtimeKind.EXCEPTION_RAISED)
     messages = [
-        {"type": "subscribe", "data": 1},  # confirmation frame — must be ignored
+        {"type": "subscribe", "data": 1},
         {"type": "message", "data": event.model_dump_json()},
     ]
     fake = _FakeRedis(messages)
@@ -156,12 +149,9 @@ async def test_subscribe_yields_parsed_events_and_cleans_up(monkeypatch):
 
     assert received == [event]
     assert fake._pubsub.subscribed == [f"org:{org_id}"]
-    # The generator's finally-block must have torn the subscription down.
     assert fake._pubsub.unsubscribed == [f"org:{org_id}"]
     assert fake._pubsub.closed is True
 
-
-# ── Fail-open publish ─────────────────────────────────────────────────────────
 
 
 async def test_safe_publish_swallows_redis_errors(monkeypatch):
@@ -170,11 +160,8 @@ async def test_safe_publish_swallows_redis_errors(monkeypatch):
 
     monkeypatch.setattr(realtime, "publish_event", boom)
 
-    # Must not raise: a broker failure cannot surface on the driver's committed write.
     await realtime._safe_publish(uuid4(), TripEvent(id=uuid4(), kind=RealtimeKind.PHASE_COMPLETED))
 
-
-# ── Hook registration ─────────────────────────────────────────────────────────
 
 
 def test_register_realtime_hook_is_idempotent():
@@ -184,6 +171,5 @@ def test_register_realtime_hook_is_idempotent():
     realtime.register_realtime_hook()
     realtime.register_realtime_hook()
 
-    # Attached exactly once despite two calls.
     assert event.contains(Session, "after_commit", realtime._on_commit)
     assert event.contains(Session, "after_rollback", realtime._on_rollback)

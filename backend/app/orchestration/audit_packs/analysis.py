@@ -30,24 +30,14 @@ from app.schemas.audit_pack import (
     StopRecord,
 )
 
-# Longest silence between two position fixes before the pack calls it a gap. TAPA TSR
-# 2023 §9.14 sets tracker reporting intervals between 5 and 60 minutes depending on
-# level; 30 sits in that band and matches the level most general freight is audited at.
 COVERAGE_GAP_THRESHOLD = timedelta(minutes=30)
 
-# Two fixes this close count as "the same place". Wide enough to absorb phone GPS
-# jitter in a truck stop, narrow enough that a truck crawling in traffic still moves.
 STATIONARY_RADIUS_METRES = 150.0
 
-# Shorter stops are fuel, toll plazas and traffic lights — reporting them would bury
-# the stops an adjuster actually asks about (TAPA §9.21 unscheduled stops).
 STATIONARY_MIN_DURATION = timedelta(minutes=20)
 
-# Last N digits of an SA ID number left visible — enough for a reader to match it
-# against the claim form, too few to reconstruct date of birth or gender.
 ID_NUMBER_VISIBLE_DIGITS = 4
 
-# TAPA TSR 2023 §9.3.1: the Buyer (client) must be told of a suspected theft within 24h.
 CLIENT_NOTIFICATION_WINDOW = timedelta(hours=24)
 
 _UNFINISHED_STATUSES = frozenset({"pending", "in_progress"})
@@ -57,7 +47,6 @@ _HIJACKING = "hijacking"
 _THEFT_REPORTED = "theft_reported"
 _REPORTED = "reported"
 _REVIEWED = "reviewed"
-# exchange_location is nullable (a handover need not name a place); an f-string would print "None".
 _EXCHANGE_LOCATION_UNRECORDED = "location not recorded"
 
 
@@ -103,7 +92,6 @@ def find_coverage_gaps(
 
 
 def _inside_stop(lat: float, lng: float, stop: StopRecord) -> bool:
-    # Same shape rule as evidence.geofence: an outline, when present, replaces the circle.
     if stop.geofence_polygon:
         return geo_polygon.contains(stop.geofence_polygon, (lat, lng))
     return haversine_metres(lat, lng, stop.lat, stop.lng) <= stop.geofence_radius_metres
@@ -194,8 +182,6 @@ def _summary_from_investigation(
     if not hijackings:
         return None
     first = min(hijackings, key=lambda i: i.reported_occurred_at or i.received_at)
-    # When it reportedly happened, else when FreightProof was told: the honest anchor for a
-    # report, and the instant the "last known position" is read at.
     at = first.reported_occurred_at or first.received_at
     return IncidentSummary(
         exception_ids=list(first.exception_ids), first_exception_type=_HIJACKING, first_raised_at=at,
@@ -218,11 +204,8 @@ def summarise_incident(
             _summary_from_exceptions(exceptions, fixes), _summary_from_investigation(investigations, fixes),
         ) if summary is not None
     ]
-    # Exception first on a tie: a captured event outranks a report of the same moment.
     return min(candidates, key=lambda c: (c.first_raised_at, c.basis != "exception"), default=None)
 
-
-# ── Observations ──────────────────────────────────────────────────────────────
 
 
 def _phase_label(phase: PhaseRecord) -> str:
@@ -504,8 +487,6 @@ def _exchange_phrase(substitution: DriverSubstitutionRecord) -> str:
 
 def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation]:
     driver = manifest.driver
-    # FP-83: the trip-level check is the ORIGINAL driver's, taken at the start of the journey; it
-    # says nothing about a later driver, whose own observed status is on their handover line.
     scope = " (original driver, at the start of the trip)" if driver.substitutions else ""
     observations = [Observation(
         code="identity.driver",
@@ -621,8 +602,6 @@ def _observe_one_investigation(manifest: AuditPackManifest, i: InvestigationReco
             text=f"Trip stopped by the operator from {label} at {format_sast(i.trip_stopped_at)}.", evidence_ids=ids,
         ))
     if i.confidence == _REPORTED:
-        # A phone call written down is still a phone call: say so, so no reader takes the
-        # incident for something FreightProof detected or confirmed.
         observations.append(Observation(
             code="incident.report_vs_system", level="info",
             text=(f"{label} rests on a report from the {i.reporter_role.replace('_', ' ')} "

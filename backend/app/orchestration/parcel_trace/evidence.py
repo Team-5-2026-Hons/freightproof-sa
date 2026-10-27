@@ -15,15 +15,12 @@ OBSERVED_STATUSES = frozenset({PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION})
 
 
 def last_recorded_location(records: JourneyRecords, relevant_ids: set[UUID]) -> ParcelRecordedLocation | None:
-    # Ledger order, not maintenance timestamps: a later anchor retry is not a newer observation.
     for event in reversed(records.phases):
         if event.id not in relevant_ids or event.status not in OBSERVED_STATUSES:
             continue
         source, captured = _location_source(event)
         if source is None:
             continue
-        # Transit belongs to its DEPARTURE stop in the ledger; a captured road/arrival
-        # position must not be labelled as though it were observed at that depot.
         stop = next((s for s in records.stops if s.id == event.trip_stop_id), None) if event.phase_type != PhaseType.IN_TRANSIT else None
         return ParcelRecordedLocation(
             phase_event_id=event.id,
@@ -37,7 +34,6 @@ def last_recorded_location(records: JourneyRecords, relevant_ids: set[UUID]) -> 
 def _location_source(event: PhaseEvent) -> tuple[Literal["horse_tracker", "driver_phone"] | None, datetime | None]:
     assessment = event.action_location_assessment
     if isinstance(assessment, dict):
-        # A persisted assessment owns its capture context; do not splice in legacy columns.
         for source, prefix in (("horse_tracker", "tracker"), ("driver_phone", "driver")):
             if assessment.get(f"{prefix}_lat") is not None and assessment.get(f"{prefix}_lng") is not None:
                 value = assessment.get(f"{prefix}_captured_at")
@@ -115,5 +111,4 @@ def _seal_status(
         return "unverified"
     if departure.seal_number != inspection.seal_number:
         return "mismatch"
-    # Equal numbers do not fill in an unrecorded condition, especially on legacy plans.
     return "matched" if inspection.seal_condition == "intact" else "unverified"

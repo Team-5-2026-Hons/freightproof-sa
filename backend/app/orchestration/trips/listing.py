@@ -43,10 +43,6 @@ from app.schemas.vehicles import VehicleRead
 async def _attention_by_trip(
     db: AsyncSession, trip_ids: list[uuid.UUID],
 ) -> dict[uuid.UUID, TripAttentionResponse]:
-    # NEEDS_REVIEW only, not "!= REVIEWED": REVIEWED rows (including dispatcher-authored
-    # notes, which are saved already reviewed) are excluded — only unreviewed rows are
-    # awaiting a dispatcher decision, so only they count here (FP-146 follow-on).
-    # One grouped query yields the severity and claim split the dashboard ranks by.
     exc_result = await db.execute(
         select(
             TripException.trip_id,
@@ -99,8 +95,7 @@ async def list_trips(
 
     trip_ids = [t.id for t in trips]
 
-    # Batch-fetch to avoid N+1 queries on list views.
-    current = await current_driver_ids(db, trip_ids=[t.id for t in trips])  # FP-83: who holds each trip now
+    current = await current_driver_ids(db, trip_ids=[t.id for t in trips])
     drivers_result = await db.execute(select(Driver).where(Driver.id.in_(set(current.values()))))
     drivers_by_id: dict[uuid.UUID, Driver] = {d.id: d for d in drivers_result.scalars().all()}
 
@@ -109,7 +104,6 @@ async def list_trips(
     )
     trip_trailers = tt_result.scalars().all()
 
-    # Horses and trailers are both vehicles: one statement for the page, not one per kind.
     vehicle_ids = {t.horse_id for t in trips} | {tt.trailer_id for tt in trip_trailers}
     vehicles_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(vehicle_ids)))
     vehicles_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in vehicles_result.scalars().all()}
@@ -121,10 +115,6 @@ async def list_trips(
 
     attention_by_trip = await _attention_by_trip(db, trip_ids)
 
-    # Same batching shape as exc_counts above: one grouped query for the page.
-    # `completed` here means "resolved" in the ledger's sense (phases.state): an overridden
-    # phase or one that finished with a recorded exception will never be revisited, so both
-    # count as done.
     plan_result = await db.execute(
         select(
             PhaseEvent.trip_id,
@@ -195,9 +185,6 @@ def _history_filters(
             Trip.trip_reference.icontains(q, autoescape=True),
             Driver.full_name.icontains(q, autoescape=True),
         ]
-        # A manifest number is matched exactly (spec §12); "69" must not find 690. Bounded
-        # because pp_manifest_number is a Postgres integer: a longer run of digits typed
-        # into search would otherwise be a 500, not "no results".
         term = q.strip()
         if term.isdecimal() and int(term) <= PG_INTEGER_MAX:
             matches.append(Trip.pp_manifest_number == int(term))
@@ -213,9 +200,6 @@ def _history_filters(
             filters.append(
                 Trip.closed_at >= datetime.combine(from_date, time.min, tzinfo=operations_tz)
             )
-        # date.max has no representable day-after boundary. Omitting the upper
-        # predicate in that one case preserves inclusive semantics because no
-        # Python/driver timestamp can fall beyond the maximum calendar date.
         if to_date is not None and to_date < date.max:
             filters.append(
                 Trip.closed_at

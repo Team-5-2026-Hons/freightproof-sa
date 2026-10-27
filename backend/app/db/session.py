@@ -31,8 +31,6 @@ class DatabaseSession(AsyncSession):
             async with asyncio.timeout(settings.DB_CLEANUP_TIMEOUT_SECONDS):
                 await action()
         except BaseException as exc:
-            # Includes cancellation: returning a connection whose operation is still
-            # in flight would poison the next request. Preserve the original failure.
             try:
                 await self.invalidate()
             except Exception as discard_error:
@@ -48,17 +46,8 @@ class DatabaseSession(AsyncSession):
         await self._cleanup(super().close, "close")
 
 
-# pool_pre_ping=True detects and recycles stale connections before checkout, since
-# Supabase drops idle connections aggressively.
-#
-# pool_size/max_overflow are explicit (not SQLAlchemy's default 5+10=15): that default
-# equals Supabase's session-mode pooler ceiling of 15 for the whole project, so one
-# instance alone could exhaust every slot four devs share. See DB_POOL_SIZE/DB_MAX_OVERFLOW
-# in core/config.py.
 engine = create_db_engine(settings)
 
-# expire_on_commit=False avoids expiring attributes after commit, which would
-# trigger lazy loads — illegal in an async context.
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=DatabaseSession,
@@ -108,6 +97,4 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         await rollback_after_error(session)
         raise
     finally:
-        # Explicit ownership avoids an additional, shielded __aexit__ close after an
-        # already-bounded close. A cleanup failure must not replace a primary error.
         await _close_session(session, failed=failed)

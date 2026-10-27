@@ -69,24 +69,12 @@ from app.schemas.action_location import (
 
 logger = logging.getLogger(__name__)
 
-# Name of the two partial unique indexes on `exceptions`
-# (migration ciaran_action_location) — matched against violated_constraint() so an
-# unrelated unique violation on this table is never misread as this replay/race.
 _PHASE_SEPARATION_INDEX = "uq_exceptions_phase_separation"
 _CHECKPOINT_SEPARATION_INDEX = "uq_exceptions_checkpoint_separation"
-# FP-83 C3 CP4: a driver-handover capture, the third scope (see TripException.substitution_confirmation_id).
 _SUBSTITUTION_SEPARATION_INDEX = SUBSTITUTION_SEPARATION_INDEX
 
-# Name of the DRIVER_LOCATION_MISMATCH partial unique index (migration
-# tim_driver_location_mismatch). Phase-scoped only — driver_in_precinct is never
-# set for a checkpoint's own assessment (build_checkpoint_assessment/build_capture_
-# assessment always leave it None), so there is no checkpoint-scoped twin to name.
 _PHASE_DRIVER_LOCATION_INDEX = "uq_exceptions_phase_driver_location"
 
-# A dispatcher-facing description must stay a short, scannable fact, not a wall of
-# driver-submitted text — the payload already caps location_warning_reason at 1000
-# chars (schemas/phases.py) before it ever reaches this module; this is a second,
-# tighter guard on what actually renders inline in the exception feed.
 _MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION = 300
 
 def _describe_driver_reason(driver_reason: Optional[str]) -> str:
@@ -201,10 +189,6 @@ async def record_separation_finding(
             )
             return
 
-        # separation_metres is never None here: evaluate_proximity only returns the
-        # 'separated' verdict once a real distance was measured (see its own
-        # docstring) — reached this line only because assessment.proximity ==
-        # 'separated' above.
         description = (
             f"Driver phone and vehicle tracker were recorded {format_distance(cast(float, assessment.separation_metres))} "
             f"apart at this phase; limit {format_distance(assessment.max_separation_metres)}."
@@ -216,9 +200,6 @@ async def record_separation_finding(
             phase_event_id=phase_event_id,
             checkpoint_id=checkpoint_id,
             substitution_confirmation_id=substitution_confirmation_id,
-            # Scoped like the GPS_MISMATCH finding (phases.findings): the stop this
-            # assessment's phase was anchored to, or None for a checkpoint/trip_
-            # creation, which have none.
             trip_stop_id=assessment.expected_trip_stop_id,
             exception_type=ExceptionType.DRIVER_VEHICLE_SEPARATION,
             source=ExceptionSource.SYSTEM,
@@ -233,9 +214,6 @@ async def record_separation_finding(
                 await db.flush()
         except IntegrityError as integrity_exc:
             if not is_unique_violation(integrity_exc) or violated_constraint(integrity_exc) != index_name:
-                # Not the race this savepoint exists to tolerate — a real integrity
-                # fault must be visible, not folded into "someone else already wrote
-                # it".
                 raise
             logger.info(
                 "DRIVER_VEHICLE_SEPARATION insert race for %s — another request already wrote it", context,
@@ -247,10 +225,6 @@ async def record_separation_finding(
             context, assessment.separation_metres, assessment.max_separation_metres,
         )
 
-        # FP-147's invariant, same as every other system-detected exception in this
-        # codebase: a finding that tells no one leaves the dispatcher's screen out of
-        # step with the record. Inside the try: a failure here must not undo a
-        # handshake the driver already physically completed.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -260,9 +234,6 @@ async def record_separation_finding(
         )
 
     except Exception:
-        # Only the named partial-index race is an expected recovery path (handled by
-        # the savepoint above). Any other DB or queue failure must remain observable to
-        # the caller; logging it and returning would falsely report persisted evidence.
         raise
 
 
@@ -308,8 +279,6 @@ async def _persist_driver_location_mismatch(
             not is_unique_violation(integrity_exc)
             or violated_constraint(integrity_exc) != _PHASE_DRIVER_LOCATION_INDEX
         ):
-            # Not the race this savepoint exists to tolerate — a real integrity
-            # fault must be visible, not folded into "someone else already wrote it".
             raise
         return False
     return True
@@ -370,10 +339,6 @@ async def record_driver_location_finding(
             )
             return
 
-        # The fence and tolerance are never None here: driver_in_precinct is only ever
-        # set to True/False (never left None) once build_phase_assessment resolved a
-        # precinct with usable coordinates and called evaluate_geofence — the same
-        # branch that populates these fields (a radius OR an outline, never neither).
         tolerance_metres = assessment.precinct_tolerance_metres or 0.0
         if assessment.precinct_geofence_polygon is not None:
             fence = f"property outline of {len(assessment.precinct_geofence_polygon)} corners"
@@ -395,9 +360,6 @@ async def record_driver_location_finding(
 
         logger.info("Recorded DRIVER_LOCATION_MISMATCH for %s", context)
 
-        # Same FP-147 invariant as record_separation_finding: inside the try, so a
-        # queue failure here must not undo a handshake the driver already physically
-        # completed.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -407,9 +369,6 @@ async def record_driver_location_finding(
         )
 
     except Exception:
-        # Only the named partial-index race is an expected recovery path (handled by
-        # the savepoint above). Any other DB or queue failure must remain observable to
-        # the caller; logging it and returning would falsely report persisted evidence.
         raise
 
 

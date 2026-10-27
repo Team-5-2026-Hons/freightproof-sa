@@ -18,17 +18,10 @@ import type { RouteCoordinate, TripRoute, TripRouteLeg } from '@/lib/types/route
 
 const EARTH_RADIUS_METRES = 6_371_000
 
-// Further than this from the line (beyond the fix's own uncertainty) and the truck is
-// treated as off the planned route: a snapped ETA would be a confident guess about a road
-// it is not on. Wide enough that a parallel service road or a truck stop doesn't trip it.
 export const OFF_ROUTE_METRES = 500
 
-// Pace only kicks in once the plan says a meaningful stretch has been driven. Before that,
-// one red robot in the first five minutes would double the ETA for a ten-hour leg.
 export const MIN_PACE_SAMPLE_SECONDS = 15 * 60
 
-// Clamped so a long fuel stop or a GPS glitch can't produce an absurd ETA. 0.8 floor: a
-// truck cannot sustainably beat its own free-flow plan by more than that.
 export const PACE_MIN = 0.8
 export const PACE_MAX = 2
 
@@ -37,7 +30,6 @@ export type RouteEstimate =
       kind: 'on_route'
       arrivalAt: Date
       remainingMetres: number
-      /** 1 = on plan; above 1 = slower than planned. */
       pace: number
     }
   | { kind: 'off_route'; offRouteMetres: number }
@@ -99,8 +91,6 @@ export function progressAlongLeg(
   for (let i = 0; i < line.length - 1; i += 1) {
     const segmentLength = haversineMetres(line[i], line[i + 1])
     const { t, distanceMetres } = projectOntoSegment(p, line[i], line[i + 1])
-    // Nearest segment wins. A road that passes the same spot twice (a hairpin pass) could
-    // snap to the wrong pass for one fix — tolerable for a display ETA, not for evidence.
     if (distanceMetres < best.distanceMetres) {
       best = { distanceMetres, along: total + t * segmentLength }
     }
@@ -131,8 +121,6 @@ export function estimateArrival({
   const progress = progressAlongLeg(leg, position)
   if (progress === null) return null
 
-  // A fix with a 300 m halo that lands 600 m from the road may well be on it — only call
-  // it off route when even the near edge of the uncertainty misses the line.
   const tolerance = OFF_ROUTE_METRES + (position.accuracyM ?? 0)
   if (progress.offRouteMetres > tolerance) {
     return { kind: 'off_route', offRouteMetres: progress.offRouteMetres }

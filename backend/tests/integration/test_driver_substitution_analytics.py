@@ -21,14 +21,11 @@ from app.db.models.trips import DriverSubstitution, Trip
 from tests.integration import test_analytics as analytics
 from tests.integration.test_analytics import Operator, _single_leg, _start, _trip
 
-# The analytics suite's fixtures, bound here so pytest finds them for this module.
 views = analytics.views
 operator = analytics.operator
 lane = analytics.lane
 month = analytics.month
 
-# The default single leg: activation, loading and departure by the original driver, then a
-# handover in transit; in_transit, unloading and confirmation by the incoming driver.
 _ORIGINAL_PHASES = {PhaseType.ACTIVATION, PhaseType.LOADING, PhaseType.DEPARTURE}
 
 
@@ -78,15 +75,11 @@ async def test_later_driver_events_are_not_counted_against_original_driver(
     )}
 
     a, incoming = metrics[operator.driver.id], metrics[b.id]
-    # B's report is B's; the system finding has no actor and is attributed to no one.
     assert (a.total_exceptions_count, incoming.total_exceptions_count) == (0, 1)
-    # The shared trip is labelled, never counted as a whole trip for either driver.
     assert (a.trip_count, incoming.trip_count, a.shared_trip_count, incoming.shared_trip_count) == (0, 0, 1, 1)
-    # Dwell only within one driver's own custody period: A's loading/departure, B's unloading/confirmation.
     assert (a.loading_dwell_events_count, a.departure_dwell_events_count, a.unloading_dwell_events_count) == (1, 1, 0)
     assert (incoming.unloading_dwell_events_count, incoming.confirmation_dwell_events_count) == (1, 1)
     assert (incoming.unloading_dwell_minutes_sum, incoming.confirmation_dwell_minutes_sum) == (40.0, 20.0)
-    # Activation follows trip_creation, which no driver performed: not attributable on a shared trip.
     assert a.activation_dwell_events_count == 0
     assert (a.phase_events_count, incoming.phase_events_count) == (3, 3)
 

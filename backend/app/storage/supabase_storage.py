@@ -53,8 +53,6 @@ def _get_client() -> Client:
 
 
 class _SigningClients(local):
-    # Supabase's synchronous client has mutable lazy state. Reuse connections within a
-    # worker, without letting two signing threads initialise or mutate the same client.
     client: Client | None = None
 
 
@@ -89,14 +87,10 @@ async def create_signed_url(*, s3_bucket: str, s3_key: str, ttl_seconds: int) ->
     to metadata-only, not fail the request.
     """
     try:
-        # Include client creation in the worker: lazy SDK setup must not block other requests.
         signed = await asyncio.to_thread(
             _sign_url, s3_bucket=s3_bucket, s3_key=s3_key, ttl_seconds=ttl_seconds,
         )
     except (StorageException, httpx.HTTPError, json.JSONDecodeError, AttributeError) as exc:
-        # The SDK can fail to parse a gateway's HTML/partial JSON error response. Only
-        # treat parser errors as an outage when their cause chain proves an HTTP failure.
-        # `seen` stops the walk if a chain ever loops back on itself.
         seen: set[int] = set()
         cause: BaseException | None = exc
         while cause is not None and id(cause) not in seen and not isinstance(cause, (StorageException, httpx.HTTPError)):
@@ -104,7 +98,6 @@ async def create_signed_url(*, s3_bucket: str, s3_key: str, ttl_seconds: int) ->
             cause = cause.__cause__ or cause.__context__
         if cause is None or id(cause) in seen:
             raise
-        # Log the failure type, not SDK error text which may contain credentials or read URLs.
         logger.warning("Storage could not sign %s/%s (%s)", s3_bucket, s3_key, type(exc).__name__)
         return None
     if not signed:
@@ -144,19 +137,12 @@ async def hash_stored_evidence_file(*, s3_bucket: str, s3_key: str) -> str:
     total_bytes = 0
 
     try:
-        # Supabase documents cacheNonce as the origin-read escape hatch. The stream
-        # also caps memory and bandwidth if an object was replaced outside this app's
-        # upload path, which rejects anything over MAX_EVIDENCE_FILE_SIZE_BYTES.
         async with asyncio.timeout(_STORAGE_DOWNLOAD_TIMEOUT_SECONDS):
             async with _EVIDENCE_DOWNLOAD_SLOTS:
                 timeout = httpx.Timeout(_STORAGE_DOWNLOAD_TIMEOUT_SECONDS, connect=5.0)
-                # Redirects are deliberately disabled: HTTPX strips Authorization
-                # cross-origin but retains the service-role apikey header.
                 async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
                     async with client.stream("GET", url, headers=headers) as response:
                         if response.status_code != 200:
-                            # Older Storage gateways wrap NoSuchKey in HTTP 400. A
-                            # tenant/configuration 404 is not evidence of file deletion.
                             error_body = bytearray()
                             async for chunk in response.aiter_raw():
                                 error_body.extend(chunk[:_STORAGE_ERROR_BODY_LIMIT - len(error_body)])
@@ -214,8 +200,6 @@ async def hash_stored_evidence_file(*, s3_bucket: str, s3_key: str) -> str:
     return digest.hexdigest()
 
 
-# Issued audit-pack PDFs live beside the evidence they summarise, under their own prefix
-# so a pack can never be mistaken for (or overwrite) an uploaded artifact.
 _AUDIT_PACK_PREFIX = "audit-packs"
 _PDF_MIME = "application/pdf"
 
@@ -225,8 +209,6 @@ async def upload_audit_pack_pdf(*, trip_id: str, pack_id: str, pdf_bytes: bytes)
     key = f"{_AUDIT_PACK_PREFIX}/{trip_id}/{pack_id}.pdf"
     client = _get_client()
     try:
-        # The Supabase client is synchronous; off the loop so a slow upload stalls one
-        # request, not the server.
         await asyncio.to_thread(
             client.storage.from_(_BUCKET).upload, key, pdf_bytes, {"content-type": _PDF_MIME},
         )

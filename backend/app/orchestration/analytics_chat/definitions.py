@@ -16,10 +16,8 @@ Pure data: no database, no I/O.
 
 from collections.abc import Mapping
 
-# One title per chart or tile (as the page shows it), then the page's lines about it.
 About = Mapping[str, tuple[str, ...]]
 
-# The page's own note on where every figure comes from, said once at page level.
 _DATA_NOTE = (
     "Every figure comes from FreightProof's own records of trips run on this system, test and demo trips included. "
     "The tracker, parcel and waybill, and receiver-ID checks behind some figures run on simulated and mock feeds "

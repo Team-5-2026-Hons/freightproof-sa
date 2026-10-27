@@ -162,8 +162,6 @@ async def outcomes(db: AsyncSession, *, organization_id: uuid.UUID, period: Peri
         )
         .group_by(TripException.review_outcome)
     )
-    # The column is a String, so rows come back as plain strings; normalising through the
-    # enum makes the lookup below independent of that.
     counts = {
         ExceptionReviewOutcome(outcome).value: count
         for outcome, count in result.tuples().all()

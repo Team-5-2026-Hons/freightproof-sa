@@ -5,8 +5,6 @@ import { TopBar } from '@/components/ui/TopBar'
 import { Spinner } from '@/components/ui/Spinner'
 import { SettingsLayout } from '@/components/settings/SettingsLayout'
 
-// Suspense because the open section is read from the URL (useSearchParams), which Next
-// requires a boundary for; same arrangement as the parcels and trip detail pages.
 export default function SettingsPage() {
   return (
     <div className="flex flex-col flex-1 min-h-0">

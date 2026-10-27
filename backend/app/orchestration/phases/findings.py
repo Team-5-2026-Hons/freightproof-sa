@@ -85,8 +85,6 @@ async def _raise_position_disagreement_if_unrecorded(
     if event.pulsit_geofence_confirmed is not False:
         return
 
-    # Plain value for the failure log: a rolled-back savepoint can expire ORM instances, and
-    # reading an expired attribute in async code raises instead of lazy-loading.
     phase_event_id = event.id
     try:
         existing = (await db.execute(
@@ -112,40 +110,16 @@ async def _raise_position_disagreement_if_unrecorded(
                 f"position is outside this stop's geofence."
             )
 
-        # Own SAVEPOINT, flushed on exit so a database error surfaces HERE, inside this
-        # fail-open block, instead of at the completion's later flush. Postgres aborts the whole
-        # transaction on any error, so catching it in Python alone would leave the request
-        # unable to run its next statement and the driver's completion lost.
         async with db.begin_nested():
             db.add(TripException(
                 trip_id=trip.id,
                 phase_event_id=event.id,
-                # Scoped to the stop the phase is anchored to, as every other
-                # system-detected exception in this module already does.
                 trip_stop_id=event.trip_stop_id,
                 exception_type=ExceptionType.GPS_MISMATCH,
                 source=ExceptionSource.SYSTEM,
-                # WARNING, not CRITICAL, and the choice is the copy rule in code form.
-                # CRITICAL is this codebase's alarm tier: a seal mismatch, a panic button,
-                # a seal broken in transit — findings with no benign reading. A single
-                # geofence measurement has several: tracker drift, a stale cached fix, a
-                # vehicle legitimately parked outside the fence while the driver walks in
-                # to the gate office, or a precinct row whose coordinates or radius are
-                # wrong. Putting a class of finding with real false-positive modes into
-                # the alarm lane is how a dispatcher learns to ignore the alarm lane.
-                # WARNING is also what the comparable measurement disagreement
-                # (PARCEL_COUNT_MISMATCH) already uses. The separation is reported; the
-                # dispatcher decides what it means.
                 severity=ExceptionSeverity.WARNING,
                 review_status=initial_review_status(ExceptionSeverity.WARNING),
                 description=description,
-                # The driver's own fix, which is what this column means on every other
-                # writer. The tracker's fix has no column here and needs none: both
-                # positions live on the phase_events row this exception points at, and
-                # copying them into the exception would create a second version of the
-                # same coordinates that could drift out of step with the first. The
-                # separation is likewise recomputed at render time from those two
-                # columns, per FP-143's note — no derived value is persisted.
                 gps_lat=event.driver_phone_lat,
                 gps_lng=event.driver_phone_lng,
             ))
@@ -156,12 +130,6 @@ async def _raise_position_disagreement_if_unrecorded(
             "not measurable" if separation is None else f"{separation:.1f}m",
         )
 
-        # FP-147's invariant: a system-detected exception that tells no one leaves the
-        # dispatcher's screen showing a trip that no longer matches the record. WARNING
-        # to match the row written above — event_severity widens the same value rather
-        # than restating it, so the toast band cannot drift from the stored severity.
-        # Inside the try: enqueue_event only appends to a session-local buffer, but if
-        # it ever raises, a handshake the driver already completed must not 400.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -173,7 +141,6 @@ async def _raise_position_disagreement_if_unrecorded(
     except DatabaseUnavailableError:
         raise
     except Exception:
-        # Optional annotation failures keep the handshake's existing fail-open policy.
         logger.exception(
             "Could not record a position disagreement for phase_event_id=%s — the "
             "handshake stands and the corroboration columns still carry the finding",
@@ -207,7 +174,7 @@ async def _raise_trailer_decoupling_if_unrecorded(
     if event.horse_gps_lat is None or event.horse_gps_lng is None:
         return
 
-    phase_event_id = event.id  # plain value for the failure log; see the position finding above
+    phase_event_id = event.id
     try:
         outside = (await db.execute(
             select(TrailerGpsSnapshot, Vehicle.registration)
@@ -236,14 +203,10 @@ async def _raise_trailer_decoupling_if_unrecorded(
         if existing is not None:
             return
 
-        # Registrations identify vehicles, not people, so they may be named here.
         trailers = "; ".join(
             f"trailer {registration} is {format_distance(separation)} from the horse"
             for registration, separation in decoupled
         )
-        # Own SAVEPOINT, as for the position finding: register_exception flushes the row and
-        # its anchor events, and a database error there must roll back to here, not poison
-        # the completion's transaction.
         async with db.begin_nested():
             await register_exception(db, TripException(
                 trip_id=trip.id, phase_event_id=event.id, trip_stop_id=event.trip_stop_id,
@@ -271,7 +234,6 @@ async def _raise_trailer_decoupling_if_unrecorded(
     except DatabaseUnavailableError:
         raise
     except Exception:
-        # As above, optional annotation failures retain their fail-open policy.
         logger.exception(
             "Could not record a trailer decoupling for phase_event_id=%s — the handshake "
             "stands and the trailer snapshots still carry their verdicts",

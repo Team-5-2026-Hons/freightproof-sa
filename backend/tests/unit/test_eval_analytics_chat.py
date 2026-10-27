@@ -124,15 +124,12 @@ def test_grade_vague_question_accepts_a_follow_up_or_a_right_now_snapshot_only()
     assert grade(item, _answer("Delays rose.", basis=[_RIGHT]), [], _TODAY).status == "FAIL"
 
 
-# ── Explanation questions (B45) ──────────────────────────────────────────────
-
 _EXPLAIN_FILE = Path(DEFAULT_QUESTIONS).with_name("analytics_chat_explain_questions.json")
 
 
 def _explain_item(topics: list[str], must_mention: list[Any], kind: str = "explanation") -> dict[str, Any]:
     return {
         "question": "How is operating cost worked out?",
-        # "explains" may add figures for the period on screen, so its tools are optional (e02).
         "expect": {"kind": kind, "tools": "optional" if kind == "explains" else [], "explain": topics},
         "must_mention": must_mention,
         "must_not": ["for which period"],
@@ -176,7 +173,6 @@ def test_grade_fails_an_explanation_that_read_the_wrong_topic_or_none() -> None:
 
 
 def test_grade_fails_a_period_question_back_on_an_explanation() -> None:
-    # 22 Oct, the failure this round fixes.
     answer = _answer("For which period: the last 12 weeks, or this year?", kind="follow_up")
 
     result = grade(_explain_item(["cost"], []), answer, [], _TODAY, [])
@@ -216,8 +212,6 @@ def test_page_view_for_reads_the_screen_or_nothing() -> None:
 
 
 def test_every_fact_an_explanation_question_requires_is_in_the_guide_it_should_read() -> None:
-    # Otherwise a faithful answer could fail. Cost's current rates come from the database; the starting fuel rate
-    # (R 17.64 per km) stands in for them here.
     items = json.loads(_EXPLAIN_FILE.read_text())["questions"]
     missing = []
     for item in items:

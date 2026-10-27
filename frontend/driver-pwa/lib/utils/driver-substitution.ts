@@ -35,8 +35,6 @@ export function hasConfirmed(request: SubstitutionRequestRead, role: Substitutio
   return request.confirmations.some((confirmation) => confirmation.role === role)
 }
 
-// Why a saved confirmation has not transferred custody yet. Worded for the driver: each one
-// says the capture is kept, because the contract guarantees it is (HTTP 200, not an error).
 const BLOCKER_COPY: Record<SubstitutionCompletionBlocker, string> = {
   incoming_driver_inactive: 'The incoming driver’s account is not active. Your dispatcher must choose another driver.',
   licence_invalid: 'The incoming driver’s licence expiry is missing or past. Dispatch must resolve it before the handover can complete.',
@@ -48,8 +46,6 @@ export function blockerMessage(blocker: SubstitutionCompletionBlocker): string {
   return BLOCKER_COPY[blocker]
 }
 
-// The recorded fleet status, never a fresh check — the app runs no identity session of its
-// own, so it must not word PENDING as if a verification were in progress on this phone.
 const IDENTITY_COPY: Record<IdvsStatus, string> = {
   verified: 'Identity verified on the fleet record',
   pending: 'Identity not yet verified: an admin at dispatch must review it',

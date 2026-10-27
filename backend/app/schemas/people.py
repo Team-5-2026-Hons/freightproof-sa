@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.db.models.enums import DispatcherRole, IdvsStatus
 from app.schemas.text import LicenseStr, NameStr, PhoneStr
 
-# Mirrors drivers.id_number — String(13), and always exactly 13 digits for an SA ID.
 _ID_NUMBER_LENGTH = 13
 
 
@@ -23,7 +22,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    id: UUID  # must equal the UUID Supabase Auth assigned when the account was created
+    id: UUID
 
 
 class UserUpdate(BaseModel):
@@ -38,7 +37,6 @@ class UserRead(UserBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
-    # Role is populated from the JWT at request time, not persisted in the DB.
     role: DispatcherRole = DispatcherRole.DISPATCHER
 
 
@@ -128,7 +126,6 @@ class DriverRead(DriverBase):
     updated_at: datetime
 
 
-# Imported here, not at module top, to keep the schema dependency graph acyclic.
 from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
 from app.schemas.events import DriverEventRead  # noqa: E402
 

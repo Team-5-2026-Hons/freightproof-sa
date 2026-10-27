@@ -28,7 +28,6 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/hooks/usePrecincts', () => ({ usePrecincts: vi.fn() }))
 
-// The thumbnail fetches map tiles, which is not what these tests are about.
 vi.mock('@/components/map/StaticGeofenceThumbnail', () => ({
   StaticGeofenceThumbnail: () => null,
 }))

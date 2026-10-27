@@ -24,8 +24,6 @@ from app.schemas.trips import CancelTripRequest, TripStopCreate
 _VALID_ID_NUMBER = "8001015009087"
 
 
-# ── The cleaner ──────────────────────────────────────────────────────────────
-
 
 def test_a_bidi_override_is_stripped() -> None:
     """The Trojan Source trick, pointed at an audit trail: an override character makes
@@ -56,8 +54,6 @@ def test_ordinary_punctuation_is_untouched() -> None:
 def test_surrounding_whitespace_is_trimmed_but_interior_is_kept() -> None:
     assert clean_text("  two   spaces  ") == "two   spaces"
 
-
-# ── Length ceilings ──────────────────────────────────────────────────────────
 
 
 def test_an_over_length_exception_description_is_a_422_not_a_500() -> None:
@@ -101,8 +97,6 @@ def test_padding_cannot_smuggle_a_value_past_the_ceiling() -> None:
         )
 
 
-# ── Required narrative ───────────────────────────────────────────────────────
-
 
 def test_a_note_of_only_invisible_characters_is_refused() -> None:
     """min_length alone cannot catch this: two zero-width spaces are two characters to a
@@ -115,8 +109,6 @@ def test_a_note_of_only_invisible_characters_is_refused() -> None:
 def test_a_real_note_is_accepted_and_cleaned() -> None:
     assert CancelTripRequest(note="  cargo pulled by client  ").note == "cargo pulled by client"
 
-
-# ── GPS bounds ───────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(

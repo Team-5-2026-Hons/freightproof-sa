@@ -8,11 +8,11 @@
 import { ROUTES } from '@/lib/constants/routes'
 
 const FULL_BLEED_ROUTE_PREFIXES = [
-  '/panic',           // bare full-bleed emergency surface — no shell chrome at all
-  '/trip/phase/',     // phase steps render their own sticky StepHeader
-  '/trip/in-transit', // in-transit hub, checkpoint, and exception screens render SubpageHeader
-  '/trips/',          // /trips/active and /trips/[id] render SubpageHeader
-  ROUTES.retainedEvidence, // "Kept on this phone" renders a TabSubpage (SubpageHeader + its own tab bar)
+  '/panic',
+  '/trip/phase/',
+  '/trip/in-transit',
+  '/trips/',
+  ROUTES.retainedEvidence,
 ] as const
 
 export function isFullBleedRoute(pathname: string): boolean {

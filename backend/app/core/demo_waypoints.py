@@ -23,17 +23,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
 
-# Anchor these offsets were generated from — "Cape Town Depot (Epping)" in
-# scripts/seed_demo.py:_PRECINCTS. Restated, not imported, so this module
-# doesn't depend on a seeding script.
 DEMO_ANCHOR_LATITUDE = Decimal("-33.9249")
 DEMO_ANCHOR_LONGITUDE = Decimal("18.4241")
 
-# Bearing (degrees) used to generate the coordinates below; needed to regenerate them.
 DEMO_ROUTE_BEARING_DEGREES = 55.803
 
-# Tolerance for a measured distance to count as correctly typed — tight
-# enough to catch a transposed digit, loose enough to absorb Numeric(10,7) rounding.
 WAYPOINT_DISTANCE_TOLERANCE_METRES = 1.0
 
 
@@ -51,14 +45,10 @@ class DemoWaypoint:
     waypoint_id: str
     label: str
     sequence: int
-    # Rendered under the button.
     description: str
     latitude: Optional[Decimal]
     longitude: Optional[Decimal]
-    # Distance from DEMO_ANCHOR_*, asserted in unit tests. None for NO_SIGNAL.
     intended_distance_metres: Optional[int]
-    # Expected geofence verdict at this waypoint (200m radius + 50m
-    # tolerance). None for NO_SIGNAL, where there's no fix to judge.
     expected_confirmed: Optional[bool]
 
     @property
@@ -67,7 +57,6 @@ class DemoWaypoint:
         return self.latitude is None or self.longitude is None
 
 
-# Named so a typo is an AttributeError at import, not a 404 in front of an audience.
 WAYPOINT_PRECINCT = "precinct"
 WAYPOINT_INSIDE_TOLERANCE = "inside_tolerance"
 WAYPOINT_OUTSIDE_TOLERANCE = "outside_tolerance"
@@ -75,8 +64,6 @@ WAYPOINT_THREE_KM = "three_km"
 WAYPOINT_FIFTY_KM = "fifty_km"
 WAYPOINT_NO_SIGNAL = "no_signal"
 
-# Distances measured from DEMO_ANCHOR_* and verified in
-# tests/unit/test_demo_waypoints.py — do not edit a coordinate without running it.
 DEMO_WAYPOINTS: tuple[DemoWaypoint, ...] = (
     DemoWaypoint(
         waypoint_id=WAYPOINT_PRECINCT,
@@ -92,7 +79,6 @@ DEMO_WAYPOINTS: tuple[DemoWaypoint, ...] = (
         waypoint_id=WAYPOINT_INSIDE_TOLERANCE,
         label="230 m — just inside tolerance",
         sequence=2,
-        # Marginal case: proves the tolerance band is real, not decorative.
         description="Outside the 200 m fence but inside the 50 m tolerance. Still confirms.",
         latitude=Decimal("-33.9237374"),
         longitude=Decimal("18.4261618"),
@@ -133,8 +119,6 @@ DEMO_WAYPOINTS: tuple[DemoWaypoint, ...] = (
         waypoint_id=WAYPOINT_NO_SIGNAL,
         label="No signal",
         sequence=6,
-        # Tracker stays known but reports nothing — an unreachable tracker
-        # must never accuse a driver.
         description="Tracker goes dark. Verdict stays null and no exception is raised.",
         latitude=None,
         longitude=None,
@@ -143,10 +127,8 @@ DEMO_WAYPOINTS: tuple[DemoWaypoint, ...] = (
     ),
 )
 
-# Id -> waypoint, built once at import, so an unknown id is a clean 404.
 DEMO_WAYPOINTS_BY_ID: dict[str, DemoWaypoint] = {w.waypoint_id: w for w in DEMO_WAYPOINTS}
 
-# The waypoint "reset" returns to.
 RESET_WAYPOINT_ID = WAYPOINT_PRECINCT
 
 

@@ -51,7 +51,6 @@ async def _handed_over_with_pending(db_session) -> SubWorld:
     """A -> B completed, and a pending B -> C: both kinds of request on one trip."""
     world = await build_world(db_session)
     handover = await complete_handover(db_session, world, outgoing=world.a, incoming=world.b)
-    # A completed request is read against the identity it froze at completion.
     handover.incoming_identity_status = IdvsStatus.VERIFIED.value
     handover.incoming_identity_last_verified_at = datetime.now(UTC)
     handover.incoming_identity_observed_at = datetime.now(UTC)
@@ -98,7 +97,6 @@ async def test_trip_detail_custody_fields_equal_the_standalone_readers(client, d
     assert [c["substitution_id"] for c in body["completed_driver_substitutions"]] == [str(c.substitution_id) for c in completed]
     assert body["pending_driver_substitution"]["id"] == str(next(r.id for r in requests if r.state is SubstitutionState.PENDING))
     assert body["custody_integrity"] == integrity.model_dump(mode="json")
-    # Whole-field equality, not just ids: the shortcut must not change what a request says.
     assert _stable(body["driver_substitutions"]) == _stable([r.model_dump(mode="json") for r in requests])
     assert body["completed_driver_substitutions"] == [c.model_dump(mode="json") for c in completed]
 

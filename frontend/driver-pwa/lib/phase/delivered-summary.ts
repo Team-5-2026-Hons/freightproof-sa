@@ -1,11 +1,8 @@
 import type { Trip } from '@shared/lib/types/trip'
 
 export interface DeliveredSummary {
-  /** When the truck arrived (ISO), or null when the ledger has no arrival yet. */
   arrivedAt: string | null
-  /** Arrived by the planned time — the same no-grace rule as Home's record. Null without a plan. */
   onTime: boolean | null
-  /** Driver phases (trip_creation excluded) whose Hedera receipt is back. */
   anchored: number
   total: number
 }

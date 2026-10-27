@@ -9,16 +9,12 @@ export type CrewResourceType = 'driver' | 'horse' | 'trailer'
 export interface BusyEntry {
   resource_type: CrewResourceType
   resource_id: string
-  /** Driver full name or vehicle registration. */
   label: string
   trip_id: string
   trip_reference: string
   trip_status: TripStatus
   busy_from: string
-  /** null: busy until that trip is closed or cancelled (a live trip past its planned end,
-   *  or an old trip with no planned arrival). No time can be promised for those. */
   busy_until: string | null
-  /** The planned end, kept when busy_until is null so the screen can say "was due …". */
   planned_until: string | null
 }
 

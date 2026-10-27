@@ -11,10 +11,6 @@ import { Z } from '@shared/lib/z-index'
 import { VIEWPORT_PRESETS, presetDocksPanel, type ViewportPreset } from './frame'
 import { ScenarioView } from './ScenarioView'
 
-// A preview identity for this subtree only. ForensicOnly is gated on an admin role, and this page
-// is outside the signed-in app shell, so without it forensic mode could never be turned on. The
-// fixtures are synthetic and nothing here can authorise a request: the API client reads the real
-// Supabase session, not this context.
 const PREVIEW_USER: DispatcherUser = {
   id: 'preview-admin' as UserId,
   organization_id: 'preview-organisation',
@@ -52,7 +48,6 @@ export function TimelineScenarios() {
   const hydrated = useHydrated()
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id)
   const preset = VIEWPORT_PRESETS.find(candidate => candidate.id === presetId) ?? DEFAULT_PRESET
-  // Read once, so a re-render never shifts every fixture's clock under the reader.
   const [anchorMs] = useState(() => Date.now())
   const scenarios = useMemo<TimelineScenario[]>(() => (hydrated ? buildScenarios(anchorMs) : []), [hydrated, anchorMs])
 
@@ -104,8 +99,6 @@ function Controls({ presetId, preset, onPreset }: ControlsProps) {
           Forensic mode: {forensicOn ? 'on (anchor rows, audit trail)' : 'off'}
         </Button>
       </div>
-      {/* The width control only sizes the frame. DetailPanel decides docked or overlay from the real
-          window (a 1280 px media query), so a mismatch is stated rather than faked. */}
       <p role="status" className="mt-2 max-w-3xl text-meta text-on-surf-v">
         Exceptions panel in this window: {docked ? 'docked (window is 1280 px or wider)' : 'overlay (window is narrower than 1280 px)'}.
         {docked !== wantsDock && ` The ${preset.label} preset expects it ${wantsDock ? 'docked' : 'an overlay'}: resize the browser window to ${wantsDock ? '1280 px or wider' : 'under 1280 px'} to match.`}

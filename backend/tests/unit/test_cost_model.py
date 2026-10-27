@@ -30,11 +30,9 @@ from app.db.models.cost import CostProfile
 _JHB = (Decimal("-26.2041"), Decimal("28.0473"))
 _DBN = (Decimal("-29.8587"), Decimal("31.0218"))
 _PMB = (Decimal("-29.6006"), Decimal("30.3794"))
-# Bruce, 1 Sep 2026: a JHB–DBN run costs about R20,000.
 _BRUCE_RUN_RAND = Decimal("20000")
 _BRUCE_RUN_HOURS = Decimal("9")
 _CALIBRATION_TOLERANCE = Decimal("0.05")
-# R20/L at 10 L/100 km = R2/km of fuel: round numbers so each part is checkable by eye.
 _FLAT_RATES = CostRates(
     diesel_price_per_litre=Decimal("20"), litres_per_100km=Decimal("10"), running_per_km=Decimal("3"), driver_per_hour=Decimal("100"),
     delay_per_hour=Decimal("500"), fixed_per_trip=Decimal("50"), road_factor=Decimal("1"),
@@ -56,7 +54,6 @@ def test_default_rates_reproduce_bruce_jhb_dbn_run_within_five_percent() -> None
 def test_default_road_factor_turns_jhb_dbn_straight_line_into_n3_road_distance() -> None:
     km = route_km([_JHB, _DBN], DEFAULT_COST_RATES.road_factor)
 
-    # The N3 is about 568 km; within 5% is close enough for an estimate.
     assert abs(km - Decimal(568)) / Decimal(568) <= _CALIBRATION_TOLERANCE
 
 
@@ -145,7 +142,6 @@ def test_to_tenths_rounds_half_up() -> None:
 
 
 def test_summing_many_small_amounts_does_not_drift() -> None:
-    # A float sum of 0.1 a thousand times is 99.9999…; Decimal must give exactly 100.
     total = sum((Decimal("0.1") for _ in range(1000)), start=Decimal(0))
 
     assert to_rand(total) == 100.0
@@ -165,7 +161,6 @@ def test_fuel_per_km_is_price_times_consumption() -> None:
 
 
 def test_default_fuel_per_km_matches_bruce_fuel_share() -> None:
-    # R33.29/L at 53 L/100 km ≈ R17.64/km, close to the R17.60/km Bruce's figures imply.
     assert abs(DEFAULT_COST_RATES.fuel_per_km - Decimal("17.60")) < Decimal("0.10")
 
 
@@ -180,8 +175,6 @@ def test_changing_a_rate_changes_only_its_part() -> None:
 
 
 def test_db_check_constraints_match_the_core_bounds() -> None:
-    # The model repeats the bounds as literals (db/ imports nothing from core); this keeps
-    # them equal to the constants the request schema validates against.
     table = CostProfile.__table__
     assert isinstance(table, Table)
     checks = {

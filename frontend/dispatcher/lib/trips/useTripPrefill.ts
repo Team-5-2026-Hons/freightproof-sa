@@ -8,7 +8,6 @@ import type { CrewValues, RoutePicks, ScheduleOverrides } from '@/lib/trips/mani
 
 /** Shown at the top of the form while a prefill is in effect. */
 export interface PrefillNotice {
-  /** Some values in the link weren't recognised and were left blank. */
   leftBlank: boolean
 }
 
@@ -17,7 +16,6 @@ interface PrefillTargets {
   horseIds: ReadonlySet<string>
   trailerIds: ReadonlySet<string>
   precinctIds: ReadonlySet<string>
-  /** The pickers' lists have arrived, so an id can be checked against them. */
   listsLoaded: boolean
   setMode: (mode: 'manifest' | 'empty_leg') => void
   setManifestInput: (value: string) => void
@@ -45,12 +43,10 @@ export function useTripPrefill(targets: PrefillTargets): { notice: PrefillNotice
   const [stage, setStage] = useState<Stage>(prefill === null ? 'done' : 'mode')
   const [unrecognised, setUnrecognised] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  // The link whose manifest was looked up: once per link, even under Strict Mode's double effect.
   const lookedUp = useRef<TripPrefill | null>(null)
 
   if (search !== seenSearch) {
     setSeenSearch(search)
-    // Tidying the address (below) also lands here, with no prefill: keep what was filled in.
     const next = parsePrefill(new URLSearchParams(search))
     if (next !== null) {
       setPrefill(next)
@@ -88,7 +84,6 @@ export function useTripPrefill(targets: PrefillTargets): { notice: PrefillNotice
   const { lookUp } = targets
   useEffect(() => {
     if (prefill === null || lookedUp.current === prefill) return
-    // Once per link, even under Strict Mode's double effect: the lookup reaches Parcel Perfect's quota.
     lookedUp.current = prefill
     window.history.replaceState(null, '', window.location.pathname)
     if (prefill.manifestNumber !== null) void lookUp(prefill.manifestNumber)

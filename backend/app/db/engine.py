@@ -32,8 +32,6 @@ def _connect(
     dialect: Dialect, connection_record: ConnectionPoolEntry,
     cargs: list[object], cparams: dict[str, object],
 ) -> DBAPIConnection:
-    # asyncpg can raise a builtin TimeoutError or OSError before SQLAlchemy's DBAPI
-    # wrapping applies. This hook gives those errors an unambiguous DB origin.
     try:
         return dialect.connect(*cargs, **cparams)
     except Exception as exc:
@@ -44,29 +42,18 @@ def _connect(
 
 
 def _handle_error(context: ExceptionContext) -> DatabaseUnavailableError | None:
-    # Let SQLAlchemy transparently replace an already-disconnected idle connection.
-    # A failed replacement or stalled ping is classified by AvailabilityPool above.
     if context.is_pre_ping:
         return None
     failure = database_unavailable(
         context.original_exception, "command", disconnected=context.is_disconnect,
     )
     if failure is not None:
-        # A timed-out command must never return a possibly still-busy socket to the
-        # next request. Discard that connection, not every healthy connection.
-        # SQLAlchemy documents these writable flags, but its abstract context type
-        # declares empty __slots__; the runtime ExceptionContextImpl owns the slots.
         context.is_disconnect = True  # type: ignore[misc]
         context.invalidate_pool_on_disconnect = False  # type: ignore[misc]
     return failure
 
 
 def create_db_engine(config: Settings) -> AsyncEngine:
-    # No custom discard listener. SQLAlchemy closes an invalidated asyncpg connection with
-    # close(timeout=2). On asyncpg 0.32+ (the requirements.txt floor) that close first sends
-    # PostgreSQL's cancel for a timed-out statement, then aborts the socket at the deadline,
-    # so a half-open connection cannot hang. Aborting the socket ourselves first would also
-    # cancel that pending cancel request, leaving the statement running on the server (FP-299).
     engine = create_async_engine(
         config.DATABASE_URL,
         poolclass=AvailabilityPool,

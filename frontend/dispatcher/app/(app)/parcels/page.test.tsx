@@ -4,8 +4,6 @@ import { api } from '@/lib/api/client'
 import { BARCODE, WAYBILL, makeTrace } from '@/components/parcels/__fixtures__/trace'
 import ParcelSearchPage from './page'
 
-// The route owns the identity key, so the form-survival and account-reset guarantees can only
-// be proved here, not by rendering ParcelSearch directly.
 const route = vi.hoisted(() => ({ query: '', user: { id: 'user-a', organization_id: 'org-a' } as { id: string; organization_id: string } | null }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),

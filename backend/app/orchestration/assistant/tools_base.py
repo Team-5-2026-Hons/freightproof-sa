@@ -48,7 +48,6 @@ class ToolOutcome:
     result: JsonObject | None = None
     error: str | None = None
     cards: tuple[AssistantCard, ...] = ()
-    # Page-opening buttons (spec D2): only tools_actions makes them, from records it resolved itself.
     actions: tuple[AssistantAction, ...] = ()
 
     @classmethod
@@ -57,7 +56,6 @@ class ToolOutcome:
 
     @classmethod
     def done(cls, result: Result, *cards: AssistantCard, actions: tuple[AssistantAction, ...] = ()) -> "ToolOutcome":
-        # Empty fields are left out: every one is resent on each later model call of the question (cost, B26).
         return cls(result=result.model_dump(mode="json", exclude_none=True), cards=cards, actions=actions)
 
 

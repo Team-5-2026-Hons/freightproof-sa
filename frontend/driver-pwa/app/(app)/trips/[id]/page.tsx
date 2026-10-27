@@ -3,7 +3,6 @@
 import { mockTrips } from '@shared/lib/mocks/trips'
 import TripDetailPageClient from './TripDetailPageClient'
 
-// Demo route: static params come from mock fixtures.
 export function generateStaticParams() {
   return mockTrips.map((trip) => ({ id: String(trip.id) }))
 }

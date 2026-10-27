@@ -58,10 +58,6 @@ async def test_arrival_timestamp_precedes_the_unloading_submission(
     unloading is ever submitted.
     """
     trip = await _make_trip(db_session, seed, order_number="ARR-TS-1")
-    # Captured before any expire_all() below — expiring the session invalidates
-    # trip's loaded attributes, and a later trip.id access would trigger a lazy
-    # load outside a greenlet context (MissingGreenlet), the same sharp edge
-    # noted in test_phases.py's replay-ordering test.
     trip_id = trip.id
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     await _walk_to_in_transit(client, db_session, trip, driver_token)
@@ -97,7 +93,7 @@ async def test_full_hub_to_hub_walk_with_arrival_closes_the_trip(
     all driver-submitted, over live HTTP. The trip must still close, and the new
     in_transit row must be COMPLETED (not left PENDING, not silently skipped)."""
     trip = await _make_trip(db_session, seed, order_number="ARR-FULL-1")
-    trip_id = trip.id  # captured before expire_all() — see MissingGreenlet note above
+    trip_id = trip.id
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     await _walk_to_in_transit(client, db_session, trip, driver_token)
     await _complete_in_transit(client, trip, driver_token)
@@ -162,7 +158,7 @@ async def test_overridden_unloading_closes_trip_without_manufacturing_arrival(
     and can therefore never submit an arrival attestation at all.
     """
     trip = await _make_trip(db_session, seed, order_number="ARR-V3-1")
-    trip_id = trip.id  # captured before expire_all() — see MissingGreenlet note above
+    trip_id = trip.id
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     dispatcher_token = _dispatcher_token(seed)
     await _walk_to_in_transit(client, db_session, trip, driver_token)
@@ -178,9 +174,6 @@ async def test_overridden_unloading_closes_trip_without_manufacturing_arrival(
         assert resp.status_code == 200, resp.text
         assert resp.json()["actual_arrival_at"] is None
 
-    # The seal-inspection (arrival) phase sits below unloading too, and override_phase
-    # has no lower-sequence gate of its own — but confirmation still does, so this row
-    # must be resolved one way or another before the walk can reach confirmation.
     seal_inspection_id = await _phase_id(client, trip_id, driver_token, "arrival")
     resp = await client.post(
         f"/api/v1/trips/{trip_id}/phases/{seal_inspection_id}/override",

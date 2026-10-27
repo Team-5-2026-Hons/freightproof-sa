@@ -285,9 +285,6 @@ async def download_issued_pdf_endpoint(
     return _pdf_response(pdf, f"{label}.pdf")
 
 
-# Any dispatcher, not only admins: whoever took the SAPS case number on the phone should
-# be able to record it, and nothing here is shared outside the operator until a pack is
-# issued (which stays admin-only).
 @declarations_router.post(
     "",
     response_model=IncidentDeclarationRecord,

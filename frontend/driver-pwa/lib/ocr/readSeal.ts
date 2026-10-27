@@ -11,8 +11,6 @@ export type SealReading =
   | { kind: 'none' }
   | { kind: 'unavailable' }
 
-// Long enough for a mid-range phone, short enough that a driver who starts typing is
-// never waiting on it. The field stays editable throughout either way.
 export const SEAL_OCR_TIMEOUT_MS = 4000
 
 const DATA_URL_PREFIX = /^data:[^,]*,/
@@ -29,8 +27,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIM
   })
 }
 
-// Whether this device can read a seal at all. Exported so a caller can skip the "reading"
-// state entirely where the answer is always 'unavailable'.
 export function canReadSeals(): boolean {
   return Capacitor.isNativePlatform()
 }
@@ -44,8 +40,6 @@ export async function readSealFromPhoto(dataUrl: string): Promise<SealReading> {
     )
     if (result === TIMED_OUT) return { kind: 'unavailable' }
     const candidates = parseSealCandidates(result.textDetections.map((d) => d.text).join('\n'))
-    // Exactly one, or nothing: with two different numbers in view there is no telling
-    // which is the seal, and a wrong pre-fill is worse than an empty field.
     const [only] = candidates
     return candidates.length === 1 && only !== undefined ? { kind: 'found', value: only } : { kind: 'none' }
   } catch (err: unknown) {

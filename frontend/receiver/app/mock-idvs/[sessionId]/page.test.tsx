@@ -10,12 +10,9 @@ import MockIdvsPage from './page'
 
 const TOKEN = 'tok123'
 
-// What next/navigation's notFound() throws; matched on the digest so the test doesn't
-// depend on Next's internal error class.
 const NOT_FOUND_DIGEST = 'NEXT_HTTP_ERROR_FALLBACK;404'
 
 function renderQuietly(): void {
-  // React logs a boundary-less throw to console.error; the throw is what is being asserted.
   vi.spyOn(console, 'error').mockImplementation(() => {})
   render(<MockIdvsPage />)
 }

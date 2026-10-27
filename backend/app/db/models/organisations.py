@@ -19,7 +19,6 @@ class Organization(Base):
 
     __tablename__ = "organizations"
     __table_args__ = (
-        # Named explicitly to match the migration, since Base has no naming_convention.
         UniqueConstraint("pp_account_number", name="uq_organizations_pp_account_number"),
     )
 
@@ -27,8 +26,6 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     org_type: Mapped[OrganizationType] = mapped_column(String(50), nullable=False)
     contact_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    # PP `accnum`; lets consignment sync resolve the client organization from the
-    # waybill instead of trusting a caller-supplied ID.
     pp_account_number: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -36,7 +33,6 @@ class Organization(Base):
     )
 
 
-# RTT's JNB and FedEx's JNB are different depots, so a hub code is unique per principal.
 PP_HUB_CODE_INDEX = "uq_precincts_principal_pp_hub_code"
 
 
@@ -63,16 +59,8 @@ class Precinct(Base):
     latitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     geofence_radius_metres: Mapped[int] = mapped_column(Integer, nullable=False, server_default="200")
-    # Property outline as an open ring of [lat, lng] corners. NULL = the fence is the
-    # circle above; set = the outline IS the fence and the radius is not used for any
-    # verdict. JSONB rather than PostGIS: the check runs in Python (core/polygon.py), so
-    # the database only has to store and return the corners.
     geofence_polygon: Mapped[Optional[list[list[float]]]] = mapped_column(JSONB, nullable=True)
-    # Cross-org visibility opt-in; False means only the owning org's dispatchers can
-    # see this precinct (SEC-PRECINCT-1).
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    # PP hub code (e.g. "JNB") that a manifest's origin/destination resolves to (spec §7.2).
-    # Reference data for the PP mock, set by the seed scripts; not editable in the UI.
     pp_hub_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

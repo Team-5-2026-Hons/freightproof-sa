@@ -31,7 +31,6 @@ def test_task_returns_true_and_does_not_retry_when_the_receipt_is_written(monkey
 
     assert result is True
     retry.assert_not_called()
-    # The broker carries JSON-native arguments; the task must hand _anchor real types back.
     anchor.assert_awaited_once_with(
         phase_event_id=event_id, canonical_payload=payload, receipt_type=BlockchainReceiptType("pickup"),
     )
@@ -72,8 +71,6 @@ async def test_anchor_commits_the_outcome_and_disposes_its_engine(monkeypatch):
         receipt_type=BlockchainReceiptType.PICKUP,
     )
 
-    # A failed attempt is a state worth keeping (anchor_status=failed), so it is committed
-    # even though the return value says the receipt is still owed.
     assert result is False
     session.commit.assert_awaited_once()
     engine.dispose.assert_awaited_once()

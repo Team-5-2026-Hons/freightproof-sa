@@ -4,8 +4,6 @@ import type { PhaseDescriptor, PhaseStatus } from '@shared/lib/types/phase'
 import type { ActionLocationAssessment, ProximityVerdict } from '@shared/lib/types/action-location'
 import { buildPhaseChecks, type CheckKey, type PhaseCheck, type PhaseChecksInput } from './checks'
 
-// Single-leg plan sequence numbers: 0 trip_creation, 1 activation, 2 loading, 3 departure,
-// 4 in_transit, 5 arrival, 6 unloading, 7 confirmation.
 const SEQ = { creation: 0, activation: 1, loading: 2, departure: 3, transit: 4, arrival: 5, unloading: 6, confirmation: 7 } as const
 
 type Patch = Partial<PhaseDescriptor>
@@ -199,7 +197,6 @@ describe('seal checks (arrival)', () => {
   })
 
   it("compares against the leg's own departure seal on a cross-dock trip (D40)", () => {
-    // Each leg has its own seal; leg 2's arrival must compare against leg 2's, not leg 1's.
     const plan = walkTo(11, {
       3: { seal_number: 'FP-LEG1' },
       8: { seal_number: 'FP-LEG2' },

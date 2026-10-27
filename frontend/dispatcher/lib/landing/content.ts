@@ -4,11 +4,6 @@
 /** Where access requests and legal queries go. Public by design: it is printed on the page. */
 export const CONTACT_EMAIL = 'freightproof@gmail.com'
 
-/**
- * Company particulars required by ECT Act s43 and PAIA. The bracketed values are deliberate
- * placeholders until the entity is registered — they render visibly so nobody mistakes a
- * placeholder for a real registration number.
- */
 export const COMPANY = {
   tradingName: 'FreightProof SA',
   legalName: 'FreightProof SA (Pty) Ltd',
@@ -24,7 +19,6 @@ export const COMPANY = {
   informationOfficer: '[Name of Information Officer]',
 } as const
 
-/** Shown on every legal page; bump whenever any legal text changes. */
 export const LEGAL_LAST_UPDATED = '12 October 2026'
 
 export interface TeamMember {
@@ -41,16 +35,12 @@ export const TEAM: readonly TeamMember[] = [
 
 export interface JourneyStop {
   id: string
-  /** Matches the backend phase name so the page can never describe a phase that doesn't exist. */
   phase: 'trip_creation' | 'activation' | 'loading' | 'departure' | 'in_transit' | 'unloading' | 'confirmation'
   title: string
   body: string
-  /** What the anchored record contains, shown as the checkpoint's receipt line. */
   sealed: string
 }
 
-// The single-leg plan the phase generator emits (docs/phase-model-explained.md): seven
-// rows, in this order. Copy describes what is recorded, never an action FreightProof takes.
 export const JOURNEY: readonly JourneyStop[] = [
   {
     id: 'trip-creation',
@@ -110,9 +100,6 @@ export interface SourcedFact {
   href: string
 }
 
-// Only figures verified against a published source on 12 Oct 2026. The older README
-// claims ("95% of EMEA hijackings", "12.5% premium") could not be verified and are
-// deliberately absent.
 export const FACTS: readonly SourcedFact[] = [
   {
     figure: '1,976',
@@ -134,7 +121,6 @@ export const FACTS: readonly SourcedFact[] = [
   },
 ]
 
-/** Navigation targets on the landing page itself. Ids double as section anchors. */
 export const SECTIONS = {
   journey: 'how-it-works',
   why: 'why',

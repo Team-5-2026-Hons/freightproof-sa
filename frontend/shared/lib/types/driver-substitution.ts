@@ -18,8 +18,6 @@ import type { VehicleType } from './vehicle'
 import type { ActionLocationAssessment } from './action-location'
 import type { IdvsStatus } from './driver'
 
-// ── Enumerations (string unions mirror the Python enums exactly) ────────────────
-
 export type RequestFormat = 'planned_v1' | 'immediate_v2'
 export type ConfirmationPolicy = 'two_driver_v1' | 'incoming_acceptance_v2'
 export type LocationUnavailableReason = 'permission_denied' | 'timeout' | 'position_unavailable' | 'unknown'
@@ -28,8 +26,6 @@ export type SubstitutionState = 'pending' | 'completed' | 'cancelled'
 
 export type SubstitutionRole = 'outgoing' | 'incoming'
 
-// Deliberately separate from the ordinary-phase SealCondition: `not_applicable` is a
-// substitution-only answer (an empty leg has no seal) and must never be a phase value.
 export type SubstitutionSealCondition = 'intact' | 'damaged' | 'missing' | 'not_applicable'
 
 export type SubstitutionAction =
@@ -44,7 +40,6 @@ export type SubstitutionCompletionMode = 'normal' | 'dispatcher_attested'
 
 export type SubstitutionCompletionTrigger = 'driver_confirmation' | 'dispatcher_action'
 
-// When several eligibility checks fail the server reports the FIRST of these, in this order.
 export type SubstitutionCompletionBlocker =
   | 'incoming_driver_inactive'
   | 'licence_invalid'
@@ -83,8 +78,6 @@ export const SUBSTITUTION_COMPLETION_BLOCKER_ORDER: readonly SubstitutionComplet
   'identity_not_verified',
 ]
 
-// HTTP status per code. Domain conflicts are 409; a dispatcher lacking admin identity
-// authority is 403 and the disabled flag is 503.
 export const SUBSTITUTION_ERROR_STATUS: Readonly<Record<SubstitutionErrorCode, number>> = {
   TRIP_HANDED_OVER: 409,
   CUSTODY_CONTEXT_CHANGED: 409,
@@ -101,9 +94,6 @@ export const SUBSTITUTION_ERROR_STATUS: Readonly<Record<SubstitutionErrorCode, n
   SUBSTITUTIONS_DISABLED: 503,
 }
 
-// ── Building blocks ─────────────────────────────────────────────────────────────
-
-// What the other party may see of a driver: no identity number, licence number or vendor data.
 export interface DriverContact {
   id: string
   full_name: string
@@ -111,13 +101,9 @@ export interface DriverContact {
 }
 
 export interface ExchangePoint {
-  // 1-255 characters
   label: string
-  // -90..90
   latitude: number
-  // -180..180
   longitude: number
-  // 0-1000 characters
   instructions: string
 }
 
@@ -127,20 +113,14 @@ export interface VehicleRef {
   vehicle_type: VehicleType
 }
 
-// intact/damaged: seal_number + >=1 photo. missing: null number + >=1 photo. not_applicable
-// (empty leg only): null number, a 1-1000 character reason, photos optional. The reason is
-// null for every other condition. One check per applicable vehicle.
 export interface SealCheck {
   vehicle_id: string
   condition: SubstitutionSealCondition
-  // XX-#### once normalised (e.g. AB-1234).
   seal_number: string | null
   photo_artifact_ids: string[]
   not_applicable_reason: string | null
 }
 
-// The incoming driver's fleet verification status as observed. An admin attestation is a
-// separate fact and never rewrites this status.
 export interface IdentitySnapshot {
   driver_id: string
   status: IdvsStatus
@@ -148,7 +128,6 @@ export interface IdentitySnapshot {
   observed_at: string
 }
 
-// A submitted capture, without its evidence. An upload alone is never a confirmation.
 export interface ConfirmationSummary {
   id: string
   role: SubstitutionRole
@@ -157,7 +136,6 @@ export interface ConfirmationSummary {
   received_at: string
 }
 
-// Summary plus the permitted declaration (context read and participation history).
 export interface SubstitutionConfirmationDetail extends ConfirmationSummary {
   confirmed_vehicle_ids: string[]
   seal_checks: SealCheck[]
@@ -171,12 +149,10 @@ export interface SubstitutionConfirmationDetail extends ConfirmationSummary {
   location_observation_committed?: boolean
 }
 
-// Who caused completion: exactly one actor, matching the trigger.
 export interface SubstitutionCompletionRead {
   trigger: SubstitutionCompletionTrigger
   completed_by_driver_id: string | null
   completed_by_user_id: string | null
-  // Display label, filled by the completed-transfer detail only.
   completed_by_name?: string | null
 }
 
@@ -184,7 +160,6 @@ export interface SubstitutionRequestRead {
   id: string
   trip_id: string
   trip_reference: string
-  // >= 1; advances on accepted confirmations and terminal changes.
   version: number
   state: SubstitutionState
   outgoing: DriverContact
@@ -205,14 +180,12 @@ export interface SubstitutionRequestRead {
   completed_substitution_id: string | null
   effective_at: string | null
   completion_mode: SubstitutionCompletionMode | null
-  // Set on a PENDING request whose capture was saved but cannot yet complete (HTTP 200).
   completion_blocked_by: SubstitutionCompletionBlocker | null
   replacement_request_id: string | null
   completion: SubstitutionCompletionRead | null
   permitted_actions: SubstitutionAction[]
 }
 
-// Ongoing-collection context. Stops and findings reuse the existing driver-safe shapes.
 export interface DriverSubstitutionContextRead extends Omit<SubstitutionRequestRead, 'confirmations'> {
   confirmations: SubstitutionConfirmationDetail[]
   remaining_stops: TripStop[]
@@ -221,7 +194,6 @@ export interface DriverSubstitutionContextRead extends Omit<SubstitutionRequestR
   artifacts: EvidenceArtifactWithUrl[]
 }
 
-// Dispatcher-only result of verifying the full custody chain.
 export interface CustodyIntegrityRead {
   status: CustodyIntegrityStatus
   amendment_count: number
@@ -231,13 +203,11 @@ export interface CustodyIntegrityRead {
 
 export interface DriverAccess {
   participation: DriverParticipation
-  // 0 is the original driver's period; each completed transfer increments it.
   custody_sequence: number
   can_advance: boolean
   can_submit_late_evidence: boolean
 }
 
-// References only; details need an authorised fetch.
 export interface SubstitutionNoticeRead {
   id: string
   request_id: string
@@ -247,7 +217,6 @@ export interface SubstitutionNoticeRead {
   read_at: string | null
 }
 
-// An appended clarification — never an edit and never a new custody assignment.
 export interface SubstitutionCorrectionRead {
   id: string
   substitution_id: string
@@ -257,7 +226,6 @@ export interface SubstitutionCorrectionRead {
   correction_note: string
   anchor_status: AnchorStatus
   receipt_id: string | null
-  // Display label, filled by the completed-transfer detail only.
   recorded_by_name?: string | null
 }
 
@@ -268,7 +236,6 @@ export interface CustodyPeriodRead {
   completion_mode: SubstitutionCompletionMode | null
 }
 
-// An opaque reference to one of this driver's own immutable actions.
 export interface ParticipationActionRef {
   kind: LateEvidenceKind
   id: string
@@ -276,8 +243,6 @@ export interface ParticipationActionRef {
   recorded_at: string
 }
 
-// What a known former (or current) participant may see of their own periods: no later live
-// tracker trail, other drivers' identity details, cargo manifest or exception stream.
 export interface DriverParticipationHistoryRead {
   trip_id: string
   trip_reference: string
@@ -288,14 +253,8 @@ export interface DriverParticipationHistoryRead {
   declarations: SubstitutionConfirmationDetail[]
 }
 
-// ── Late evidence ───────────────────────────────────────────────────────────────
-// A discriminated union (on `kind`) over four EXISTING driver request bodies, embedded as
-// `payload`. The payload types below mirror those backend schemas; they live here because
-// frontend/shared cannot import from the driver app. Never an arbitrary URL or operation.
-
 export type SealNumberSource = 'ocr_confirmed' | 'ocr_corrected' | 'typed'
 
-// Mirrors backend _PhaseCompleteBase (schemas/phases.py).
 export interface PhaseCompletePayloadBase {
   idempotency_key: string
   driver_phone_lat?: number | null
@@ -361,7 +320,6 @@ export type PhaseCompletePayload =
   | UnloadingCompletePayload
   | ConfirmationCompletePayload
 
-// Mirrors backend DriverCheckpointCreateBody (schemas/transit.py).
 export interface CheckpointCreatePayload {
   checkpoint_type: string
   driver_phone_lat?: number | null
@@ -378,7 +336,6 @@ export interface CheckpointCreatePayload {
   is_deviation?: boolean
 }
 
-// Mirrors backend LocationPingCreate / LocationPingBatch (schemas/locations.py).
 export interface LocationPingPayload {
   lat: number
   lng: number
@@ -391,7 +348,6 @@ export interface LocationBatchPayload {
   pings: LocationPingPayload[]
 }
 
-// Mirrors backend DriverExceptionCreateBody (schemas/transit.py).
 export interface ExceptionCreatePayload {
   exception_type: ExceptionType
   description: string
@@ -447,15 +403,11 @@ export interface LateEvidenceRead {
   review_note: string | null
 }
 
-// Dispatcher view: the retained typed evidence, its commitment and scoped artifact URLs.
 export interface LateEvidenceDetailRead extends LateEvidenceRead {
   evidence: LateEvidencePayload
   payload_sha256: string
   artifacts: EvidenceArtifactWithUrl[]
 }
-
-// ── Request bodies ──────────────────────────────────────────────────────────────
-// Actor IDs always come from the token, never these bodies; the server rejects extra fields.
 
 export interface ArrangeSubstitutionRequest {
   client_request_id: string
@@ -463,7 +415,6 @@ export interface ArrangeSubstitutionRequest {
   exchange: ExchangePoint
   expected_at: string
   is_planned: boolean
-  // 1-1000 characters
   reason: string
 }
 
@@ -473,7 +424,6 @@ export interface CancelSubstitutionRequest {
   reason: string
 }
 
-// Cancels the old request and creates a fresh one atomically (no inherited confirmations).
 export interface ReplaceSubstitutionRequest {
   client_request_id: string
   expected_version: number
@@ -485,7 +435,6 @@ export interface ReplaceSubstitutionRequest {
   reason: string
 }
 
-// latitude, longitude and accuracy_metres are null together when capture was unavailable.
 export interface ConfirmSubstitutionRequest {
   client_request_id: string
   expected_version: number
@@ -498,7 +447,6 @@ export interface ConfirmSubstitutionRequest {
   discrepancy_note: string | null
 }
 
-// Null reasons mean no attestation was requested; a supplied reason must be real text.
 export interface CompleteSubstitutionRequest {
   client_request_id: string
   expected_version: number
@@ -527,10 +475,6 @@ export interface AcknowledgeLateEvidenceRequest {
   note: string
 }
 
-// ── Errors ──────────────────────────────────────────────────────────────────────
-
-// FastAPI's `detail` object for a domain conflict. Existing clients must also parse the
-// legacy string `detail`.
 export interface SubstitutionErrorDetail {
   code: SubstitutionErrorCode
   message: string
@@ -543,7 +487,6 @@ export interface SubstitutionErrorResponse {
   detail: SubstitutionErrorDetail
 }
 
-// New bodies are explicit versions; the original v1 models stay unchanged for exact retries.
 export interface ArrangeImmediateSubstitutionRequest {
   client_request_id: string
   request_format: 'immediate_v2'

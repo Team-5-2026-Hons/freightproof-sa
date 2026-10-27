@@ -71,7 +71,6 @@ describe('useSealOcr', () => {
 
   it('answers no value at once in the browser, without ever showing reading', async () => {
     mockCanRead.mockReturnValue(false)
-    // Every render's flag, so a true that flashed and cleared within one act still shows.
     const seen: boolean[] = []
     const { result } = renderHook(() => {
       const state = useSealOcr()

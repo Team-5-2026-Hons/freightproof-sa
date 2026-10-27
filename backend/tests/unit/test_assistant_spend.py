@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.orchestration.analytics_chat import budget
 from app.orchestration.assistant import spend
 
-# 10:00 SAST, 21 Oct 2026.
 _NOW = datetime(2026, 10, 21, 8, 0, tzinfo=UTC)
 
 
@@ -56,7 +55,6 @@ class _FakeRedis:
 
 
 def _patched(monkeypatch: pytest.MonkeyPatch, fake: _FakeRedis) -> _FakeRedis:
-    # Both modules look the client up themselves: spend.py for its own counter, budget.py for the check.
     monkeypatch.setattr(spend, "get_redis", lambda: fake)
     monkeypatch.setattr(budget, "get_redis", lambda: fake)
     monkeypatch.setattr(settings, "AI_CHAT_MONTHLY_BUDGET_USD", 20.0)

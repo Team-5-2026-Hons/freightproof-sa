@@ -1,8 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-// Mutable through a getter so each test can configure the support line, the way
-// NEXT_PUBLIC_SUPPORT_PHONE would be set (or not) in .env.local. Ported from the retired
-// Settings page tests (audit M6) when Settings merged into Profile.
 let mockSupportPhone: string | null = null
 vi.mock('@/lib/constants/app', () => ({
   APP_VERSION: '0.1.0',
@@ -14,14 +11,12 @@ import ProfilePage from '../page'
 import { ROUTES } from '@/lib/constants/routes'
 import { getDriverPhoto, setDriverPhoto } from '@/lib/profile/driver-photo'
 
-// Module-level mocks read through closures at render time (same pattern as the panic tests).
 const mockSignOut = vi.fn()
 const mockRouterReplace = vi.fn()
 const mockPick = vi.fn()
 const mockNotify = vi.fn()
 let mockTrip: { trip_reference: string; horse: { registration: string } | null } | null = null
 let mockQueueLength = 0
-// Counts page renders: useOfflineQueue is read once per render of the page body only.
 let mockPageRenders = 0
 const mockPermission: Record<string, string | null> = { location: 'granted', camera: 'granted' }
 

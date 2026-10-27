@@ -19,7 +19,6 @@ import {
  * @param onExpire called exactly once when the window elapses
  */
 export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
-  // Ref so a caller passing an inline arrow doesn't rebuild every listener on each render.
   const onExpireRef = useRef(onExpire)
   useEffect(() => {
     onExpireRef.current = onExpire
@@ -30,8 +29,6 @@ export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
 
     const store = window.localStorage
     let timer: ReturnType<typeof setTimeout> | undefined
-    // Guards a double fire: the timer and a storage event from another tab can both
-    // conclude "expired" in the same tick.
     let expired = false
 
     const expire = (): void => {
@@ -41,8 +38,6 @@ export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
       onExpireRef.current()
     }
 
-    // Re-arms against the CURRENT stored timestamp, not a fixed delay — this is what
-    // shares the countdown across tabs.
     const rearm = (): void => {
       if (expired) return
       if (timer !== undefined) clearTimeout(timer)
@@ -56,20 +51,16 @@ export function useIdleTimeout(enabled: boolean, onExpire: () => void): void {
     }
 
     const onActivity = (): void => {
-      // A visibilitychange firing as the tab goes HIDDEN isn't presence; only the return counts.
       if (document.visibilityState !== 'visible') return
       recordActivity(store)
       rearm()
     }
 
-    // Another tab wrote (or cleared) the timestamp; re-arm from the new value.
     const onStorage = (event: StorageEvent): void => {
       if (event.key !== LAST_ACTIVITY_KEY) return
       rearm()
     }
 
-    // Seed on mount: a session restored from a page reload must not be revived just by
-    // refreshing — rearm() checks before scheduling, so an already-expired one signs out here.
     if (readLastActivity(store) === null) recordActivity(store)
     rearm()
 

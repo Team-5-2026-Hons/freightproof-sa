@@ -39,9 +39,6 @@ from app.integrations.mock_state import build_key, get_mock_state_store
 logger = logging.getLogger(__name__)
 
 
-# Not raised on any read path — a missing tracker reading must never break a
-# handshake, so absence is modelled as a PulsitFix status, not an exception.
-
 
 class PulsitUnsupportedError(Exception):
     """Raised only when staging mock state while pointed at live Pulsit
@@ -61,12 +58,8 @@ class PulsitFixStatus(str, Enum):
     means something different to whoever reads the evidence."""
 
     OK = "ok"
-    # Pulsit knows the device but reports no current position (dark, no signal).
     NO_FIX = "no_fix"
-    # Pulsit does not recognise the device id — fleet record vs tracker estate disagree.
     UNKNOWN_DEVICE = "unknown_device"
-    # We could not get an answer (timeout/transport/unreadable). Says nothing
-    # about the vehicle.
     UNAVAILABLE = "unavailable"
 
 
@@ -89,10 +82,8 @@ class PulsitFix:
     device_id: str
     status: PulsitFixStatus
     source: PulsitFixSource
-    # None whenever status is not OK — never defaulted to 0.0, a real coordinate.
     lat: Optional[Decimal]
     lng: Optional[Decimal]
-    # When the tracker took the reading, per Pulsit — not when we asked.
     fixed_at: Optional[datetime]
 
     @property
@@ -131,19 +122,9 @@ class PulsitClient(Protocol):
         ...
 
 
-# ---------------------------------------------------------------------------
-# Mock fixtures
-# ---------------------------------------------------------------------------
-
-# Every seeded demo tracker starts parked at the Cape Town depot (origin
-# precinct of the seeded trips) so the happy path demos without setup; only
-# FP-197's "move the truck" trigger produces a mismatch.
 _CPT_DEPOT_LAT = Decimal("-33.9249")
 _CPT_DEPOT_LNG = Decimal("18.4241")
 
-# Keyed to scripts/seed_demo.py:_VEHICLES. Anything outside this library
-# reads as UNKNOWN_DEVICE, matching how live Pulsit would treat an
-# unregistered device id.
 MOCK_DEVICE_POSITIONS: dict[str, tuple[Decimal, Decimal]] = {
     "PLT-HORSE-001": (_CPT_DEPOT_LAT, _CPT_DEPOT_LNG),
     "PLT-HORSE-002": (_CPT_DEPOT_LAT, _CPT_DEPOT_LNG),
@@ -155,14 +136,8 @@ MOCK_DEVICE_POSITIONS: dict[str, tuple[Decimal, Decimal]] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Mock client and its Redis state layer (FP-187)
-# ---------------------------------------------------------------------------
-
-# Redis key kind for staged tracker positions, distinct from staged PP and scan state.
 _PULSIT_KEY_KIND = "pulsit"
 
-# Field names inside the staged JSON blob — our own storage format, not Pulsit's.
 _STAGED_STATUS = "status"
 _STAGED_LAT = "lat"
 _STAGED_LNG = "lng"
@@ -212,8 +187,6 @@ class MockPulsitClient:
             self._key(device_id),
             {
                 _STAGED_STATUS: PulsitFixStatus.OK.value,
-                # Stored as strings: round-tripping Decimal through JSON's
-                # float would lose the precision Numeric(10,7) needs.
                 _STAGED_LAT: str(lat),
                 _STAGED_LNG: str(lng),
                 _STAGED_FIXED_AT: (fixed_at or datetime.now(UTC)).isoformat(),
@@ -259,8 +232,6 @@ class MockPulsitClient:
             return []
 
         store = get_mock_state_store()
-        # One batched read for the whole request, not a read per device — the
-        # store opens a Redis connection per call.
         staged_states = await store.get_many_json([self._key(d) for d in device_ids])
 
         fixes: list[PulsitFix] = []
@@ -285,8 +256,6 @@ class MockPulsitClient:
                     source=PulsitFixSource.MOCK,
                     lat=lat,
                     lng=lng,
-                    # Read time, not a fixed fixture timestamp — a position is
-                    # a claim about *now*.
                     fixed_at=datetime.now(UTC),
                 )
             )
@@ -296,23 +265,12 @@ class MockPulsitClient:
         return (await self.get_positions([device_id]))[0]
 
 
-# ---------------------------------------------------------------------------
-# Live client
-#
-# Everything below encodes the assumed API shape. See the module docstring.
-# ---------------------------------------------------------------------------
-
-# No published Pulsit SLA; 15s matches the PP client's bound (itself set to
-# our Hedera cap) so one number governs how long any external call may hold
-# a handshake open.
 _PULSIT_TIMEOUT_SECONDS: float = 15.0
 
-# ASSUMED request shape. Changing these is how this module is pointed at the real API.
 _PULSIT_POSITIONS_PATH = "/positions"
 _PULSIT_DEVICE_IDS_PARAM = "device_ids"
 _PULSIT_DEVICE_IDS_SEPARATOR = ","
 
-# ASSUMED response field names.
 _PULSIT_FIELD_POSITIONS = "positions"
 _PULSIT_FIELD_DEVICE_ID = "device_id"
 _PULSIT_FIELD_LAT = "latitude"
@@ -339,8 +297,6 @@ class LivePulsitClient:
             return []
 
         if not settings.PULSE_API_URL:
-            # Misconfiguration (PULSE_USE_MOCK=false, no URL) — a handshake
-            # must still complete, so this cannot raise.
             logger.error("PULSE_API_URL is not configured; cannot read tracker positions")
             return self._all_unavailable(device_ids)
 
@@ -355,8 +311,6 @@ class LivePulsitClient:
             response.raise_for_status()
             body: dict[str, Any] = response.json()
         except httpx.TimeoutException:
-            # Warning, not error: a timeout is an expected condition on a
-            # mobile-network telematics service, not a defect.
             logger.warning(
                 "Pulsit position request timed out after %ss for %d device(s)",
                 _PULSIT_TIMEOUT_SECONDS,
@@ -367,7 +321,6 @@ class LivePulsitClient:
             logger.error("Pulsit position request failed with HTTP %s", exc.response.status_code)
             return self._all_unavailable(device_ids)
         except (httpx.HTTPError, ValueError) as exc:
-            # ValueError covers a non-JSON body (json.JSONDecodeError is a subclass).
             logger.error("Pulsit position request could not be completed: %s", exc)
             return self._all_unavailable(device_ids)
 
@@ -391,8 +344,6 @@ class LivePulsitClient:
         """
         raw_positions = body.get(_PULSIT_FIELD_POSITIONS) if isinstance(body, dict) else None
         if not isinstance(raw_positions, list):
-            # Envelope itself isn't what we expect — says nothing about any
-            # individual vehicle.
             logger.error(
                 "Pulsit response missing a %r list; treating all %d device(s) as unavailable",
                 _PULSIT_FIELD_POSITIONS,
@@ -421,9 +372,6 @@ class LivePulsitClient:
         return (await self.get_positions([device_id]))[0]
 
 
-# Valid coordinate ranges. An impossible coordinate must never become a
-# stored fix, so this is checked here rather than left to whatever reads
-# the row later.
 _MIN_LATITUDE, _MAX_LATITUDE = -90, 90
 _MIN_LONGITUDE, _MAX_LONGITUDE = -180, 180
 
@@ -461,8 +409,6 @@ def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
         return _absent_fix(device_id, PulsitFixStatus.NO_FIX, PulsitFixSource.LIVE)
 
     try:
-        # str() first: Decimal(float) would preserve the binary approximation
-        # rather than the decimal value JSON sent.
         lat = Decimal(str(lat_raw))
         lng = Decimal(str(lng_raw))
         fixed_at = datetime.fromisoformat(str(entry[_PULSIT_FIELD_TIMESTAMP]))
@@ -497,10 +443,6 @@ def _parse_position(device_id: str, entry: dict[str, Any]) -> PulsitFix:
         fixed_at=fixed_at,
     )
 
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
 
 
 def get_pulsit_client(*, organization_id: uuid.UUID) -> PulsitClient:

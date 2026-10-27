@@ -2,8 +2,6 @@ interface InfoRowProps {
   label: string
   value: string
   mono?: boolean
-  // Renders the value as a link (`tel:` for a driver's number). Optional and additive:
-  // every existing call site keeps rendering plain text unchanged.
   href?: string
 }
 

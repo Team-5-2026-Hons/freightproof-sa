@@ -5,8 +5,6 @@ import { useCallback, useRef, useState } from 'react'
 interface ElementWidth<T extends HTMLElement> {
   /** Attach to the element being measured: `<div ref={ref} />`. */
   ref: (el: T | null) => void
-  /** Observed BORDER-box width in px (padding/border included). 0 before first
-   *  measurement or while unmounted. */
   width: number
 }
 
@@ -28,14 +26,11 @@ export function useElementWidth<T extends HTMLElement>(): ElementWidth<T> {
       return
     }
 
-    // offsetWidth (border box), not contentRect.width, which under-reports by padding.
     const measure = () => setWidth(el.offsetWidth)
 
     const observer = new ResizeObserver(measure)
     observer.observe(el)
 
-    // Backstop: a ResizeObserver isn't guaranteed to report an element leaving layout
-    // entirely via a responsive `hidden` class.
     window.addEventListener('resize', measure)
 
     cleanupRef.current = () => {

@@ -18,10 +18,6 @@ import { PHASE_STEP_PREFIX } from '@/lib/phase/routes'
 
 export const RESUME_SCREEN_KEY = 'fp:resume-screen'
 
-// True until the first screen of this JavaScript session has mounted. A cold start is the
-// only moment a remembered screen is replayed; module state, so a later visit to Home
-// within the same session is just a visit to Home. Lives here rather than in the template
-// file because Next allows a template no exports beyond its default.
 let isFirstScreenOfSession = true
 
 /** True exactly once per JavaScript session: on the first screen to ask. */
@@ -36,8 +32,6 @@ export function __resetColdStartForTests(): void {
   isFirstScreenOfSession = true
 }
 
-// Longer than any scanner or camera round trip, with room for a phone call in between;
-// short enough that a step left yesterday is not forced back onto the driver.
 export const RESUME_MAX_AGE_MS = 30 * 60 * 1000
 
 interface ResumeRecord {
@@ -46,8 +40,6 @@ interface ResumeRecord {
   savedAt: string
 }
 
-// The screens a driver is mid-task on. Tab roots, lists and trip pages are not: landing
-// back on Home from those is what a cold start should do.
 const RESUMABLE_PREFIXES = [PHASE_STEP_PREFIX, ROUTES.inTransit, SUBSTITUTION_PATH] as const
 
 export function isResumableRoute(pathname: string): boolean {
@@ -79,7 +71,6 @@ export function rememberScreen(url: string, actorId: string | null, now: Date = 
   try {
     store.setItem(RESUME_SCREEN_KEY, JSON.stringify(record))
   } catch (err) {
-    // Full or blocked storage: the worst case is a cold start on Home, which is today's behaviour.
     console.warn('resume: could not remember the current screen', err)
   }
 }

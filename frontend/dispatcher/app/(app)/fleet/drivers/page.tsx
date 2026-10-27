@@ -42,7 +42,6 @@ const STATUS_OPTIONS = [
   { value: 'inactive' as const, label: 'Inactive only' },
 ]
 
-// Licence colours change on a day boundary, so an hourly refresh is plenty for a tab left open.
 const CLOCK_TICK_MS = 3_600_000
 
 const EMPTY_FORM: DriverFormValues = {
@@ -61,10 +60,8 @@ export default function FleetDriversPage(): React.JSX.Element {
   const [touched, setTouched] = useState<Set<DriverField>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  // The assistant's "add a driver" button opens this page with the pop-up open, empty (assistant spec B41).
   useAddFormLink(ROUTES.fleetDrivers, () => setModalOpen(true))
 
-  // List controls — parity with the vehicles page.
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const { sort, tableSort, onSort } = useTableSort({ keys: DRIVER_SORT_KEYS, firstDir: defaultDriverSortDirection, initial: DEFAULT_DRIVER_SORT })
@@ -76,7 +73,6 @@ export default function FleetDriversPage(): React.JSX.Element {
     }
   }, [fetchError, notify])
 
-  // Derived each render — pure and cheap.
   const errors = validateDriverForm(form)
   const hasErrors = Object.values(errors).some((e) => e !== null)
   const phoneFeedback = phoneFieldFeedback(form.phone_number)
@@ -91,7 +87,6 @@ export default function FleetDriversPage(): React.JSX.Element {
         d.full_name.toLowerCase().includes(q) ||
         d.phone_number.toLowerCase().includes(q) ||
         d.license_number.toLowerCase().includes(q) ||
-        // id_number is unmasked here — dispatchers search by ID in their records
         d.id_number.includes(q)
       )
     })
@@ -100,7 +95,6 @@ export default function FleetDriversPage(): React.JSX.Element {
 
   const columns = useMemo(() => buildDriverColumns({ now }), [now])
 
-  // Placeholder rows only on the first load: a refetch (after adding a driver) swaps rows in place.
   const initialLoad = isLoading && drivers.length === 0
 
   function handleChange(field: string, value: string): void {
@@ -120,7 +114,6 @@ export default function FleetDriversPage(): React.JSX.Element {
   }
 
   async function handleSubmit(): Promise<void> {
-    // Defensive re-validate — the disabled Save button blocks the common path.
     if (hasErrors) {
       setTouched(new Set(DRIVER_FIELD_ORDER))
       const firstInvalidField = DRIVER_FIELD_ORDER.find((field) => errors[field] !== null)

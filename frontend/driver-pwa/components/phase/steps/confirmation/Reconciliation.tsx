@@ -8,8 +8,6 @@ import { cn } from '@/lib/utils'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
-// A filled disc, not a bare glyph: green "in", red "missing", named for screen readers
-// together with the row it marks.
 function StatusMark({ ok, what }: { ok: boolean; what: string }) {
   return (
     <span
@@ -41,7 +39,6 @@ interface ReconciliationProps {
 }
 
 export function Reconciliation({ phase, stepIndex, draft, onUpdate, onComplete }: ReconciliationProps) {
-  // Return onComplete's promise so SwipeToConfirm can show in-flight state.
   function handleConfirm(): void | Promise<void> {
     onUpdate({ reconciliationNote: 'Driver confirmed delivery reconciliation at destination.' })
     return onComplete()
@@ -54,9 +51,6 @@ export function Reconciliation({ phase, stepIndex, draft, onUpdate, onComplete }
       intro="Confirm unloading matches the warehouse. Anything that didn’t is already logged."
       action={<SwipeToConfirm label="Swipe to Confirm All" onConfirm={handleConfirm} />}
     >
-      {/* Limited to what THIS phase's own draft carries: the visual count carried forward
-          from unloading (evidence-draft.ts) and this phase's own POD capture. Unloading's
-          evidence belongs to a separate, already-resolved phase_event_id. */}
       <div className="divide-y divide-hairline">
         <Row icon={<Package className="size-6" strokeWidth={1.8} />} label="Parcels you counted">
           {draft.driverVisualCount !== null

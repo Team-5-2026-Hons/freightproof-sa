@@ -8,7 +8,6 @@ import { PhaseChecks, type PhaseChecksProps } from '../PhaseChecks'
 import { makePhase } from './testFixtures'
 import { line } from './textLine'
 
-// The map modal pulls in Leaflet, which these tests never open.
 vi.mock('@/components/map/LocationComparisonMap', () => ({ LocationComparisonMap: () => null }))
 
 const PRECINCT: Precinct = mockPrecincts[0]!

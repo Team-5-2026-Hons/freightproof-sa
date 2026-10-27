@@ -67,9 +67,6 @@ interface Props {
  */
 export function DriverSubstitutionPanel({ trip, onOpenTransfer }: Props) {
   const pending = trip.pending_driver_substitution ?? null
-  // One list in time order. Cancelled requests changed nothing, but stay in it: they are part of the
-  // audit history. A request has no terminal timestamp of its own, so a cancelled one falls back to
-  // when it was raised.
   const requests = (trip.driver_substitutions ?? []).filter(r => r.state !== 'pending')
     .sort((a, b) => Date.parse(a.effective_at ?? a.created_at) - Date.parse(b.effective_at ?? b.created_at))
   const enabled = trip.driver_substitutions_enabled === true
@@ -116,9 +113,7 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
   const [cancelReason, setCancelReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  // One key per intentional action; a fresh one when the dispatcher opens the form again.
   const [key, setKey] = useState(newClientRequestId)
-  // Complete and cancel each swap the action buttons for a form; focus follows into it and back out.
   const root = useOpenerFocus(mode === 'idle' ? null : mode)
   const incomingOnly = request.request_format === 'immediate_v2'
   const missing = request.missing_confirmations.length > 0
@@ -170,7 +165,6 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
         Confirmed by: {request.confirmations.length ? request.confirmations.map(c => c.role).join(', ') : 'no one yet'}
         {missing && ` · waiting for ${request.missing_confirmations.join(' and ')}`}
       </p>
-      {/* The recorded status, never relabelled: an attestation does not make PENDING verified. */}
       <p>Incoming driver identity: {request.identity.status}</p>
       {request.completion_blocked_by && <p role="status" className="mt-1 text-err">{BLOCKER_TEXT[request.completion_blocked_by]}</p>}
 
@@ -218,11 +212,8 @@ function HistoryItem({ request, onOpenTransfer }: { request: SubstitutionRequest
       {names} · cancelled{request.replacement_request_id ? ' and replaced' : ''}. Custody did not change.
     </li>
   }
-  // The one thing to act on in a row is a handover whose incoming identity is not confirmed.
   const identityNotVerified = request.identity.status !== 'verified'
   return <li>
-    {/* aria-label names the button and so replaces its text for assistive tech; the outcome and the
-        warning are therefore pointed at as its description. */}
     <button type="button" onClick={() => onOpenTransfer(completedId)} aria-haspopup="dialog" aria-label={`View evidence for the transfer from ${request.outgoing.full_name} to ${request.incoming.full_name}`}
       aria-describedby={detailsId}
       className="flex w-full items-start justify-between gap-3 rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-left hover:bg-surf focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">

@@ -105,7 +105,6 @@ describe('compact rail (D45)', () => {
     ])} density="compact" />)
 
     const completion = document.querySelector('[data-row-kind="completion"]')
-    // The group heading interrupts the rail, so the confirmation does not connect into it.
     expect(completion?.querySelector('[data-compact-connector]')).toBeNull()
     const group = screen.getByRole('group', { name: 'Findings from this confirmation' })
     const rows = within(group).getAllByRole('listitem')
@@ -133,7 +132,6 @@ describe('compact rail (D45)', () => {
     const list = document.querySelector('ol')!
     expect(list).toHaveClass(COMPACT_COLUMNS.split(' ')[1]!)
     expect(list.className).toContain('max-content')
-    // Every row, the confirmation group and its inner list pass the columns through.
     for (const row of document.querySelectorAll('li')) expect(row).toHaveClass('grid-cols-subgrid', 'col-span-full')
     const group = screen.getByRole('group', { name: 'Findings from this confirmation' })
     expect(group.querySelector('ol')).toHaveClass('grid-cols-subgrid')

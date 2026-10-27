@@ -59,8 +59,6 @@ class EvidenceAnchorEvent(Base):
         Index("ix_evidence_anchor_events_status_updated", "anchor_status", "updated_at"),
         Index("ix_evidence_anchor_events_trip_id", "trip_id"),
         Index("ix_evidence_anchor_events_exception_id", "exception_id"),
-        # Anchored if and only if a receipt is linked: the status can never claim a receipt
-        # that is not there, nor hide one that is.
         CheckConstraint(
             "(anchor_status = 'anchored') = (receipt_id IS NOT NULL)",
             name="ck_evidence_anchor_events_anchored_has_receipt",

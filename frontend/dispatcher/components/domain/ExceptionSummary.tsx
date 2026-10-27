@@ -17,17 +17,7 @@ import { EXCEPTION_SELECTED_SURFACE, EXCEPTION_SELECTION_OUTLINE } from './Excep
 
 interface Props {
   exception: TripException; phaseLabel?: string; returnTo?: string
-  /** The map button / supporting-evidence disclosure for this exception, when it has
-   *  either. Rendered inside this same card behind a divider, so a GPS-backed exception
-   *  reads as one bordered block instead of a card with unrelated controls floating
-   *  below it. */
   footer?: ReactNode
-  /** Card surface tone. 'low' (default) reads correctly against a 'lowest'-toned
-   *  container — the trip timeline's scroller and the overlay Modal both are. The
-   *  docked exceptions panel is itself 'low' (DetailPanel's `<aside>`), so a card
-   *  rendered there passes 'lowest' instead — the same adjustment ManifestContent
-   *  already makes for its own blocks in that exact panel — or the card is
-   *  indistinguishable from its own background but for a faint border. */
   tone?: 'low' | 'lowest'
   selected?: boolean
 }
@@ -41,8 +31,6 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
   const target = ROUTES.exceptionDetail(exception.id)
   const { user } = useAuth()
   const state = reviewState(exception, user?.id ?? null)
-  // Reviewed rows show when they were reviewed, claimed rows when they were claimed;
-  // an unclaimed unreviewed row has no event to time.
   const stateTime = exception.review_status === 'reviewed' ? exception.reviewed_at
     : state.kind === 'claimed_by_me' || state.kind === 'claimed_by_other' ? exception.claimed_at
     : null
@@ -54,10 +42,6 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
           <h3 id={exceptionSummaryTitleId(exception.id)} className="text-sm font-bold text-on-surf">{fmtExceptionType(exception.exception_type)}</h3>
           <Chip type={severity.chipType} label={severity.label} />
         </div>
-        {/* Matches PhaseTimelineItem's own <time> exactly (size, weight, colour, clock
-            icon): an exception is a timestamped event same as a phase is, so it earns
-            the same visual weight the timeline already gives its own timestamps —
-            instead of the small, muted, source-sharing line this used to be. */}
         <time dateTime={exception.created_at} className="flex shrink-0 items-center gap-[4px] text-[12px] font-[700] tabular-nums text-sec">
           <Ic n="clock" s={11} className="text-sec" />{fmtDateTime(exception.created_at)}
         </time>
@@ -67,8 +51,6 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
       <p className="mt-2 text-xs font-semibold text-on-surf-v">
         {state.label}
         {stateTime && ` · ${fmtDateTime(stateTime)}`}
-        {/* A dispatcher's own note is authored, not reviewed: its outcome is an internal
-            marker, and the label already says who wrote it. */}
         {exception.review_outcome && exception.review_outcome !== 'dispatcher_authored' && ` · ${exception.review_outcome.replaceAll('_', ' ')}`}
       </p>
       <Link className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4" href={withReturnTo(target, returnTo)}>

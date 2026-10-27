@@ -15,18 +15,17 @@ export interface AnchorToCheck {
 }
 
 export type AnchorCheckState =
-  | 'verified' //        payload hashes to data_hash, and Hedera holds that hash
-  | 'hash_mismatch' //   the payload in the pack does not hash to its own claimed hash
-  | 'ledger_mismatch' // Hedera holds a different hash at that position
-  | 'topic_mismatch' //  anchored on a topic other than the one this deployment pins
-  | 'not_found' //       the mirror answered 404: no message at that position — NOT unreachable
-  | 'unavailable' //     no usable answer from the mirror node — NOT evidence of tampering
-  | 'unsupported' //     this browser cannot hash (no crypto.subtle, e.g. a non-HTTPS page)
-  | 'no_receipt' //      the record has no ledger position to check
+  | 'verified'
+  | 'hash_mismatch'
+  | 'ledger_mismatch'
+  | 'topic_mismatch'
+  | 'not_found'
+  | 'unavailable'
+  | 'unsupported'
+  | 'no_receipt'
 
 export interface AnchorCheckResult {
   state: AnchorCheckState
-  /** Hedera's own "seconds.nanoseconds" consensus time, when the mirror answered. */
   consensusTimestamp?: string
 }
 
@@ -34,10 +33,6 @@ type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export type HederaNetwork = 'mainnet' | 'testnet' | 'previewnet'
 
-// The only places this page will read ledger messages from. The API tells the page which
-// mirror to use (`mirror_base_url`), but a page that obeyed any host the server named could
-// be pointed at a mirror that agrees with whatever the server wants it to. The first entry
-// per network is the default and matches backend/app/blockchain/hedera.py.
 export const TRUSTED_MIRRORS: Record<HederaNetwork, readonly string[]> = {
   mainnet: ['https://mainnet-public.mirrornode.hedera.com', 'https://mainnet.mirrornode.hedera.com'],
   testnet: ['https://testnet.mirrornode.hedera.com'],
@@ -61,18 +56,13 @@ export function trustedMirrorBase(network: string, suggested: string): string | 
     const origin = new URL(suggested).origin
     if (trusted.includes(origin)) return origin
   } catch {
-    // Not a URL at all: fall through to the default rather than fail the check.
   }
   return trusted[0]
 }
 
-// When set at build time, a record anchored on any other topic is flagged: the topic id
-// names the one FreightProof writes to, which a page cannot learn from the server it is
-// checking. Empty or unset means "no pin" (null), not "pin to the empty string".
 const pinnedTopic = process.env.NEXT_PUBLIC_HCS_TOPIC_ID?.trim()
 export const PINNED_TOPIC_ID: string | null = pinnedTopic ? pinnedTopic : null
 
-// Long enough for a slow mirror node, short enough that the page never hangs on one.
 const MIRROR_TIMEOUT_MS = 10_000
 const HTTP_NOT_FOUND = 404
 
@@ -102,8 +92,6 @@ export function mirrorMessageUrl(mirrorBase: string, topicId: string, sequence: 
   return `${mirrorBase.replace(/\/+$/, '')}/api/v1/topics/${topicId}/messages/${sequence}`
 }
 
-// Only the fields we read. The mirror also echoes topic_id and sequence_number, which we
-// check against the request so a wrong-position answer is never mistaken for the right one.
 interface MirrorMessage {
   message?: unknown
   consensus_timestamp?: string
@@ -120,7 +108,6 @@ function deadline(ms: number): { signal: AbortSignal; clear: () => void } {
 }
 
 function unavailable(reason: string, detail?: unknown): AnchorCheckResult {
-  // Unavailable is deliberately not a verdict, but it must not be silent either.
   console.warn(`Hedera check unavailable: ${reason}`, detail ?? '')
   return { state: 'unavailable' }
 }
@@ -137,7 +124,6 @@ export async function verifyAnchoredRecord(
   fetchImpl: FetchLike = fetch,
   pinnedTopicId: string | null = PINNED_TOPIC_ID,
 ): Promise<AnchorCheckResult> {
-  // Step 1 needs no network: does the pack's payload even produce the hash it claims?
   let payloadHash: string
   try {
     payloadHash = await sha256Hex(record.canonical_payload)
@@ -156,7 +142,6 @@ export async function verifyAnchoredRecord(
   let body: MirrorMessage
   try {
     const response = await fetchImpl(mirrorMessageUrl(mirrorBase, topicId, sequence), { signal, referrerPolicy: 'no-referrer' })
-    // 404 is the mirror answering "nothing at that position" — different from not answering.
     if (response.status === HTTP_NOT_FOUND) return { state: 'not_found' }
     if (!response.ok) return unavailable(`mirror answered HTTP ${response.status}`)
     body = (await response.json()) as MirrorMessage
@@ -172,7 +157,6 @@ export async function verifyAnchoredRecord(
   }
   if (typeof body.message !== 'string' || body.message === '') return unavailable('mirror answer had no message')
 
-  // The HCS message is the hex digest itself; the mirror base64-encodes message bytes.
   let anchored: string
   try {
     anchored = atob(body.message).trim().toLowerCase()

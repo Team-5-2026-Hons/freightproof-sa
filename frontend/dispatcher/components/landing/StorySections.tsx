@@ -58,7 +58,6 @@ export function WhySection() {
   )
 }
 
-// Synthetic dispute timeline: what a dispatcher would see for a contested delivery.
 const SAMPLE_TIMELINE = [
   { time: '05:48', label: 'Trip locked', detail: 'Driver, vehicle and 412 units committed', state: 'ok' },
   { time: '07:31', label: 'Loaded and sealed', detail: 'Seal 0048213 · signed waybill recorded', state: 'ok' },

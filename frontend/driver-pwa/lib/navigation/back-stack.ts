@@ -19,9 +19,7 @@ import { PHASE_STEP_PREFIX } from '@/lib/phase/routes'
 import type { TransitionDirection } from '@/lib/navigation/transition-direction'
 
 interface StackEntry {
-  /** Compared to decide "already on the stack". */
   pathname: string
-  /** What back navigates to — the pathname plus any query (trip detail's ?id=). */
   url: string
 }
 
@@ -42,9 +40,6 @@ export function recordScreen(pathname: string, url: string, direction: Transitio
   if (at >= 0) {
     stack = [...stack.slice(0, at), entry]
   } else if (direction === 'back') {
-    // Going back to a screen the stack never saw (the fallback after a cold start) lands
-    // BEHIND everything known, so it becomes the root. Appending it instead made the screen
-    // just left look like its predecessor: In Transit ⇄ Trip looped with no tab bar to escape.
     stack = [entry]
   } else {
     stack = [...stack, entry]

@@ -7,9 +7,7 @@ import type { DriverTripSummary } from '@/lib/types/driver-trip'
 
 export interface GroupedTrips {
   active: DriverTripSummary[]
-  /** Soonest departure first: the next trip is the one a driver needs. */
   upcoming: DriverTripSummary[]
-  /** Most recent first. */
   past: DriverTripSummary[]
   isLoading: boolean
   loadError: string | null

@@ -23,14 +23,10 @@ interface AccessRequestFormProps {
   openMailto?: (url: string) => void
 }
 
-// Visual order of the fields, so focus lands on the topmost error.
 const FIELD_ORDER: readonly AccessRequestField[] = ['fullName', 'workEmail', 'company', 'role', 'fleetSize', 'message']
 
-// Field edges use outline/80 (3.1:1 against the card) so people can see where to type.
 const fieldBase = cn(
-  // 16px text: iOS Safari zooms the page into any field set smaller.
   'w-full rounded-xl border bg-surf-low px-4 py-3 text-[1rem] font-medium text-on-surf',
-  // /80 keeps placeholder hints at 4.9:1 on the field fill (WCAG AA).
   'placeholder:text-on-surf-v/80 transition-colors duration-150 min-h-[48px]',
   'focus:border-sec focus:bg-surf-lowest focus:outline-none',
 )
@@ -64,7 +60,6 @@ export function AccessRequestForm({ openMailto }: AccessRequestFormProps) {
   const uid = useId()
   const [request, setRequest] = useState<AccessRequest>(EMPTY_ACCESS_REQUEST)
   const [errors, setErrors] = useState<AccessRequestErrors>({})
-  // Validate live only after the first attempt, so nobody is scolded mid-typing.
   const [attempted, setAttempted] = useState(false)
   const [handedOff, setHandedOff] = useState(false)
 
@@ -82,8 +77,6 @@ export function AccessRequestForm({ openMailto }: AccessRequestFormProps) {
     const found = validateAccessRequest(request)
     setErrors(found)
     if (hasErrors(found)) {
-      // Take keyboard and screen-reader users straight to the first thing to fix. Looked up
-      // by field order, not by [aria-invalid] in the DOM, which hasn't re-rendered yet here.
       const first = FIELD_ORDER.find(field => found[field])
       if (first) document.getElementById(id(first))?.focus()
       return

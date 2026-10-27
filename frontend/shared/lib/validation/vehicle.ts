@@ -25,8 +25,6 @@ export type VehicleField =
 
 export type VehicleFormValues = Record<VehicleField, string>
 
-// Display order, shared by create and edit forms to focus the first invalid field on
-// submit — kept next to VehicleField so the two can't drift.
 export const VEHICLE_FIELD_ORDER: readonly VehicleField[] = [
   'registration',
   'pulsit_device_id',
@@ -38,7 +36,6 @@ export const VEHICLE_FIELD_ORDER: readonly VehicleField[] = [
   'gross_vehicle_mass_kg',
 ]
 
-// gross_vehicle_mass_kg has no natural upper bound, so use the largest safe integer.
 const POSITIVE_INT_MAX = Number.MAX_SAFE_INTEGER
 
 /** Returns true if `value` is a syntactically valid date string (e.g. from <input type="date">). */
@@ -61,7 +58,6 @@ export function validateVehicleForm(values: VehicleFormValues): Record<VehicleFi
       maxLength(PULSIT_MAX),
     ]),
 
-    // Optional; if filled in, exactly 17 alphanumeric characters (no ISO 3779 I/O/Q exclusion).
     vin_number: firstError(values.vin_number, [
       exactLength(VIN_LENGTH, `VIN must be exactly ${VIN_LENGTH} characters`),
       pattern(VIN_PATTERN, 'VIN must contain only letters and numbers'),
@@ -73,7 +69,6 @@ export function validateVehicleForm(values: VehicleFormValues): Record<VehicleFi
 
     model: firstError(values.model, [maxLength(MAKE_MODEL_MAX)]),
 
-    // Ceiling computed live (current year + 1), mirrors backend's _validate_year.
     year: firstError(values.year, [
       intInRange(YEAR_MIN, currentYearCeiling, `Year must be between ${YEAR_MIN} and ${currentYearCeiling}`),
     ]),
@@ -114,7 +109,6 @@ export function vinFieldFeedback(value: string): { hint: string | null; error: s
     return { hint: null, error: null }
   }
 
-  // Still typing toward 17 — guide, don't alarm.
   if (value.length < VIN_LENGTH) {
     return { hint: `${value.length} of ${VIN_LENGTH} characters`, error: null }
   }

@@ -8,7 +8,6 @@ import { recordScreen, resetBackStack } from '@/lib/navigation/back-stack'
 import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// The header reads the session trip for its trip-wide progress (overhaul 4.x).
 let mockTripPhases: PhaseDescriptor[] | null = null
 vi.mock('@/lib/hooks/useOptionalTrip', () => ({
   useOptionalTrip: () => (mockTripPhases === null ? null : { trip: { phases: mockTripPhases } }),
@@ -47,7 +46,6 @@ describe('StepHeader', () => {
   })
 
   it('test_names_the_phase_with_its_place_in_the_trip_and_the_step_count', () => {
-    // departure is phase 3 of 7 driver phases; its recipe has two steps.
     const departureIndex = SINGLE_LEG_PHASE_PLAN.findIndex((p) => p.phase_type === 'departure')
     const plan = walk(SINGLE_LEG_PHASE_PLAN, SINGLE_LEG_PHASE_PLAN[departureIndex].sequence_number - 1)
     mockTripPhases = plan
@@ -102,16 +100,13 @@ describe('StepHeader', () => {
     })
 
     it('exits to the screen the phase was started from (Home)', () => {
-      // Arrange — Home, then the first step of the phase.
       resetBackStack()
       recordScreen('/', '/', 'none')
       recordScreen('/trip/phase/activation/step/2-verification', '/trip/phase/activation/step/2-verification', 'forward')
       render(<StepHeader phase={makePhase('activation')} stepIndex={0} />)
 
-      // Act
       fireEvent.click(screen.getByRole('button', { name: 'Back' }))
 
-      // Assert
       expect(mockPush).toHaveBeenCalledWith('/')
     })
   })
@@ -124,7 +119,6 @@ describe('StepHeader', () => {
     })
 
     it('goes to the previous step of the SAME phase type, not out of it', () => {
-      // departure's slugs: ['2-capture-seal', '4-departure']
       render(<StepHeader phase={makePhase('departure')} stepIndex={1} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))
@@ -134,9 +128,6 @@ describe('StepHeader', () => {
     })
 
     it('works from a later step too (confirmation, step 3 back to step 2)', () => {
-      // confirmation, not departure: departure is down to two steps since '3-waybill'
-      // was removed, so it no longer HAS a stepIndex 2 to walk back from. confirmation's
-      // slugs: ['1-pod-photo', '2-receiver-handover', '3-reconciliation', '4-closed'].
       render(<StepHeader phase={makePhase('confirmation')} stepIndex={2} />)
 
       fireEvent.click(screen.getByRole('button', { name: 'Back to previous step' }))

@@ -26,13 +26,10 @@ def sendgrid_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @respx.mock
 async def test_send_plain_text_email_posts_message_with_bearer_key(sendgrid_settings: None) -> None:
-    # Arrange
     call = respx.post(_SEND_URL).mock(return_value=httpx.Response(202))
 
-    # Act
     await send_plain_text_email(to_address="jane@santam.example", subject="Code", body="123456")
 
-    # Assert
     request = call.calls.last.request
     assert request.headers["Authorization"] == "Bearer test-sendgrid-key"
     body = json.loads(request.content)
@@ -47,11 +44,9 @@ async def test_send_plain_text_email_posts_message_with_bearer_key(sendgrid_sett
 async def test_send_without_configuration_raises_and_sends_nothing(
     sendgrid_settings: None, monkeypatch: pytest.MonkeyPatch, missing: str,
 ) -> None:
-    # Arrange
     call = respx.post(_SEND_URL).mock(return_value=httpx.Response(202))
     monkeypatch.setattr(settings, missing, "")
 
-    # Act / Assert
     with pytest.raises(EmailUnavailableError):
         await send_plain_text_email(to_address="a@b.co", subject="s", body="b")
     assert not call.called
@@ -60,19 +55,15 @@ async def test_send_without_configuration_raises_and_sends_nothing(
 @pytest.mark.parametrize("status", [200, 400, 401, 403, 500])
 @respx.mock
 async def test_send_any_status_but_202_raises(sendgrid_settings: None, status: int) -> None:
-    # Arrange
     respx.post(_SEND_URL).mock(return_value=httpx.Response(status, json={"errors": [{"message": "nope"}]}))
 
-    # Act / Assert
     with pytest.raises(EmailUnavailableError):
         await send_plain_text_email(to_address="a@b.co", subject="s", body="b")
 
 
 @respx.mock
 async def test_send_unreachable_raises(sendgrid_settings: None) -> None:
-    # Arrange
     respx.post(_SEND_URL).mock(side_effect=httpx.ConnectError("down"))
 
-    # Act / Assert
     with pytest.raises(EmailUnavailableError):
         await send_plain_text_email(to_address="a@b.co", subject="s", body="b")

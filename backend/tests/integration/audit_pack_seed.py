@@ -184,8 +184,6 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
                       seal_photo_artifact_id=seal_photo.id, waybill_photo_artifact_id=waybill_photo.id,
                       anchor_status=AnchorStatus.ANCHORED)
     in_transit = phase(4, PhaseType.IN_TRANSIT, stop_jhb, 7)
-    # Arrival-era shape: the seal is read, photographed and anchored at the gate;
-    # unloading no longer carries one.
     arrival = phase(5, PhaseType.ARRIVAL, stop_dbn, 8.25, seal_number="SEAL-001", seal_condition="intact",
                     seal_photo_artifact_id=arrival_seal_photo.id, anchor_status=AnchorStatus.ANCHORED)
     unloading = phase(6, PhaseType.UNLOADING, stop_dbn, 8.5)
@@ -200,7 +198,6 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
         origin_precinct_id=origin.id, destination_precinct_id=dest.id, created_by_user_id=dispatcher.id,
         created_at=T0, trip_type="loaded", pp_manifest=None, pp_manifest_snapshot_sha256=None,
         planned_departure_at=trip.planned_departure_at, planned_arrival_at=trip.planned_arrival_at,
-        # The same v2 shape trips.creation anchors, so verify_subject checks this lock as it does a real one.
         stops=[StopCommitment(s.sequence, s.precinct_id, s.slot_time) for s in (stop_jhb, stop_dbn, stop_pmb)],
     )
     creation_receipt = await _receipt(
@@ -241,8 +238,6 @@ async def seed_audit_trip(db: AsyncSession) -> AuditTrip:
         lat=JHB[0], lng=JHB[1], captured_at=T0 + timedelta(hours=2),
     ))
 
-    # Pings every 20 min along the N3 (JHB → Harrismith → DBN), with one 47-minute
-    # silence after Harrismith — the coverage gap the tests look for.
     route = [JHB, HARRISMITH, DBN]
     ping_times = [T0 + timedelta(hours=1, minutes=20 * i) for i in range(10)]
     ping_times.append(ping_times[-1] + timedelta(minutes=47))

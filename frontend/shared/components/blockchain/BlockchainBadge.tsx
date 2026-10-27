@@ -14,7 +14,6 @@ type Props = {
   className?: string
 }
 
-// Falls back to Hedera testnet if the env var is absent (e.g. local dev without .env.local).
 const HASHSCAN_BASE =
   process.env.NEXT_PUBLIC_HEDERA_HASHSCAN_BASE ?? 'https://hashscan.io/testnet'
 
@@ -24,7 +23,6 @@ export function BlockchainBadge({ receipt, state, className = '' }: Props) {
   if (resolvedState === 'anchored' && receipt && receipt.hedera_topic_id) {
     const hashscanUrl =
       `${HASHSCAN_BASE}/topic/${receipt.hedera_topic_id}/${receipt.hedera_sequence_number}`
-    // Prefer the consensus timestamp; fall back to DB created_at when HCS hasn't confirmed yet.
     const ts = receipt.hedera_consensus_timestamp ?? receipt.created_at
     return (
       <a

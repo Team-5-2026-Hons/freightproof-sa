@@ -22,10 +22,8 @@ export interface RetainedDraft {
   id: string
   tripId: string
   phaseEventId: string
-  /** null when nobody recorded who captured it. */
   actorId: string | null
   custodySequence: number | null
-  /** True when the capturer is unknown: never attributed to the signed-in driver. */
   quarantined: boolean
   reason: string
   draft: unknown
@@ -52,8 +50,6 @@ function isStoredDraft(value: unknown): value is StoredDraft {
   return isRecord(value) && value.v === DRAFT_FORMAT_VERSION && isRecord(value.draft)
 }
 
-// Ids in the key are UUIDs (hyphens, never underscores), so the first underscore after the
-// prefix separates trip from phase event.
 function parseDraftKey(key: string): { tripId: string; phaseEventId: string } | null {
   if (!key.startsWith(DRAFT_PREFIX)) return null
   const rest = key.slice(DRAFT_PREFIX.length)
@@ -88,7 +84,6 @@ function retain(key: string, record: Omit<RetainedDraft, 'id' | 'retainedAt'>): 
 function mismatch(stored: StoredDraft, stamp: CustodyStamp): string | null {
   if (stored.actorId === null) return UNKNOWN_CAPTURER_REASON
   if (stored.actorId !== stamp.actorId) return OTHER_ACCOUNT_REASON
-  // Unknown is compatible only before any transfer; returning A must not relabel it.
   if (stored.custodySequence === null && stamp.custodySequence !== null && stamp.custodySequence > 0) {
     return EARLIER_PERIOD_REASON
   }
@@ -142,8 +137,6 @@ export function readDraft(tripId: string, phaseEventId: string, stamp: CustodySt
 export function writeDraft(tripId: string, phaseEventId: string, stamp: CustodyStamp, draft: object): void {
   const store = storage()
   const key = draftKey(tripId, phaseEventId)
-  // A previous retention may have failed (quota/private mode). Never overwrite its only
-  // durable copy with the next driver's or period's work, even if the new form is blank.
   readDraft(tripId, phaseEventId, stamp)
   const remaining = store?.getItem(key) ?? null
   if (remaining !== null) {

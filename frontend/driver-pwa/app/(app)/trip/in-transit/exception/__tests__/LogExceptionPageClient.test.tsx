@@ -7,8 +7,6 @@ import { ApiError } from '@/lib/api/client'
 import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// Marks every phase up to and including `through` (by sequence_number) as completed —
-// same local helper lib/phase/__tests__/derive.test.ts uses.
 function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
   return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
@@ -16,9 +14,6 @@ function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescripto
 const PHOTO_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
 const REQUIRED_DESCRIPTION = 'Driver observed an issue'
 
-// Trip shapes for the "which vehicle broke down" question — only the fields the page
-// reads. A rigid truck (no trailers) is the default: most tests here are about something
-// other than the vehicle.
 const RIGID_TRIP = { id: 'trip-1', trailers: [] }
 const FRONT_TRAILER = { id: 'trailer-front', registration: 'TRL 111 GP' }
 const REAR_TRAILER = { id: 'trailer-rear', registration: 'TRL 222 GP' }
@@ -52,19 +47,12 @@ vi.mock('@/lib/hooks/useOfflineQueue', () => ({
   useOfflineQueue: () => ({ submitExceptionReport: mockSubmitExceptionReport }),
 }))
 
-// Button is being reworked in a parallel task — stub it so this suite only
-// exercises the page's own behavior, not Button internals.
 vi.mock('@/components/ui/Button', () => ({
   Button: ({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) => (
     <button onClick={onClick} disabled={disabled}>{children}</button>
   ),
 }))
 
-// Stubbed for the same reason as Button: CameraCapture's own capture paths are covered
-// in components/phase/__tests__/CameraCapture.test.tsx. Here it only needs to be a thing
-// that hands the page a data URL and shows what the page passes back down. Each instance
-// is identified by its label (the page labels slots "Photo N" and the add row by its
-// verb), and each capture yields a distinct data URL so order and replacement are testable.
 let captureCounter = 0
 vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, dataUrl, onCapture }: {
@@ -199,10 +187,6 @@ describe('LogExceptionPageClient submit receipt (5b)', () => {
   })
 })
 
-// Audit fixes: the offline-queue success path previously navigated away with NO receipt
-// (unlike CheckpointPageClient's identical path), and the terminal-4xx branch showed
-// "check your connection" copy precisely where the code knows retrying won't help.
-
 describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -228,7 +212,6 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
           description: REQUIRED_DESCRIPTION,
           client_report_id: expect.any(String),
         },
-        // No photo captured, so nothing extra travels with the report.
         photos: [],
       },
       expect.any(Function),
@@ -273,7 +256,6 @@ describe('LogExceptionPageClient failure feedback (audit fixes)', () => {
       expect(screen.getByText(/the report was not accepted/i)).toBeInTheDocument(),
     )
     expect(screen.queryByText(/check your connection/i)).not.toBeInTheDocument()
-    // A terminal refusal stores nothing and says nothing was saved.
     expect(mockNotify).not.toHaveBeenCalled()
     expect(mockRouterPush).not.toHaveBeenCalled()
   })
@@ -290,8 +272,6 @@ describe('LogExceptionPageClient back link (5d)', () => {
     render(<LogExceptionPageClient />)
 
     const backLink = screen.getByRole('button', { name: 'Back to In Transit' })
-    // min-h-[44px] is SubpageHeader's shared 44px minimum touch target for a
-    // stressed/gloved hand — see components/layout/SubpageHeader.tsx.
     expect(backLink).toHaveClass('min-h-[44px]')
 
     fireEvent.click(backLink)
@@ -309,9 +289,6 @@ describe('LogExceptionPageClient phase tagging', () => {
   })
 
   it('queues a breakdown against the leg being driven, resolved at report time', async () => {
-    // Mechanical and seal-broken-in-transit are IN_TRANSIT events by definition. The
-    // queued entry may not send until after arrival, so the tag is captured here — not
-    // at flush time, when the trip has already moved on to unloading.
     const logException = vi.fn().mockRejectedValue(new Error('offline'))
     const phases = walk(SINGLE_LEG_PHASE_PLAN, 3)
     const inTransit = phases.find((p) => p.phase_type === 'in_transit')!
@@ -328,14 +305,11 @@ describe('LogExceptionPageClient phase tagging', () => {
       description: REQUIRED_DESCRIPTION,
       phase_event_id: String(inTransit.phase_event_id),
       client_report_id: expect.any(String),
-      // A rigid truck: the breakdown can only be the truck's, so it says so.
       vehicle_type: 'horse',
     })
   })
 
   it('still queues the report when the trip carries no phase plan', async () => {
-    // Runs inside the catch block of an already-failed send — a throw here would lose
-    // the report outright. Untagged beats unsent.
     const logException = vi.fn().mockRejectedValue(new Error('offline'))
     mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
 
@@ -384,9 +358,6 @@ describe('LogExceptionPageClient location capture', () => {
   })
 
   it('sends the report without a fix once the capture budget elapses, never waiting on a stalled GPS', async () => {
-    // A broken seal on the road is CRITICAL; it must not sit behind useLocation's full
-    // 10 s geolocation timeout. captureWithinBudget caps the wait at
-    // REPORT_CAPTURE_BUDGET_MS and the report goes with its location simply absent.
     vi.useFakeTimers()
     try {
       const logException = vi.fn().mockResolvedValue(undefined)
@@ -411,7 +382,6 @@ describe('LogExceptionPageClient location capture', () => {
   })
 
   it('a second tap during the location wait does not start a second submission', async () => {
-    // `stage` only flips after the GPS wait, so the button is still live for that window.
     let resolveFix: (fix: null) => void = () => {}
     mockCaptureLocation.mockReturnValue(new Promise((resolve) => { resolveFix = resolve }))
     hookBehaviour()
@@ -427,10 +397,6 @@ describe('LogExceptionPageClient location capture', () => {
     await waitFor(() => expect(mockSubmitExceptionReport).toHaveBeenCalledTimes(1))
   })
 })
-
-// Trailer analytics: a breakdown records WHICH vehicle broke down. The driver
-// answers only "Truck or Trailer?", plus a plate on an interlink; the server works out
-// the exact vehicle from the trip.
 
 describe('LogExceptionPageClient asks which vehicle broke down', () => {
   beforeEach(() => {
@@ -466,7 +432,6 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     chooseBreakdown()
     expect(screen.getByText('Truck')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Trailer'))
-    // "Trailer" alone names the only trailer, so no plate is asked for.
     expect(screen.queryByText(FRONT_TRAILER.registration)).not.toBeInTheDocument()
     fireEvent.click(screen.getByText('Submit Exception'))
 
@@ -536,11 +501,9 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     chooseBreakdown()
     fireEvent.click(screen.getByText('Trailer'))
     fireEvent.click(screen.getByText(REAR_TRAILER.registration))
-    // A chosen category collapses to one row (overhaul 6.4); Change reopens the list.
     fireEvent.click(screen.getByRole('button', { name: /change what happened/i }))
     fireEvent.click(screen.getByText('Cargo damage'))
     expect(screen.queryByText('Which vehicle broke down?')).not.toBeInTheDocument()
-    // Back on breakdown, the earlier answer is gone and has to be given again.
     fireEvent.click(screen.getByRole('button', { name: /change what happened/i }))
     fireEvent.click(screen.getByText('Vehicle breakdown'))
     expect(screen.getByText('Submit Exception')).toBeDisabled()
@@ -574,12 +537,6 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     })
   })
 })
-
-// FP-290: the driver photographs the problem, up to MAX_EXCEPTION_PHOTOS photos per
-// report. Upload, durable queueing and outcome mapping live in useOfflineQueue /
-// lib/offline (covered by their own suites); here the hook's submitExceptionReport is
-// driven per test, and the page's job is to hand it a correct draft and to react truthfully
-// to every outcome.
 
 function fillForm() {
   fireEvent.click(screen.getByText('Cargo damage'))
@@ -635,7 +592,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     expect(draft.tripId).toBe('trip-1')
     expect(draft.body.client_report_id).toBe(draft.clientReportId)
     expect(mockSubmitExceptionReport).toHaveBeenCalledTimes(1)
-    // Nothing is uploaded by the page itself any more: that is the sync layer's job.
     expect(logException).toHaveBeenCalledTimes(1)
   })
 
@@ -679,7 +635,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
   })
 
   it('test_photoless_report_posts_no_ids', async () => {
-    // The panic-style, photo-free path: no id list at all, not an empty one.
     const logException = vi.fn().mockResolvedValue(undefined)
     mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException })
     mockSubmitExceptionReport.mockResolvedValue({ kind: 'acknowledged' })
@@ -715,7 +670,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     const [first, second] = mockSubmitExceptionReport.mock.calls.map((c) => c[0] as ReturnType<typeof firstDraft>)
     expect(second.clientReportId).toBe(first.clientReportId)
     expect(second.body.client_report_id).toBe(first.body.client_report_id)
-    // Same photo ids too, so a resumed send reuses uploads it already made.
     expect(second.photos.map((p) => p.id)).toEqual(first.photos.map((p) => p.id))
   })
 
@@ -741,7 +695,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
 
     expect(screen.getByText('4 of 5')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add another photo' })).toBeInTheDocument()
-    // Slots renumber: the old photo 3 is now photo 2, so the removed one is truly gone.
     expect(screen.getByAltText('captured Photo 2')).toHaveAttribute('src', `${PHOTO_DATA_URL}#3`)
     fireEvent.click(screen.getByText('Submit Exception'))
     await waitFor(() => expect(mockSubmitExceptionReport).toHaveBeenCalled())
@@ -761,7 +714,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     const before = firstDraft().photos
     mockRouterPush.mockClear()
 
-    // Retake slot 2 through its own CameraCapture (the button named for that slot).
     fireEvent.click(within(screen.getByRole('group', { name: 'Photo 2' })).getByRole('button', { name: 'Photo 2' }))
     fireEvent.click(screen.getByText('Submit Exception'))
     await waitFor(() => expect(mockSubmitExceptionReport).toHaveBeenCalledTimes(2))
@@ -788,7 +740,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     for (const n of [1, 2]) {
       const group = screen.getByRole('group', { name: `Photo ${n}` })
       const remove = within(group).getByRole('button', { name: `Remove photo ${n}` })
-      // Icon-only, so the name comes from aria-label; size-11 is the 44pt minimum hit area.
       expect(remove).toHaveClass('size-11')
       expect(remove).not.toHaveTextContent(/\S/)
     }
@@ -812,7 +763,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     render(<LogExceptionPageClient />)
     addPhoto()
 
-    // A photo alone does not satisfy the gate: the label stays and the chips say why.
     expect(screen.getByText('Submit Exception')).toBeDisabled()
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(list).toHaveTextContent('What happened')
@@ -887,7 +837,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     expect(alert).toHaveTextContent('Nothing was lost from this screen')
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Report saved' }))
     expect(mockRouterPush).not.toHaveBeenCalled()
-    // The form is intact: description and both photos are still on screen.
     expect(screen.getByLabelText('Describe what happened')).toHaveValue(REQUIRED_DESCRIPTION)
     expect(screen.getByText('2 of 5')).toBeInTheDocument()
     expect(screen.getByText('Submit Exception')).toBeEnabled()
@@ -919,7 +868,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     expect(mockRouterPush).not.toHaveBeenCalled()
     expect(screen.getByText('2 of 5')).toBeInTheDocument()
 
-    // Fixing the photo clears the stale message.
     fireEvent.click(screen.getByRole('button', { name: 'Remove photo 2' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -949,8 +897,6 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
     fillForm()
     fireEvent.click(screen.getByText('Submit Exception'))
 
-    // Nothing holds this report — not the server, not the device. A "Report saved"
-    // receipt here would be a lie, and the driver would never re-report it.
     await waitFor(() => expect(screen.getByText(/no room to store it/i)).toBeInTheDocument())
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ title: 'Report saved' }))
     expect(mockRouterPush).not.toHaveBeenCalled()
@@ -959,10 +905,8 @@ describe('LogExceptionPageClient photo capture (FP-290)', () => {
 
 describe('LogExceptionPageClient — what is still needed (audit C4)', () => {
   it('lists the requirements beside the submit, not a stray "Required" under the description', () => {
-    // Arrange / Act
     render(<LogExceptionPageClient />)
 
-    // Assert — "Required" used to sit directly above "Photo (optional)" and read as one label.
     expect(screen.queryByText('Required')).not.toBeInTheDocument()
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(list).toHaveTextContent('What happened')

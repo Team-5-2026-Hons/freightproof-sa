@@ -13,7 +13,6 @@ import type { DateRange } from '@/lib/types/date-range'
 
 const SLA_WINDOW_DAYS = 30
 
-// The SAST day, not the UTC one, so the window rolls over at SAST midnight like the rest of the app.
 function defaultRange(): DateRange {
   const to = sastToday()
   return { from: addDays(to, -SLA_WINDOW_DAYS), to }
@@ -31,7 +30,6 @@ export default function SLAPage() {
         </Button>
       </TopBar>
 
-      {/* Filter bar */}
       <div className="flex items-center gap-3 px-6 py-4 bg-surf-low border-b border-outline-v/20 shrink-0">
         <span className="text-[12px] font-[600] text-on-surf-v">
           {range.from} to {range.to}
@@ -39,7 +37,6 @@ export default function SLAPage() {
         <span className="text-[11px] text-on-surf-v">(date range picker: Phase 1 hook)</span>
       </div>
 
-      {/* 2×2 chart grid */}
       <div className="flex-1 overflow-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="p-5">

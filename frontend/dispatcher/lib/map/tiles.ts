@@ -4,24 +4,16 @@
 /** Standard OSM/Google/MapBox slippy-map tile size (256x256). */
 export const TILE_SIZE_PX = 256
 
-/** Ground resolution (metres/pixel) at the equator, zoom 0 — the Web Mercator tile spec constant. */
 export const EQUATOR_METRES_PER_PIXEL_Z0 = 156543.03392
 
-/** Below this the thumbnail is too coarse to show useful geofence context. */
 export const MIN_TILE_ZOOM = 10
 
-/** OSM's standard raster tile set stops serving useful detail beyond this. */
 export const MAX_TILE_ZOOM = 18
 
-/** Target fraction of the framing box the geofence circle's DIAMETER should occupy when
- *  auto-picking a zoom. Callers must pass the SMALLER viewport dimension (see
- *  zoomForRadius), or the circle clips along the other one. */
 export const FENCE_FRACTION_OF_FRAME = 0.55
 
-/** Mid-range fallback zoom for radius inputs that can't drive the log2 search (0, negative, NaN). */
 const DEFAULT_TILE_ZOOM = 14
 
-/** Web Mercator is only defined up to this latitude before y runs to +/-Infinity. */
 const MERCATOR_MAX_LATITUDE_DEG = 85.0511
 
 function toRadians(degrees: number): number {
@@ -82,7 +74,6 @@ export function zoomForRadius(radiusMetres: number, latitude: number, framePx: n
 
   const targetDiameterPx = FENCE_FRACTION_OF_FRAME * framePx
   const latRad = toRadians(clampLatitude(latitude))
-  // Guard cos() rounding to 0 at the poles, which would send log2 to -Infinity.
   const cosLat = Math.max(Math.abs(Math.cos(latRad)), Number.EPSILON)
 
   const exactZoom = Math.log2(
@@ -96,30 +87,13 @@ export function zoomForRadius(radiusMetres: number, latitude: number, framePx: n
   return clampZoom(Math.round(exactZoom))
 }
 
-/**
- * Consecutive tile errors, with no successful load between them, that mean the tile
- * SERVER is unreachable rather than one tile 404'ing. Chosen empirically: low enough to
- * catch a dead connection within the first screenful, high enough that a spotty
- * connection doesn't flicker. Shared by both map surfaces so they fall back consistently.
- */
 export const TILE_ERROR_FALLBACK_THRESHOLD = 6
 
-/** Fallback tile host: OSM's public raster tiles. Development/demo default only — OSM's
- *  usage policy doesn't cover production. */
 const OSM_PUBLIC_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 
-/** The raster tile template both map surfaces use, so they can't drift onto different
- *  hosts. Read from the environment so switching provider (MapTiler, Stadia, Carto) is
- *  a deploy-time setting: set NEXT_PUBLIC_TILE_URL to that provider's `{z}/{x}/{y}`
- *  template with its key embedded. */
-// `||`, not `??`: .env.example ships this key present but blank, so an unset value is
-// an empty string, not undefined/null, which `??` wouldn't catch.
 export const OSM_TILE_URL_TEMPLATE =
   process.env.NEXT_PUBLIC_TILE_URL || OSM_PUBLIC_TILE_URL
 
-// Both keyless; attribution is required by each provider's terms and rendered by
-// Leaflet's own attribution control — do not strip it. Satellite is the default since
-// the task is "put this pin on that building"; street is the toggle for roads/names.
 export const TILE_SOURCES = {
   satellite: {
     label: 'Satellite',
@@ -146,13 +120,9 @@ export function tileUrl(x: number, y: number, zoom: number): string {
 
 /** One tile to render, with its pixel offset inside the viewport box. */
 export interface TilePlacement {
-  /** Tile column, already wrapped into [0, 2^zoom) so it is safe to request. */
   x: number
-  /** Tile row, always within [0, 2^zoom) — rows off the top/bottom of the world are omitted. */
   y: number
-  /** Pixel offset of this tile's left edge from the viewport box's left edge. */
   left: number
-  /** Pixel offset of this tile's top edge from the viewport box's top edge. */
   top: number
 }
 
@@ -180,8 +150,6 @@ export function tileGrid(
   const tileCount = 2 ** zoom
   const { x, y } = tileCoordinates(latitude, longitude, zoom)
 
-  // Global pixel coords of the viewport's top-left corner, rounded to whole pixels so
-  // adjacent tiles don't render with hairline seams (Leaflet does the same).
   const originXPx = Math.round(x * TILE_SIZE_PX - widthPx / 2)
   const originYPx = Math.round(y * TILE_SIZE_PX - heightPx / 2)
 

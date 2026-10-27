@@ -13,10 +13,6 @@ from pydantic import ValidationError
 from app.schemas.organisations import PrecinctCreateBody, PrecinctUpdateBody
 
 
-# ---------------------------------------------------------------------------
-# DriverCreate — id_number must be exactly 13 digits
-# ---------------------------------------------------------------------------
-
 def test_driver_id_number_valid():
     from app.schemas.people import DriverCreate
     import uuid
@@ -56,10 +52,6 @@ def test_driver_id_number_non_digits():
         )
 
 
-# ---------------------------------------------------------------------------
-# MerkleBatchLeafCreate — source_type must be "checkpoint", "exception", or "artifact"
-# ---------------------------------------------------------------------------
-
 def test_merkle_leaf_source_type_valid():
     from app.schemas.blockchain import MerkleBatchLeafCreate
     import uuid
@@ -87,26 +79,8 @@ def test_merkle_leaf_source_type_invalid():
         )
 
 
-# ---------------------------------------------------------------------------
-# TripCreateRequest — trailer_ids/consignment validators moved to
-# tests/unit/test_trip_schemas.py (trip-creation redesign):
-#   - empty-trailer-ids-rejected: deleted — trailer_ids no longer has min_length=1
-#     (see test_zero_trailers_valid, which asserts the opposite).
-#   - single-trailer-accepted: deleted — redundant with the valid-payload cases
-#     already covered in test_trip_schemas.py.
-#   - duplicate-trailer-ids-rejected: moved to
-#     test_trip_schemas.py::test_duplicate_trailer_ids_rejected (adjusted to
-#     include a consignments list, now required because trip_type defaults to
-#     TripType.LOADED).
-# ---------------------------------------------------------------------------
-# Vehicle — VIN/length rules live ONLY on the input bodies, never the read schema.
-# Regression guard: a read schema constrained like an input body makes GET /vehicles
-# 500 on legacy rows whose stored VIN predates the rule (e.g. a sub-17-char VIN).
-# ---------------------------------------------------------------------------
-
-# A 15-char VIN — shorter than the 17-char input rule, representing legacy stored data.
 _LEGACY_SHORT_VIN = "GH698HF7X090002"
-_VALID_VIN = "1HGCM82633A004352"  # 17 alphanumeric chars
+_VALID_VIN = "1HGCM82633A004352"
 
 
 def _vehicle_read_payload(**overrides) -> dict:
@@ -161,12 +135,6 @@ def test_vehicle_update_body_rejects_short_vin() -> None:
     with pytest.raises(ValidationError):
         VehicleUpdateBody(vin_number=_LEGACY_SHORT_VIN)
 
-
-# ---------------------------------------------------------------------------
-# DriverExceptionCreateBody — gps_lat/gps_lng: both-or-neither, lat -90..90,
-# lng -180..180. Covers the panic-button GPS-drop bug: the driver endpoint must
-# reject a partial fix rather than silently store a nonsense coordinate.
-# ---------------------------------------------------------------------------
 
 def test_exception_gps_both_provided_is_valid() -> None:
     from app.schemas.transit import DriverExceptionCreateBody
@@ -239,16 +207,6 @@ def test_exception_gps_lng_out_of_range_rejected() -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Seal number format — _validate_seal_format normalizes (strip/upper) before
-# matching XX-####, so casing/whitespace from a retyped seal is canonicalized
-# rather than rejected. Covers both fields that route through it:
-# DepartureCompleteRequest.seal_number and
-# UnloadingCompleteRequest.seal_number_at_destination. seal_number_confirmed is
-# deliberately NOT covered — it stays free-form so a mistyped confirmation is
-# itself recordable evidence, per app/schemas/phases.py.
-# ---------------------------------------------------------------------------
-
 def _departure_request(**overrides):
     from app.schemas.phases import DepartureCompleteRequest
 
@@ -317,14 +275,6 @@ def test_seal_number_confirmed_stays_free_form_not_normalized():
     assert request.seal_number_confirmed == " not a seal at all "
 
 
-# ---------------------------------------------------------------------------
-# Minimum trip duration — a declared schedule must be physically plausible
-# ---------------------------------------------------------------------------
-# Rejecting only arrival <= departure lets a JHB-DBN run be declared as sixty
-# seconds. Nothing downstream questions it: the phase ledger records against that
-# schedule, and every latency figure derived from phase_events inherits the
-# nonsense. This is cheaper to refuse at the door than to detect afterwards.
-
 def _trip_create_request(**overrides):
     from app.schemas.trips import TripCreateRequest
     import uuid
@@ -349,8 +299,6 @@ def test_trip_duration_below_minimum_is_rejected():
             planned_arrival_at=datetime(2026, 5, 1, 8, 1, tzinfo=timezone.utc),
         )
 
-    # The message must name the minimum: "too short" without a number leaves the
-    # dispatcher guessing at what would be accepted.
     assert str(int(MINIMUM_TRIP_DURATION.total_seconds() // 60)) in str(caught.value)
 
 
@@ -399,13 +347,6 @@ def test_trip_with_one_timed_stop_and_no_arrival_is_rejected():
 
     assert "a planned arrival is required" in str(caught.value)
 
-
-# ---------------------------------------------------------------------------
-# Minimum duration on the explicit multi-stop route
-# ---------------------------------------------------------------------------
-# The stops path carries its own schedule via per-stop slot_time and needs no
-# trip-level planned_departure_at at all, so a rule that reads only the trip-level
-# fields leaves the whole "booked in sixty seconds" hole open on that route.
 
 def _trip_request_with_stops(first_slot, last_slot, **overrides):
     from app.schemas.trips import TripCreateRequest
@@ -478,11 +419,6 @@ def test_trip_level_departure_pairs_with_stop_derived_arrival():
             planned_departure_at=departure,
         )
 
-
-# ---------------------------------------------------------------------------
-# PrecinctCreateBody / PrecinctUpdateBody — constrained request bodies that
-# never accept a client-supplied organization id (SEC-PRECINCT-1)
-# ---------------------------------------------------------------------------
 
 
 def _valid_precinct_payload() -> dict:
@@ -590,10 +526,6 @@ def test_precinct_update_body_rejects_out_of_range_radius(radius):
         PrecinctUpdateBody(geofence_radius_metres=radius)
 
 
-# ---------------------------------------------------------------------------
-# TripExceptionReviewRequest — the dispatcher review action (FP-146)
-# ---------------------------------------------------------------------------
-
 def test_exception_review_requires_note_and_outcome() -> None:
     from app.schemas.transit import TripExceptionReviewRequest
 
@@ -618,9 +550,6 @@ def test_exception_review_allows_no_contact() -> None:
 def test_exception_review_requires_explicit_contact_choice() -> None:
     from app.schemas.transit import TripExceptionReviewRequest
 
-    # model_validate rather than the constructor: the whole point of this test is that
-    # omitting contact_method fails, so mypy's required-kwarg check on the constructor
-    # (which model_validate's Any-typed input sidesteps) can't be satisfied by adding it.
     with pytest.raises(ValidationError):
         TripExceptionReviewRequest.model_validate(
             {

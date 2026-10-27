@@ -32,13 +32,11 @@ from tests.integration._fleet_seed import (
     operator_from_seed,
     seed_trip,
 )
-# The lane figures read the analytics views, which the test schema builds from their migrations.
 from tests.integration.test_analytics import views  # noqa: F401
 from tests.integration.test_parcel_trace import make_world
 
 NOW = datetime.now(UTC)
 _NULL_WHEN: dict[str, object] = {"n": None, "weekday": None, "day": None, "end_day": None, "time_of_day": None}
-# Cape Town to Johannesburg by truck, roughly: 1,400 km and 17 h 40 min of road time.
 _ROAD_METRES = 1_400_000
 _ROAD_SECONDS = (17 * 60 + 40) * 60
 
@@ -140,7 +138,6 @@ async def test_vehicle_status_splits_its_own_exceptions_from_its_trips(seed: dic
     result = _result(outcome)
     assert result["exceptions_to_review"]["types"] == ["mechanical"]
     assert result["exceptions_on_all_its_trips"]["types"] == ["gps_mismatch"]
-    # The model is told this count covers every trip, so it can't call it the current trip's (B38).
     assert "not only its current trip" in result["all_trips_scope"]
     assert result["recent_breakdowns"] == 1
     assert [booking["trip_reference"] for booking in result["on_trip_now"]] == [trip.trip_reference]
@@ -231,7 +228,6 @@ async def test_route_time_driving_and_past_trips(
         await seed_trip(db_session, operator, stops=[origin, dest], start=days_ago(days))
 
     first = _result(await _run(db_session, operator.org.id, "route_time", _route_args(origin.name, dest.name)))
-    # Past times here are the seed's few minutes of driving, faster than the faked road: left out.
     assert first["history_left_out"] is not None
     again = await _run(db_session, operator.org.id, "route_time", _route_args(origin.name, dest.name))
 
@@ -270,7 +266,6 @@ async def test_route_time_leaves_out_trips_faster_than_the_road(
 ) -> None:
     operator = operator_from_seed(seed)
     origin, dest = await _depots(db_session, operator)
-    # The seeded single leg drives for minutes, far under the faked 17 h 40 min of road.
     await seed_trip(db_session, operator, stops=[origin, dest], start=days_ago(2))
 
     outcome = await _run(db_session, operator.org.id, "route_time", _route_args(origin.name, dest.name))
@@ -293,7 +288,6 @@ async def test_route_time_offers_believable_past_trips(
     monkeypatch.setattr(route_cache, "compute_truck_route", four_hours)
     operator = operator_from_seed(seed)
     origin, dest = await _depots(db_session, operator)
-    # The seeded single leg departs at +100 min and arrives at +400: 5 hours, believable for 4 h of road.
     for days in (2, 3):
         await seed_trip(db_session, operator, stops=[origin, dest], start=days_ago(days))
 

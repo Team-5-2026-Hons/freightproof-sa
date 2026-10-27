@@ -2,8 +2,6 @@
 
 import { useEffect } from 'react'
 
-// Rendered when something under a page throws while displaying a pack (a field of an unexpected
-// shape, say). Without it the visitor gets Next's blank error page and no way back.
 export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.warn('The pack view failed to render', error)

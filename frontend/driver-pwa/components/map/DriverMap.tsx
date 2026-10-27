@@ -24,46 +24,33 @@ import { Button } from '@/components/ui/Button'
 import type { DriverPosition } from '@/lib/types/location'
 import type { RouteCoordinate } from '@/lib/types/route'
 
-// Street level: about a kilometre across on a phone.
 const MAP_ZOOM = 15
 
-// Fixed metre radius, not a pixel marker, keeps the dot proportional to the accuracy halo.
 const DRIVER_DOT_RADIUS_M = 12
 
-// Used only when the platform reports no accuracy figure. Deliberately generous:
-// under-drawing the uncertainty is the failure mode that misleads.
 const FALLBACK_ACCURACY_RADIUS_M = 50
 
 const ACCURACY_FILL_OPACITY = 0.15
 
-// Under the driver dot, not over it: the dot is the fact, the line is the plan.
 const ROUTE_STROKE_WEIGHT = 5
 const ROUTE_STROKE_OPACITY = 0.55
 const ROUTE_Z_INDEX = 0
 const DRIVER_Z_INDEX = 1
 const ACCURACY_STROKE_OPACITY = 0.4
 
-// ~1.1m of ground resolution at the equator — finer than any consumer GPS fix.
 const COORDINATE_DECIMALS = 5
 
-// One minute: long enough a normal refresh cycle never trips it, short enough a driver
-// who moved since the last fix is told so.
 const STALE_FIX_MS = 60_000
 
-// Resolved at runtime from the --fp-* CSS variables: the Maps JS API takes a colour
-// string that can't resolve `var()` itself, and the theme must still swap underneath.
 const DRIVER_COLOUR_VAR = '--fp-secondary'
-// Only reached if the stylesheet hasn't applied (jsdom, CSS load failure).
 const DRIVER_COLOUR_FALLBACK = 'rgb(0 81 213)'
 
 function tokenColour(variable: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback
   const raw = window.getComputedStyle(document.documentElement).getPropertyValue(variable).trim()
-  // globals.css stores triples ("0 81 213"), not colour strings.
   return raw === '' ? fallback : `rgb(${raw})`
 }
 
-// Must run before the first library load and never re-run, so latched at module scope.
 let mapsOptionsApplied = false
 
 function applyMapsOptions(apiKey: string): void {
@@ -85,8 +72,6 @@ function nativeMapsUrl(position: DriverPosition): string {
   }
 }
 
-// The basemap's styling for whichever theme <html> currently carries. null = Google's own
-// default (light) styling.
 function themedMapStyles(): google.maps.MapTypeStyle[] | null {
   if (typeof document === 'undefined') return null
   return document.documentElement.classList.contains(DARK_CLASS)
@@ -101,15 +86,10 @@ function formatCoordinate(value: number): string {
 function isStale(capturedAt: string | null, now: number): boolean {
   if (capturedAt === null) return true
   const takenAt = new Date(capturedAt).getTime()
-  // An unparseable timestamp is treated as stale — the cautious reading.
   if (Number.isNaN(takenAt)) return true
   return now - takenAt > STALE_FIX_MS
 }
 
-// Where a caller's extra action lands on a fallback card: in the card's own flow, right
-// aligned under the card's text and hand-off button. A control floated over the card cannot
-// know how tall its text has grown (a short phone, a long caption), so it ends up on top of
-// the card's own button; in the flow it can only ever sit below it.
 function FallbackExtraAction({ children }: { children: ReactNode }) {
   return <div className="flex w-full shrink-0 justify-end">{children}</div>
 }
@@ -125,7 +105,6 @@ interface CoordinatesCardProps {
   extraAction?: ReactNode
 }
 
-// Rungs 1 and 2 of the ladder. Identical content, different headline explaining why.
 function CoordinatesCard({ position, capturedAt, reason, className, extraAction }: CoordinatesCardProps) {
   const stale = isStale(capturedAt, Date.now())
 
@@ -166,9 +145,6 @@ function CoordinatesCard({ position, capturedAt, reason, className, extraAction 
         </p>
       </div>
 
-      {/* Real anchor, not a router push: a WebView hands off a geo:/maps: intent scheme
-          more reliably from <a href> than a scripted assignment. Hand-styled rather than
-          `<Button asChild>`, which throws with the installed @radix-ui/react-slot. */}
       <a
         href={nativeMapsUrl(position)}
         rel="noopener noreferrer"
@@ -193,7 +169,6 @@ interface NoFixPanelProps {
   extraAction?: ReactNode
 }
 
-// Rung 3. Nothing is drawn, because there is nothing true to draw.
 function NoFixPanel({ onRetry, className, extraAction }: NoFixPanelProps) {
   return (
     <div
@@ -219,36 +194,15 @@ function NoFixPanel({ onRetry, className, extraAction }: NoFixPanelProps) {
 }
 
 export interface DriverMapProps {
-  /** The latest fix the caller holds, or null when the phone has produced none. */
   position: DriverPosition | null
-  /** ISO timestamp of `position`, used to label a stale fix honestly. */
   capturedAt: string | null
   /** Re-request a fix. Omit to render the no-fix state without a retry control. */
   onRetry?: () => void
   className?: string
-  /**
-   * Placement override for the live map's "Open in Maps" chip, for a screen that floats
-   * its own controls where the chip normally sits (In Transit's Back button, top left).
-   * Whatever the placement, it must stay clear of Google's logo and attribution.
-   */
   handoffClassName?: string
-  /**
-   * Sizing for the fallback cards (no fix / coordinates), when it must differ from the
-   * map's own. A fixed-height map strip needs an explicit height for the Maps API to draw
-   * into, but the fallback cards carry text and a button that would overflow that height.
-   * Defaults to `className`.
-   */
   fallbackClassName?: string
-  /**
-   * A second hand-off that belongs on the map surface (In Transit's Navigate to the
-   * destination). On the live map it floats where `extraActionClassName` places it; on the
-   * fallback cards it joins the card's flow instead, so it can never cover the card's own
-   * "Open in Maps" button. Omit for none.
-   */
   extraAction?: ReactNode
-  /** Placement of `extraAction` over the live map, e.g. `bottom-12 right-4`. */
   extraActionClassName?: string
-  /** The planned leg being driven, [lat, lng] in driving order. Omit or null for no line. */
   route?: readonly RouteCoordinate[] | null
 }
 
@@ -262,14 +216,10 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
   const driverDotRef = useRef<google.maps.Circle | null>(null)
   const accuracyRef = useRef<google.maps.Circle | null>(null)
   const routeLineRef = useRef<google.maps.Polyline | null>(null)
-  // Kept from the one library load so the route effect can build a Polyline without a
-  // second importLibrary round trip (and without reaching for the global `google`).
   const mapsLibraryRef = useRef<google.maps.MapsLibrary | null>(null)
 
   const hasKey = GOOGLE_MAPS_API_KEY !== ''
 
-  // Gated on an existing fix: the map is only ever centred on a real reading, never a
-  // default coordinate that would render as a confident lie.
   useEffect(() => {
     if (!hasKey || position === null || mapState !== 'loading' || mapRef.current !== null) return
 
@@ -290,7 +240,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
         const map = new Map(container, {
           center: centre,
           zoom: MAP_ZOOM,
-          // A driver's screen, not a mapping tool: no controls to fat-finger, no tappable POIs.
           disableDefaultUI: true,
           gestureHandling: 'greedy',
           clickableIcons: false,
@@ -298,7 +247,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
           styles: themedMapStyles(),
         })
 
-        // The halo is the uncertainty, drawn to scale, stopping a 500m fix reading as a pinpoint.
         accuracyRef.current = new Circle({
           map,
           center: centre,
@@ -328,8 +276,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        // Offline, dead zone, blocked script, or rejected key — shown as the coordinates
-        // card, never an empty grey pane.
         console.warn('[DriverMap] Google Maps JS API could not be loaded', err)
         setMapState('unavailable')
       })
@@ -337,7 +283,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     return () => { cancelled = true }
   }, [hasKey, position, mapState])
 
-  // Re-centring on every fix is what makes this a driving screen, not a still photograph.
   useEffect(() => {
     const map = mapRef.current
     if (map === null || position === null) return
@@ -349,9 +294,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     accuracyRef.current?.setRadius(position.accuracyM ?? FALLBACK_ACCURACY_RADIUS_M)
   }, [position, mapState])
 
-  // Drawn (or redrawn) whenever the map becomes ready or the leg changes. The map stays
-  // centred on the driver, not fitted to the route: this is a driving screen, and a
-  // 600 km leg fitted to a phone would shrink the driver's own position to a pixel.
   useEffect(() => {
     const map = mapRef.current
     const Polyline = mapsLibraryRef.current?.Polyline
@@ -370,9 +312,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     })
   }, [route, mapState])
 
-  // Follow the app theme live: the theme class lands on <html> (lib/theme.ts), including
-  // the automatic switch at sunset under "System", so watch that one attribute rather than
-  // re-deriving the preference here.
   useEffect(() => {
     if (mapState !== 'ready' || typeof MutationObserver === 'undefined') return
     const observer = new MutationObserver(() => {
@@ -382,7 +321,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     return () => observer.disconnect()
   }, [mapState])
 
-  // Release the Maps objects on unmount so repeated opens don't accumulate map instances.
   useEffect(() => () => {
     driverDotRef.current?.setMap(null)
     accuracyRef.current?.setMap(null)
@@ -394,8 +332,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     mapRef.current = null
   }, [])
 
-  // A dead zone clears when the truck comes out of it — retry rather than leaving the
-  // driver on the fallback card for the rest of the leg.
   const retryTiles = useCallback(() => {
     if (mapRef.current !== null) return
     setMapState('loading')
@@ -407,7 +343,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     return () => window.removeEventListener('online', retryTiles)
   }, [retryTiles])
 
-  // Rung 3 first: with no fix there is no coordinate for rungs 1 and 2 to show either.
   if (position === null) return <NoFixPanel onRetry={onRetry} className={fallbackClassName} extraAction={extraAction} />
   if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={fallbackClassName} extraAction={extraAction} />
   if (mapState === 'unavailable') {
@@ -423,10 +358,6 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
           <p className="text-sm text-surface-on-variant">Loading map</p>
         </div>
       )}
-      {/* The same handoff the fallback cards offer: a small map is for glancing, the
-          phone's own map app is for looking properly. A real <a> for the reason given on
-          the fallback card's link. Top-left: the bottom corners carry Google's logo and
-          attribution, which must stay visible. */}
       {mapState === 'ready' && (
         <a
           href={nativeMapsUrl(position)}

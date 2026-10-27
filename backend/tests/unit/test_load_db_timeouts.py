@@ -79,7 +79,6 @@ def test_configure_environment_overrides_inherited_targets(tmp_path: Path, monke
     monkeypatch.chdir(tmp_path)
     inherited = {"DATABASE_URL": "postgresql+asyncpg://shared:secret@db.example.com/shared"}
 
-    # patch.dict restores the whole process environment afterwards, added keys included.
     with patch.dict(os.environ, inherited):
         configure_environment(LOCAL_DATABASE, LOCAL_REDIS)
         environment = dict(os.environ)

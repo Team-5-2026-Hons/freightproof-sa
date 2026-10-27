@@ -13,11 +13,8 @@ interface OutlinePanelProps {
   outline: LatLngPair[] | null
   candidates: OutlineCandidate[]
   status: CandidateStatus
-  /** Which candidate the current outline started from, until the dispatcher edits it. */
   selectedId: string | null
-  /** Validation message for the current outline (or for a missing one), or null. */
   error: string | null
-  /** False until a pin exists — every action here works around the pin. */
   hasPin: boolean
   /** Look up the property at the pin and draw the best match (square if none). */
   onAutoFit: () => void
@@ -26,7 +23,6 @@ interface OutlinePanelProps {
   onClear: () => void
 }
 
-// Same pressed-state treatment as ParcelSearch's result rows.
 const CANDIDATE_BUTTON_CLASS =
   'w-full rounded-lg border border-outline-v/40 px-3 py-2 text-left transition-colors hover:bg-surf-low ' +
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec ' +
@@ -87,8 +83,6 @@ export function OutlinePanel({
             <span className="text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
               Mapped shapes (OpenStreetMap)
             </span>
-            {/* A starting shape, never the fence itself: OSM maps buildings and estates,
-                not property boundaries, so the dispatcher adjusts whatever is picked. */}
             {candidates.map((candidate) => (
               <button
                 key={candidate.id}

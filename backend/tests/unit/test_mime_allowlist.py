@@ -12,8 +12,6 @@ from app.storage.mime_allowlist import (
     HEIC, JPEG, PDF, PNG, WEBP, detect_mime_type, resolve_mime_type,
 )
 
-# Minimal byte prefixes — each is the real signature plus filler, which is all the
-# sniffers inspect.
 _JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 20
 _PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
 _WEBP_BYTES = b"RIFF" + b"\x00\x00\x00\x00" + b"WEBP" + b"\x00" * 20

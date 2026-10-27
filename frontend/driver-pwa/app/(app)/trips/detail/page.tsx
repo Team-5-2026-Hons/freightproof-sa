@@ -8,7 +8,6 @@ import { Suspense } from 'react'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import TripDetailByIdPageClient from './TripDetailByIdPageClient'
 
-// useSearchParams() requires Suspense for the output: 'export' build.
 export default function TripDetailByIdPage() {
   return (
     <Suspense fallback={<LoadingScreen label="Loading trip" />}>

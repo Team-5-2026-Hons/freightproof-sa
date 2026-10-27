@@ -1,10 +1,6 @@
 """Exceptions raised by the Parcel Perfect clients."""
 
 
-# ---------------------------------------------------------------------------
-# Errors and capability flags
-# ---------------------------------------------------------------------------
-
 
 class PPWaybillNotFoundError(Exception):
     """Raised when PP has no waybill for the given reference."""

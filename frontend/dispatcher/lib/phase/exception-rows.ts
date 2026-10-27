@@ -11,9 +11,7 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { countLabel } from '@/lib/format/count'
 import { SEVERITY_RANK } from '@/lib/exceptions/severity'
 
-/** Rows shown per phase before "+n more" (design note O5: three everywhere). */
 export const EXCEPTION_ROW_CAP = 3
-/** URL phase scope for the Trip record list, distinct from all trip exceptions. */
 export const TRIP_LEVEL_SCOPE = 'trip-level'
 
 export function isTripLevelException(exception: TripException, phaseIds: ReadonlySet<string>): boolean {
@@ -73,7 +71,6 @@ const DISPATCHER_NOTE_OUTCOME = 'dispatcher_authored'
 export function exceptionReviewLabel(exception: TripException): string {
   if (exception.review_status === 'needs_review') return 'Needs review'
   if (exception.review_status === 'recorded') return 'Recorded'
-  // A dispatcher's own note is authored, not reviewed: its outcome is an internal marker.
   if (exception.review_outcome === DISPATCHER_NOTE_OUTCOME) return 'Dispatcher note'
   return [
     'Reviewed',

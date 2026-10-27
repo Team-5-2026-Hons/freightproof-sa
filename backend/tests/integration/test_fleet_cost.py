@@ -198,8 +198,6 @@ async def fortnight(db_session: AsyncSession, operator: Operator, depots: dict[s
     return depots
 
 
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
-
 
 async def test_fleet_cost_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_COST, params=_params())
@@ -236,8 +234,6 @@ async def test_fleet_cost_ending_after_today_returns_422(client: AsyncClient, op
 
     assert response.status_code == 422
 
-
-# ── Figures ──────────────────────────────────────────────────────────────────
 
 
 async def test_fleet_cost_operating_matches_hand_calculation(
@@ -322,7 +318,6 @@ async def test_fleet_cost_without_routing_uses_straight_line_estimate(
 
     operating = response.json()["operating"]
     assert (operating["legs_routed"], operating["legs_estimated"]) == (0, 5)
-    # Straight line between (0,0) and (1,1) is ~157 km, so not the routed 100 km.
     assert operating["distance_km"] != 500.0
     assert response.json()["lanes"][0]["distance_source"] == "estimate"
 
@@ -337,7 +332,6 @@ async def test_fleet_cost_without_saved_rates_uses_defaults(
     body = response.json()
     assert body["rates"]["is_default"] is True
     assert body["rates"]["diesel_price_per_litre"] == float(DEFAULT_COST_RATES.diesel_price_per_litre)
-    # 100 km at the default per-km rates plus 5 h of driver time, no fixed cost.
     per_km = DEFAULT_COST_RATES.fuel_per_km + DEFAULT_COST_RATES.running_per_km
     expected = per_km * 100 + DEFAULT_COST_RATES.driver_per_hour * 5
     assert body["operating"]["total"] == pytest.approx(float(expected), abs=0.01)
@@ -364,7 +358,6 @@ async def test_fleet_cost_second_load_uses_cache_not_ors(
 
     second = await client.get(_COST, params=_params(), headers=headers(operator))
 
-    # Four distinct legs: O->D, O->X, X->D, and D->O (looked up even though its trip isn't costed).
     assert calls_after_first == 4
     assert ors.calls == calls_after_first
     assert second.json()["operating"]["legs_routed"] == 5

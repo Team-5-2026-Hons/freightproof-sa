@@ -13,13 +13,8 @@ import type { DriverParticipation } from '@shared/lib/types/driver-substitution'
 export interface DriverTripSummary {
   id: TripId
   trip_reference: string
-  // The ONLY field the Active/Upcoming/Past tabs group by. 'created' is an assignment
-  // the driver has not activated yet; 'active'/'exception_hold' is underway;
-  // 'closed'/'cancelled' is history. See categorizeTrips in lib/utils/trip-filters.ts.
   status: CoarseTripStatus
   trip_type: TripType
-  // Both nullable server-side: the Trip model's precinct FKs are nullable, and the
-  // name is additionally null if the referenced precinct row has since been deleted.
   origin_precinct_id: string | null
   destination_precinct_id: string | null
   origin_precinct_name: string | null
@@ -28,13 +23,7 @@ export interface DriverTripSummary {
   actual_departure_at: string | null
   planned_arrival_at: string | null
   actual_arrival_at: string | null
-  // Unreviewed CRITICAL rows only: every exception starts needs_review, and the
-  // driver has no review workflow of their own.
   needs_review_count: number
-  // Driver substitution contract v1, "Existing reads". 'former' is a trip this
-  // driver handed over: history for them even while `status` is still 'active' for the
-  // driver who took it. Absent or null means no substitution has happened, which is exactly
-  // how such a row must keep grouping.
   participation?: DriverParticipation
   last_participation_ended_at?: string | null
   custody_sequence?: number

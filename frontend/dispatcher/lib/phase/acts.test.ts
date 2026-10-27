@@ -14,14 +14,12 @@ import {
   type PhaseActsInput,
 } from './acts'
 
-// Single-leg sequence numbers: 3 departure, 4 in_transit, 5 arrival, 6 unloading, 7 confirmation.
 const LOADING = 2
 const DEPARTURE = 3
 const IN_TRANSIT = 4
 const ARRIVAL = 5
 const UNLOADING = 6
 const CONFIRMATION = 7
-// Cross-dock: leg 1 in_transit is 4, leg 2 departure is 8, leg 2 in_transit is 9.
 const XD_DEPARTURE_1 = 3
 const XD_IN_TRANSIT_1 = 4
 const XD_DEPARTURE_2 = 8
@@ -64,8 +62,6 @@ describe('confirmation findings (D46)', () => {
 
 interface Scenario { phase: PhaseDescriptor; allPhases: PhaseDescriptor[] }
 
-// Anchor defaults to not_required so tests that are not about anchoring do not have to
-// account for an anchor act; the anchor tests set it explicitly.
 function scenario(
   seq: number,
   overrides: Partial<PhaseDescriptor> = {},
@@ -236,8 +232,6 @@ describe('buildPhaseActs: photo states never come from capture order (D24)', () 
   })
 
   it('decides the state from the server clock, so a phone clock ahead of the server changes nothing', () => {
-    // Taken 15:00 on a fast phone, stored at 14:41, phase closed 14:50: it reached the
-    // server before the phase closed, whatever the phone says.
     const s = scenario(DEPARTURE, { status: 'completed', completed_at: T('14:50') })
     const skewed = attributed(s, 'seal-skew', 'seal_photo', { captured_at: T('15:00'), created_at: T('14:41') })
 
@@ -503,8 +497,6 @@ describe('buildPhaseActs: expected rows never assert absence (D15)', () => {
   })
 
   it('keeps the row expected when an unattributed upload exists, and has no missing state', () => {
-    // An older driver app uploaded without attribution: the photo may well be on its way
-    // to completion, so the row stays an expectation rather than turning into an absence.
     const s = scenario(DEPARTURE, { status: 'pending' })
     const unattributed = artifact('old-build')
 

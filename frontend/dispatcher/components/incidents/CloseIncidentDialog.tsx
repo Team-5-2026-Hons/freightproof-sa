@@ -10,9 +10,7 @@ import type { IncidentOutcome, IncidentParcel } from '@/lib/types/incident'
 
 interface Props {
   open: boolean
-  /** Parcels with no finding yet; closing leaves them unresolved, which is allowed. */
   unresolved: IncidentParcel[]
-  /** A SAPS case number is on record for this incident (or its trip). */
   hasCaseNumber: boolean
   onClose: () => void
   onRecordCase: () => void

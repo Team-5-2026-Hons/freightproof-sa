@@ -41,13 +41,10 @@ from app.orchestration.fleet.drivers import list_drivers
 from app.orchestration.fleet.vehicles import list_vehicles
 from app.schemas.assistant import DocumentKind, ExpiryListCard, ExpiryRow, RecordRef
 
-# A dispatcher planning ahead asks about the next few months at most; a year bounds a slip.
 MAX_WINDOW_DAYS = 365
-# Per document kind: a chat answer, not the Drivers page.
 MAX_ROWS = 25
 _DOCUMENT_WORDS: dict[DocumentKind, str] = {"driver_licence": "driver licence", "vehicle_disc": "vehicle disc"}
 
-# The tool input's own copy of DocumentKind, so its schema lists the two values inline.
 Document = Literal["driver_licence", "vehicle_disc"]
 
 

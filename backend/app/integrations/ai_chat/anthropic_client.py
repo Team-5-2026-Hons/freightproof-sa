@@ -37,10 +37,7 @@ from app.integrations.ai_chat.provider import (
 
 logger = logging.getLogger(__name__)
 
-# Room for brief reasoning plus a few short paragraphs; answers are meant to be short, and a
-# cut-off answer is worse than a few unused tokens (they cost nothing unless produced).
 MAX_OUTPUT_TOKENS = 4_000
-# Per call. With one retry a stuck call gives up in about a minute, inside the panel's timeout.
 REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RETRIES = 1
 EFFORT: Literal["low"] = "low"
@@ -62,7 +59,6 @@ def _message_param(message: ProviderMessage) -> MessageParam:
     if isinstance(message, AssistantText):
         return {"role": "assistant", "content": message.text}
     if isinstance(message, AssistantReply):
-        # Passed back exactly as received (reasoning blocks included), as the API requires.
         return {"role": "assistant", "content": cast(Message, message.reply.raw).content}
     results: list[ToolResultBlockParam] = [
         {"type": "tool_result", "tool_use_id": result.call_id, "content": result.content, "is_error": result.is_error}
@@ -135,7 +131,6 @@ class AnthropicProvider:
                 output_config={"effort": EFFORT},
                 messages=[_message_param(message) for message in messages],
             )
-        # Most specific first, so the log says which kind of failure it was.
         except anthropic.RateLimitError as exc:
             logger.warning("Anthropic rate limit: status=%s", exc.status_code)
             raise AiQuotaError("rate limited") from exc

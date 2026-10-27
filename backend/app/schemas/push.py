@@ -13,8 +13,6 @@ PushTokenStr = Annotated[str, StringConstraints(strip_whitespace=True, min_lengt
 class PushTokenRegistration(BaseModel):
     """What the driver app sends after the OS hands it a token (Capacitor `registration`)."""
 
-    # A stray field is refused rather than ignored, so a client that thinks it is sending
-    # more (a driver id, say) learns at once that the server does not read it.
     model_config = ConfigDict(extra="forbid")
 
     token: PushTokenStr

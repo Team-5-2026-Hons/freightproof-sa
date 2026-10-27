@@ -28,9 +28,6 @@ from app.schemas.people import DriverRead, UserRead
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
 
-# Each accepted upload is up to MAX_FILE_SIZE_BYTES written to Supabase Storage on our
-# bill, and the driver holding the token chose the file. Budgeted for a phase's worth of
-# evidence plus an offline-queue flush, not for a loop.
 @router.post("", response_model=EvidenceArtifactRead, status_code=http_status.HTTP_201_CREATED,
              dependencies=[Depends(rate_limit(ARTIFACT_UPLOAD))])
 async def upload_artifact_endpoint(
@@ -46,7 +43,6 @@ async def upload_artifact_endpoint(
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> EvidenceArtifactRead:
-    # Older apps send neither; a half pair is a client bug, not a legacy upload.
     if (phase_event_id is None) != (evidence_role is None):
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -58,11 +54,6 @@ async def upload_artifact_endpoint(
         else None
     )
 
-    # Reject on the declared size FIRST, before reading the body. UploadFile spools past
-    # a threshold, so a large upload is written to the container's disk on its way to
-    # being measured and then discarded — checking the header lets an oversized request
-    # be refused without ever materialising it. The post-read check below stays, because
-    # the header is client-supplied and can lie about a body that is genuinely too big.
     if file.size is not None and file.size > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=http_status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -98,9 +89,6 @@ async def upload_artifact_endpoint(
         raise custody_http_exception(exc) from exc
 
 
-# Trip-scoped read router. Separate from the /artifacts upload router because the prefix
-# differs and the auth differs — upload is driver-only, listing is dispatcher-only.
-# Follows the pattern manifest.py sets for trip-scoped routes.
 trip_artifacts_router = APIRouter(prefix="/trips/{trip_id}/artifacts", tags=["artifacts"])
 
 

@@ -7,7 +7,6 @@
 import type { BlockchainReceipt, DriverEvent, VehicleEvent } from '@shared/lib/types/blockchain'
 import { BlockchainBadge } from './BlockchainBadge'
 
-// Union type so the component handles both vehicle and driver history tables.
 type Event = VehicleEvent | DriverEvent
 
 type Props = {
@@ -16,8 +15,6 @@ type Props = {
   className?: string
 }
 
-// Maps event_type strings to display labels. Using an exhaustive if-chain keeps
-// TypeScript's narrowing happy without requiring a lookup object that could go stale.
 function describeEvent(e: Event): string {
   const t = e.event_type
   if (t === 'created') return 'Created'
@@ -30,8 +27,6 @@ function describeEvent(e: Event): string {
 }
 
 export function EventTimeline({ events, receipts, className = '' }: Props) {
-  // Build a map of event_id → receipt for O(1) lookup per rendered row.
-  // Only vehicle_event and driver_event subjects are expected here; others are filtered by subject_type.
   const receiptByEvent = new Map<string, BlockchainReceipt>()
   for (const r of receipts) {
     if (r.subject_type === 'vehicle_event' || r.subject_type === 'driver_event') {

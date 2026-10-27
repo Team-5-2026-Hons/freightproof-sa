@@ -143,8 +143,6 @@ async def _other_org_dispatcher(db_session) -> User:
     return user
 
 
-# ── report ──────────────────────────────────────────────────────────────────
-
 async def test_report_incident_returns_201_with_opened_and_assigned_entries(client, db_session, seed):
     trip = await _make_trip(db_session, seed)
     parcels = await _make_parcels(db_session, trip)
@@ -232,8 +230,6 @@ async def test_report_hijacking_stop_trip_cancels_trip_without_naming_hijacking(
     note = (await db_session.execute(
         select(TripException).where(TripException.trip_id == trip_id, TripException.exception_type == ExceptionType.DISPATCHER_NOTE)
     )).scalar_one()
-    # The trip record reaches the driver's phone, which may be in the hijacker's hands: the
-    # note says dispatch stopped it and nothing more — no incident, no type.
     assert note.description.endswith(TRIP_STOPPED_NOTE)
     assert not any(word in note.description.lower() for word in ("hijack", "incident", "inc1", "theft"))
 
@@ -325,8 +321,6 @@ async def test_link_exception_leaves_review_status_unchanged(client, db_session,
     status = (await db_session.execute(select(TripException.review_status).where(TripException.id == exception_id))).scalar_one()
     assert status == ExceptionReviewStatus.NEEDS_REVIEW
 
-
-# ── follow-up ───────────────────────────────────────────────────────────────
 
 async def _incident(client, seed, trip, **overrides) -> str:
     return (await _report(client, seed, trip, **overrides)).json()["incident_id"]
@@ -473,8 +467,6 @@ async def test_external_action_recorded_with_action_time(client, db_session, see
     assert last["action_at"] is not None
 
 
-# ── close / reopen ──────────────────────────────────────────────────────────
-
 async def _close(client, seed, incident_id: str, body):
     return await client.post(f"/api/v1/incidents/{incident_id}/close", json=body, headers=_token(seed))
 
@@ -566,8 +558,6 @@ async def test_reopen_open_incident_409(client, db_session, seed):
     assert resp.status_code == 409
 
 
-# ── reads ───────────────────────────────────────────────────────────────────
-
 async def test_get_incident_404_other_org(client, db_session, seed):
     trip = await _make_trip(db_session, seed)
     incident_id = await _incident(client, seed, trip)
@@ -608,8 +598,6 @@ async def test_detail_reports_document_upload_flag(client, db_session, seed, mon
 
     assert resp.json()["document_upload_enabled"] is True
 
-
-# ── stop later ──────────────────────────────────────────────────────────────
 
 async def test_stop_trip_later_cancels_trip_and_records_entry(client, db_session, seed):
     trip = await _make_trip(db_session, seed)
@@ -657,8 +645,6 @@ async def test_stop_trip_later_closed_incident_409(client, db_session, seed):
 
 
 async def test_stop_trip_later_sees_a_cancel_committed_after_the_trip_was_loaded(client, db_session, seed):
-    # The Trip is already in the session (as it is once lock_incident has loaded it) when a
-    # colleague's cancel lands. Taking the trip lock must re-read it, not trust the stale copy.
     trip = await _make_trip(db_session, seed)
     incident_id = await _incident(client, seed, trip, incident_type="hijacking")
     await db_session.execute(text("UPDATE trips SET status = 'cancelled' WHERE id = :id"), {"id": trip.id})

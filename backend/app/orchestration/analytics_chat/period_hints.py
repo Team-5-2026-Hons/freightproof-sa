@@ -33,7 +33,6 @@ from app.core.fleet_bands import Grain
 from app.orchestration.analytics_chat.periods import PeriodPreset, add_months
 
 MONTHS_PER_QUARTER = 3
-# The rolling lengths offered when "past month" / "past week" are asked back.
 ROLLING_MONTH_DAYS = 30
 ROLLING_WEEK_DAYS = 7
 
@@ -42,22 +41,16 @@ _MONTH_TITLES = ("January", "February", "March", "April", "May", "June", "July",
 _MONTHS = {title.lower(): index + 1 for index, title in enumerate(_MONTH_TITLES)}
 _MONTHS.update({"jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "sept": 9,
                 "oct": 10, "nov": 11, "dec": 12})
-# "may" and "march" are ordinary words too ("delays may…", "the march…"): alone, they count only when
-# capitalised. Next to a day number ("1 may") they are clearly dates.
 _WORD_MONTHS = {"may", "march", "mar"}
 _MONTH_ALT = "|".join(sorted(_MONTHS, key=len, reverse=True))
 _ORDINAL = r"(?:st|nd|rd|th)?"
 _WEEKDAY = r"(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day,?\s+)?"
-# One date-like thing: "1 September 2026", "the 1st of Sept", "Monday 12 October", "September 1",
-# "Sept 2025", "2026-09-01", or a year alone ("2025").
 _POINT = (
     rf"{_WEEKDAY}(?:\d{{4}}-\d{{2}}-\d{{2}}"
     rf"|\d{{1,2}}{_ORDINAL}\s+(?:of\s+)?(?:{_MONTH_ALT})(?:,?\s+\d{{4}})?"
     rf"|(?:{_MONTH_ALT})(?:\s+\d{{1,2}}{_ORDINAL})?(?:,?\s+\d{{4}})?"
     rf"|20\d{{2}})"
 )
-# A range's left side may be a bare day that borrows the right side's month ("1 to 15 October"), and
-# its right side may be today.
 _LEFT = rf"{_POINT}|{_WEEKDAY}\d{{1,2}}{_ORDINAL}"
 _RIGHT = rf"{_POINT}|today|now"
 _BETWEEN = re.compile(rf"\bbetween\s+(?:the\s+)?({_LEFT})\s+and\s+(?:the\s+)?({_RIGHT})\b", re.IGNORECASE)
@@ -69,8 +62,6 @@ _SINCE = re.compile(
     rf"\bsince\s+(?:the\s+)?(?:start\s+of\s+)?({_POINT})\b|\bfrom\s+(?:the\s+)?({_POINT})\s+(?:on(?:wards?)?|to\s+date)\b",
     re.IGNORECASE,
 )
-# One day: "on 1 September", "Sept 1st 2025", "2026-09-01". Read before months, so "1 September" isn't
-# taken for the whole month.
 _DAY = re.compile(
     rf"\b{_WEEKDAY}(?:\d{{4}}-\d{{2}}-\d{{2}}|\d{{1,2}}{_ORDINAL}\s+(?:of\s+)?(?:{_MONTH_ALT})(?:,?\s+\d{{4}})?"
     rf"|(?:{_MONTH_ALT})\s+\d{{1,2}}{_ORDINAL}(?:,?\s+\d{{4}})?)\b",
@@ -78,11 +69,9 @@ _DAY = re.compile(
 )
 _MONTH = re.compile(rf"\b({_MONTH_ALT})\b(?:\s+(\d{{4}}))?", re.IGNORECASE)
 _QUARTER = re.compile(r"\bQ([1-4])\b(?:\s+(\d{4}))?", re.IGNORECASE)
-# Not the year inside an ISO date ("2026-09-01") or a longer number.
 _YEAR = re.compile(r"(?<![\d-])\b(20\d{2})\b(?![\d-])")
 _YEAR_QUALIFIER = re.compile(r"\b(this|last)\s+year\b", re.IGNORECASE)
 _RELATIVE = re.compile(r"\b(?:last|past|previous)\s+(\d{1,3})\s+(day|week|month|year)s?\b", re.IGNORECASE)
-# "Past year" is the rolling 12 months; "last year" alone is asked back (_LAST_YEAR).
 _PAST_YEAR = re.compile(r"\bpast\s+(?:twelve\s+months|year)\b", re.IGNORECASE)
 _THIS_YEAR = re.compile(r"\b(?:so\s+far\s+)?this\s+year\b|\byear\s+to\s+date\b|\bytd\b", re.IGNORECASE)
 _CALENDAR_YEAR = re.compile(r"\b(?:last|previous|past)\s+calendar\s+year\b", re.IGNORECASE)
@@ -94,19 +83,13 @@ _THIS_QUARTER = re.compile(r"\bthis\s+quarter\b", re.IGNORECASE)
 _LAST_QUARTER = re.compile(r"\b(?:last|previous)\s+quarter\b", re.IGNORECASE)
 _ALL_TIME = re.compile(r"\ball[\s-]time\b|\bsince\s+(?:we\s+)?(?:the\s+)?start(?:ed)?\b", re.IGNORECASE)
 _TODAY = re.compile(r"\btoday\b", re.IGNORECASE)
-# "From today", "until today": today is the end of some other period, not a period of its own.
 _ANCHORED = re.compile(r"\b(?:from|to|until|till|through|since|as\s+of|up\s+to|before|including)\s+$", re.IGNORECASE)
 _YESTERDAY = re.compile(r"\byesterday\b", re.IGNORECASE)
 _RIGHT_NOW = re.compile(r"\bright\s+now\b|\bat\s+the\s+moment\b|\bcurrently\b", re.IGNORECASE)
-# Two common meanings each: asked back, never guessed.
 _PAST_MONTH = re.compile(r"\bpast\s+month\b", re.IGNORECASE)
 _PAST_WEEK = re.compile(r"\bpast\s+week\b", re.IGNORECASE)
 _LAST_YEAR = re.compile(r"\blast\s+year\b", re.IGNORECASE)
 _FINANCIAL_YEAR = re.compile(r"\b(?:financial|fiscal)\s+year\b|\bFY\s*\d{0,4}\b", re.IGNORECASE)
-# A question about what something on the page means, why it exists or how it is worked out (B45). It needs the
-# page guide, not a period: "how do we come up with operating cost?", "what do the Cost at a glance figures tell us?",
-# "why is the last bar faded?", "where does the cargo value come from?". "How did delays change?" and "how many
-# trips…" are figure questions and don't match.
 _EXPLANATION = re.compile(
     r"\bhow\s+(?:is|are|was|were|do|does|did)\b[^?.]*?\b(?:calculated|calculate|worked\s+out|work\s+out|computed?|"
     r"counted|measured|derived|come\s+up\s+with|arrived?\s+at|get\s+to|got\s+to|determined|figured\s+out)\b"
@@ -156,8 +139,6 @@ class _Point:
     year: int | None
 
 
-# ── Small date helpers ───────────────────────────────────────────────────────
-
 
 def _month_end(first: date) -> date:
     return add_months(first, 1) - timedelta(days=1)
@@ -202,7 +183,7 @@ def _first_day(point: _Point, today: date) -> date | None:
     year = point.year or _recent_year(point.month, point.day or 1, today)
     try:
         return date(year, point.month, point.day or 1)
-    except ValueError:  # "31 September": not a date, so not a period
+    except ValueError:
         return None
 
 
@@ -232,8 +213,6 @@ def _span(left: _Point, right: _Point, today: date) -> tuple[date, date] | None:
     return None if start is None else (start, end)
 
 
-# ── Readers. Each returns what it found and the text spans it used ──────────
-
 
 def _ranges(text: str, today: date) -> tuple[list[NamedPeriod], list[tuple[int, int]]]:
     found: list[NamedPeriod] = []
@@ -247,8 +226,6 @@ def _ranges(text: str, today: date) -> tuple[list[NamedPeriod], list[tuple[int, 
             period = None if dates is None else _custom(match.group(0).strip(), *dates, today)
             if period:
                 found.append(period)
-            # Used up even when it's no period ("from 31 Sept…", or the future), so its months aren't
-            # read again on their own: the model then judges the question as written.
             spans.append(match.span())
     return found, spans
 
@@ -332,7 +309,6 @@ def _relative(text: str, today: date) -> list[NamedPeriod]:
         if count < 1:
             continue
         if unit == "day":
-            # Today and the days before it: "the last 30 days" on 20 Oct is 21 Sep – 20 Oct.
             preset, start = None, today - timedelta(days=count - 1)
         elif unit == "week":
             preset, start = _PRESET_WEEKS.get(count), bucket_start(today, Grain.WEEK) - timedelta(days=(count - 1) * DAYS_PER_WEEK)
@@ -425,8 +401,6 @@ def named_periods(question: str, today: date) -> list[NamedPeriod]:
     return unique
 
 
-# ── Questions back for phrases with two meanings ─────────────────────────────
-
 
 def asks_about_right_now(question: str) -> bool:
     return bool(_RIGHT_NOW.search(question))
@@ -454,7 +428,6 @@ def last_year_question(today: date) -> str:
     return f"For which period: the last 12 months, or {today.year - 1} (the previous calendar year)?"
 
 
-# Ends with "?" so the service shows it as a question back (no figures used).
 FINANCIAL_YEAR_QUESTION = (
     "FreightProof doesn't record your financial year. Which months does it run over "
     "(for example March 2026 to February 2027)?"
@@ -473,7 +446,6 @@ def ambiguity_question(question: str, today: date) -> str | None:
         return past_week_question(today)
     if _FINANCIAL_YEAR.search(question):
         return FINANCIAL_YEAR_QUESTION
-    # "Last year" alone; "September last year" is clear (the month says which), and so is a "calendar year".
     has_month_or_quarter = bool(_months(question, today, None)[0] or _quarters(question, today, None)[0])
     if _LAST_YEAR.search(question) and not has_month_or_quarter and not _CALENDAR_YEAR.search(question):
         return last_year_question(today)
@@ -492,8 +464,6 @@ def hint_for(question: str, today: date) -> str | None:
         return f'The question\'s period has two common meanings. Call no tool, and reply with exactly this question: "{ask}"'
     lines: list[str] = []
     if explaining:
-        # An explanation never waits on a period (22 Oct: "last year, but I am asking what the figures comprise of"
-        # was turned into a period question). The question back applies only to any figures it also wants.
         lines.append(EXPLANATION_HINT)
         if ask is not None:
             lines.append(f'Only if it also wants figures: their period has two common meanings, so after explaining, ask exactly "{ask}"')

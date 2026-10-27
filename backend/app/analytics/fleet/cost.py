@@ -51,7 +51,6 @@ class StopPoint:
     longitude: Decimal
 
 
-# A leg is identified by the precinct it leaves and the one it reaches, in that order.
 LegKey = tuple[uuid.UUID, uuid.UUID]
 
 
@@ -166,14 +165,12 @@ async def _load(
     exposed: dict[uuid.UUID, _Exposure] = {}
     for trip_id, review_status in theft_result.tuples().all():
         entry = exposed.setdefault(trip_id, _Exposure())
-        # One unreviewed theft signal keeps the whole load "under review".
         entry.under_review = entry.under_review or review_status != ExceptionReviewStatus.REVIEWED
     if exposed:
         value_result = await db.execute(
             select(Consignment.trip_id, Consignment.declared_value).where(Consignment.trip_id.in_(list(exposed)))
         )
         for consignment_trip_id, declared_value in value_result.tuples().all():
-            # trip_id is nullable on the model, but the IN filter means it never is here.
             if consignment_trip_id is not None:
                 exposed[consignment_trip_id].values.append(declared_value)
     return rows, problems, exposed

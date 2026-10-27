@@ -10,13 +10,8 @@ aligned or the two could disagree on screen for the same fix.
 import math
 from decimal import Decimal
 
-# Mean Earth radius in metres (IUGG value); do not change independently of
-# frontend/dispatcher/lib/phase/geo.ts.
 EARTH_RADIUS_METRES = 6_371_008.8
 
-# Where a rendered distance crosses from metres to kilometres. A gap under a
-# kilometre printed as "0.3 km" reads as rounding noise, when 300 m is the
-# difference between standing at the gate and standing across the yard.
 KM_THRESHOLD_METRES = 1000
 
 _MIN_LATITUDE = -90.0
@@ -72,8 +67,6 @@ def haversine_metres(
         + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(d_lng / 2) ** 2
     )
 
-    # For near-antipodal points, rounding can push sqrt(h) just past 1.0,
-    # outside math.asin's domain — clamp rather than crash on valid input.
     root_h = min(1.0, math.sqrt(h))
 
     return 2 * EARTH_RADIUS_METRES * math.asin(root_h)

@@ -5,7 +5,6 @@ import type { AddressSuggestion } from '@/lib/geocode/photon'
 import type { OutlineCandidate } from '@/lib/geocode/overpass'
 import type { LatLngPair, Precinct } from '@shared/lib/types/precinct'
 
-// TopBar pulls in the auth chain and forensic-mode provider; neither is under test here.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -28,14 +27,11 @@ vi.mock('@/lib/api/client', () => ({
   },
 }))
 
-// The outline lookup goes to a third-party host: never from a test.
 const mockFetchOutlineCandidates = vi.fn()
 vi.mock('@/lib/geocode/overpass', () => ({
   fetchOutlineCandidates: (lat: number, lng: number, signal?: AbortSignal) => mockFetchOutlineCandidates(lat, lng, signal),
 }))
 
-// Leaflet needs a real layout engine; the map's own suite covers it. The stub surfaces
-// what the form hands it (pin, outline) and lets a test click the map or drag a corner.
 const EDITED: LatLngPair[] = [[-29.79, 30.98], [-29.79, 30.99], [-29.80, 30.99], [-29.80, 30.98]]
 vi.mock('@/components/map/GeofenceMap', () => ({
   GeofenceMap: ({ latitude, longitude, polygon, showCircle, onPositionChange, onPolygonChange }: {
@@ -58,12 +54,10 @@ const PICK: AddressSuggestion = {
   id: 'W101', label: 'Sookhai Place', detail: 'Durban, KwaZulu-Natal', latitude: -29.7942, longitude: 30.982,
 }
 
-// A second, different site ~1.5 km away, for the "new search clears the old outline" case.
 const PICK_2: AddressSuggestion = {
   id: 'W202', label: '9 Other Road', detail: 'Durban', latitude: -29.808, longitude: 30.982,
 }
 
-// The search component has its own suite; stubbed to buttons that "pick" one result each.
 vi.mock('@/components/precincts/AddressSearch', () => ({
   AddressSearch: ({ onSelect }: { onSelect: (s: AddressSuggestion) => void }) => (
     <>
@@ -73,7 +67,6 @@ vi.mock('@/components/precincts/AddressSearch', () => ({
   ),
 }))
 
-// ~100 m box around PICK.
 const WAREHOUSE: OutlineCandidate = {
   id: 'way/1', label: 'Warehouse', detail: '1.0 ha · contains the pin', areaM2: 10_000, containsPin: true,
   polygon: [[-29.7937, 30.9815], [-29.7937, 30.9825], [-29.7947, 30.9825], [-29.7947, 30.9815]],
@@ -120,7 +113,6 @@ describe('PrecinctForm address search', () => {
     expect(field('longitude').value).toBe('30.98200')
     expect(field('address').value).toBe('Sookhai Place, Durban, KwaZulu-Natal')
     expect(screen.getByTestId('map')).toHaveTextContent('-29.7942,30.982')
-    // Drawing waits for Auto-fit; no circle stands in for the fence meanwhile.
     expect(corners()).toBe('0')
     expect(screen.getByTestId('map')).toHaveAttribute('data-circle', 'false')
     expect(mockFetchOutlineCandidates).not.toHaveBeenCalled()
@@ -174,7 +166,6 @@ describe('PrecinctForm property outline', () => {
     expect(corners()).toBe('4')
 
     fireEvent.click(screen.getByRole('button', { name: 'drag corner' }))
-    // The edited box is ~1 km across; the pin at -29.7941, 30.9821 is inside it.
     fireEvent.click(screen.getByRole('button', { name: 'click map' }))
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save Precinct' }))

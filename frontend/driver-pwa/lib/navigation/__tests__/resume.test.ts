@@ -31,7 +31,6 @@ describe('rememberScreen / takeResumeScreen', () => {
     rememberScreen(STEP, DRIVER, NOW)
 
     expect(takeResumeScreen(DRIVER, new Date(NOW.getTime() + 60_000))).toBe(STEP)
-    // Single use: the next cold start is a plain cold start.
     expect(takeResumeScreen(DRIVER, NOW)).toBeNull()
   })
 
@@ -52,7 +51,6 @@ describe('rememberScreen / takeResumeScreen', () => {
     rememberScreen(STEP, DRIVER, NOW)
 
     expect(takeResumeScreen('driver-b', NOW)).toBeNull()
-    // And the record is consumed, not left for a later sign-in by the original driver.
     expect(takeResumeScreen(DRIVER, NOW)).toBeNull()
   })
 

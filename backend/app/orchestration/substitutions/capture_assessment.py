@@ -33,7 +33,6 @@ from app.orchestration.evidence import action_location, location_assessment
 
 logger = logging.getLogger(__name__)
 
-# Same budget as a driver exception report's tracker read: the capture must not wait on telemetry.
 TRACKER_TIMEOUT_SECONDS = 2.0
 
 
@@ -77,7 +76,6 @@ async def record_capture_assessment(
         assessment = location_assessment.build_capture_assessment(
             driver_lat=None if confirmation.latitude is None else float(confirmation.latitude),
             driver_lng=None if confirmation.longitude is None else float(confirmation.longitude),
-            # Older captures have no sample time; their declaration remains a legacy proxy.
             driver_captured_at=confirmation.location_observed_at or confirmation.captured_at,
             driver_accuracy_metres=None if confirmation.accuracy_metres is None else float(confirmation.accuracy_metres),
             horse_fix=horse_fix, evaluated_at=evaluated_at,

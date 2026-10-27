@@ -7,9 +7,7 @@
 //  - Positions are the vehicle's and the phone's, not the parcel's.
 
 export interface TripHelpEntry {
-  /** The button's and the panel's accessible name. */
   label: string
-  /** The bold first line: what this section is. */
   question: string
   basis: string
   note?: string

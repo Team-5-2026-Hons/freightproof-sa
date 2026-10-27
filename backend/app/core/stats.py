@@ -14,7 +14,6 @@ from datetime import date
 MEDIAN_FRACTION = 0.5
 P90_FRACTION = 0.9
 
-# Monthly buckets are keyed by the first day of the month (the views' month_start).
 _FIRST_DAY_OF_MONTH = 1
 
 

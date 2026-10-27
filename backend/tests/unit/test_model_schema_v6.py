@@ -18,10 +18,6 @@ from app.db.models.trips import TripTemplate
 from app.db.models.vehicles import Vehicle
 
 
-# ---------------------------------------------------------------------------
-# DriverSubstitution — has all required columns
-# ---------------------------------------------------------------------------
-
 def _column_names(model_cls) -> set[str]:
     return {c.name for c in model_cls.__table__.columns}
 
@@ -89,12 +85,7 @@ def test_driver_substitution_has_timestamps():
     assert "substitution_at" in names
 
 
-# ---------------------------------------------------------------------------
-# updated_at present on tables that previously lacked it (CLAUDE.md standard)
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("model_cls", [Organization, Precinct, Vehicle, TripTemplate, SlaConfig])
 def test_model_has_updated_at(model_cls) -> None:
     assert "updated_at" in _column_names(model_cls)
-
 

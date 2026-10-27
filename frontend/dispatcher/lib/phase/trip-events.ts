@@ -24,14 +24,12 @@ export function tripEventKey(event: TripTimelineEvent): string {
   return event.kind === 'transfer' ? `transfer:${event.transfer.substitution_id}` : `incident:${event.incident.incident_id}`
 }
 
-// At one instant a transfer reads before an incident; two transfers keep their recorded sequence.
 function tieBreak(a: TripTimelineEvent, b: TripTimelineEvent): number {
   if (a.kind !== b.kind) return a.kind === 'transfer' ? -1 : 1
   return a.kind === 'transfer' && b.kind === 'transfer' ? a.transfer.sequence_number - b.transfer.sequence_number : 0
 }
 
 export interface TripEventPlacement extends TimelinePlacement<TripTimelineEvent> {
-  /** Events drawn INSIDE a phase card, keyed by that phase's id. Only In Transit cards hold any. */
   inPhase: ReadonlyMap<string, readonly TripTimelineEvent[]>
 }
 

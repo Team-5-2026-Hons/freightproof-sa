@@ -2,11 +2,8 @@ import type { ReactNode } from 'react'
 
 interface SecHeadProps {
   title: string
-  /** Sits right after the title, e.g. an "i" popover explaining the section. */
   info?: ReactNode
-  /** Right-aligned secondary info such as a result count. Sits before the action, if any. */
   meta?: ReactNode
-  /** Label for the optional action button on the right. */
   action?: string
   onAction?: () => void
 }
@@ -17,7 +14,6 @@ export function SecHead({ title, info, meta, action, onAction }: SecHeadProps) {
       <span className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
         {title}
       </span>
-      {/* z-30 clears the table's sticky header (z-20) that sits directly below this bar. */}
       {info && <span className="relative z-30 ml-1.5 flex">{info}</span>}
       {meta && <div className="ml-auto">{meta}</div>}
       {action && (

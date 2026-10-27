@@ -6,13 +6,8 @@ import { listRetainedDrafts, writeDraft } from '@/lib/offline/retained-drafts'
 import type { ActivationEvidence, ArrivalEvidence } from '@/lib/types/evidence-draft'
 import { bindActorLease, invalidateActorLease, setCustodyContext } from '@/lib/session/custody-context'
 
-// Activation's draft is down to capturedAt (its GPS fields moved out when the manual
-// capture step was removed), so the patch/persist cases below exercise ARRIVAL_INITIAL
-// instead — this one still proves the "nothing stored yet" path.
 const INITIAL: ActivationEvidence = { capturedAt: null }
 
-// The seal check moved from unloading to its own arrival phase — this suite's
-// string-field draft now exercises ArrivalEvidence, the current home of that evidence.
 const ARRIVAL_INITIAL: ArrivalEvidence = {
   sealCondition: null, sealNumberAtArrival: null,
   sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
@@ -145,14 +140,9 @@ describe('usePhaseDraft', () => {
   })
 
   it('falls back to initial value for keys missing from a stale stored draft', () => {
-    // Simulates a draft saved under an older ArrivalEvidence shape, before
-    // sealCondition existed. This is not hypothetical for the current release: a
-    // driver mid-trip when the shape changed has drafts on disk written under the
-    // previous shapes, while retaining its authenticated capture provenance.
     const staleDraft = {
       sealNumberAtArrival: 'AB-1234', capturedAt: '2026-01-01T00:00:00Z',
     }
-    // A known capturer with an older evidence shape is still this driver's draft.
     writeDraft('trip-1', 'phase-event-1', { actorId: 'driver-1', custodySequence: 0 }, staleDraft)
 
     const { result } = renderHook(() =>
@@ -177,11 +167,6 @@ describe('usePhaseDraft', () => {
     })])
   })
 
-  // The rename's whole reason to exist: the old useHandshakeDraft keyed storage on
-  // (tripId, handshakeType), which collides every occurrence of a repeated phase type
-  // onto one key. A three-stop cross-dock visits `arrival` more than once — this
-  // proves two such occurrences (different phase_event_id, same phase_type) get
-  // independent drafts instead of one clobbering the other.
   it('drafts for two different arrival phase_event_ids in one trip do not collide', () => {
     const first = renderHook(() =>
       usePhaseDraft<ArrivalEvidence>('trip-1', 'arrival-event-1', ARRIVAL_INITIAL)

@@ -10,7 +10,6 @@ import { BARCODE_MAX_LENGTH } from './trace-display'
 import { ParcelSearchResults, parcelSearchUrl } from './ParcelSearchResults'
 
 const PAGE_TITLE = 'Find a parcel'
-// The explanation lives behind the "i" so the card face stays a title and a search box.
 const HELP = {
   question: 'What parcel search shows',
   basis: 'Search an exact barcode to see what is recorded, where the consignment travelled, and which evidence supports the journey.',
@@ -23,14 +22,9 @@ export function ParcelSearch({ initialBarcode, initialWaybill }: Props): JSX.Ele
   const router = useRouter()
   const [input, setInput] = useState(initialBarcode)
   const [validation, setValidation] = useState<string | null>(null)
-  // Reported by the results below; the button spins while a lookup is in flight.
   const [searching, setSearching] = useState(false)
-  // Bumping this remounts the results, which is how a same-query resubmit refetches.
   const [refresh, setRefresh] = useState(0)
-  // Focus follows only in-page transitions; a deep-link first load keeps focus where the browser put it.
   const [inPage, setInPage] = useState(false)
-  // The URL is the submitted query. When it changes (a push, or Back/Forward) the draft follows it,
-  // adjusted during render so the textbox never shows a frame of the previous query.
   const [syncedQuery, setSyncedQuery] = useState([initialBarcode, initialWaybill])
   if (syncedQuery[0] !== initialBarcode || syncedQuery[1] !== initialWaybill) {
     setSyncedQuery([initialBarcode, initialWaybill])
@@ -56,7 +50,6 @@ export function ParcelSearch({ initialBarcode, initialWaybill }: Props): JSX.Ele
     else router.push(parcelSearchUrl(initialBarcode, waybill), { scroll: false })
   }
 
-  // One layout before and after a search, so the card never changes shape under the dispatcher.
   const searched = initialBarcode !== ''
   return <div className="mx-auto w-full max-w-6xl space-y-5">
     <section className="rounded-xl bg-surf-lowest p-5 shadow-level-3 sm:p-6">

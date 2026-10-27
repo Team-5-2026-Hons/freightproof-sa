@@ -89,7 +89,6 @@ def test_timestamp_ties_cannot_change_sequence_order() -> None:
 def test_contradictory_timestamps_do_not_reorder_custody() -> None:
     a, b, c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     first, second = _chain([a, b, c])
-    # The later handover claims an earlier instant; sequence, not time, is the order.
     second = CompletedCustodyLink(
         id=second.id, sequence_number=second.sequence_number,
         previous_substitution_id=second.previous_substitution_id,

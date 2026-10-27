@@ -7,8 +7,6 @@ export interface ChapterLink {
   title: string
 }
 
-// Numbered to match the PDF's sections 1–6, so two people holding the web copy and the
-// printed copy can refer to "section 3" and mean the same thing.
 export const CHAPTERS = {
   summary: { n: 1, id: 'ch-summary', title: 'Summary and findings' },
   journey: { n: 2, id: 'ch-journey', title: 'Journey and custody' },
@@ -24,8 +22,6 @@ interface ChapterProps {
   children: ReactNode
 }
 
-// `chapter` class: the print stylesheet lets a chapter break across pages while keeping each card whole.
-// scroll-mt: a jump from the contents lands below the sticky section bar on narrow screens.
 export function Chapter({ chapter, lede, children }: ChapterProps) {
   return (
     <section id={chapter.id} aria-labelledby={`${chapter.id}-title`} className="chapter scroll-mt-20 lg:scroll-mt-6">

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import type { ChapterLink } from './Chapter'
 import { Eyebrow } from './Eyebrow'
 
-// A band across the middle of the viewport: the section crossing it is the one being read.
 const READING_BAND = '-35% 0px -60% 0px'
 
 /**
@@ -15,7 +14,6 @@ export function ChapterNav({ chapters }: { chapters: readonly ChapterLink[] }) {
   const [active, setActive] = useState<string>(chapters[0]?.id ?? '')
 
   useEffect(() => {
-    // Absent in some embedded browsers and in jsdom: the links still work, only the marker stays put.
     if (typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(
       (entries) => {
@@ -32,7 +30,6 @@ export function ChapterNav({ chapters }: { chapters: readonly ChapterLink[] }) {
   }, [chapters])
 
   return (
-    // z above Leaflet's own controls (z-index 1000), which would otherwise scroll over the bar.
     <nav
       aria-label="Sections"
       className="no-print sticky top-0 z-[1100] -mx-4 border-b border-outline-v/60 bg-surf/95 px-4 py-1.5 backdrop-blur sm:-mx-8 sm:px-8 lg:top-6 lg:mx-0 lg:mt-6 lg:self-start lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"

@@ -16,7 +16,6 @@ import { TripPicker } from './TripPicker'
 import { WarehouseActions } from './WarehouseActions'
 
 interface DevTriggerPanelProps {
-  /** Shown at the top so nobody mistakes this for a product surface. */
   readonly heading: string
 }
 
@@ -33,12 +32,9 @@ export function DevTriggerPanel({ heading }: DevTriggerPanelProps): React.ReactE
 
   useEffect(() => { void loadTrips({ silent: true }) }, [loadTrips])
 
-  // Silent refresh on any event for this trip: the panel moves on when the driver acts.
   const refresh = useCallback(() => { void loadTrips({ silent: true }) }, [loadTrips])
   useLiveResource('trip', tripId === '' ? 'any' : tripId, refresh)
 
-  // After a write, re-read the trip so the stage and gates reflect what just happened.
-  // A null result means the call failed; there is nothing new to read.
   const thenRefresh = useCallback(<T,>(pending: Promise<T | null>): void => {
     void pending.then(result => { if (result !== null) refresh() })
   }, [refresh])

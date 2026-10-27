@@ -169,8 +169,6 @@ def clear_dep_overrides():
     app.dependency_overrides.clear()
 
 
-# ── GET /drivers/{id} ─────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_driver_detail_strips_receipts_for_dispatcher() -> None:
@@ -211,8 +209,6 @@ async def test_driver_detail_exposes_receipts_for_admin() -> None:
     assert resp.status_code == 200
     assert len(resp.json()["receipts"]) == 1
 
-
-# ── GET /vehicles/{id} ────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -255,8 +251,6 @@ async def test_vehicle_detail_exposes_receipts_for_admin() -> None:
     assert len(resp.json()["receipts"]) == 1
 
 
-# ── GET /trips/{id} ───────────────────────────────────────────────────────────
-
 
 async def _pass_through_custody(
     _db: object, detail: TripDetailResponse, *, actor: UserRead, facts: object,
@@ -272,7 +266,6 @@ async def test_trip_detail_strips_receipts_for_dispatcher() -> None:
         new_callable=AsyncMock,
         return_value=_fake_trip_detail(),
     ), patch(
-        # FP-83's dispatcher custody fields read the DB; this test is only about receipts.
         "app.api.v1.endpoints.trips.with_dispatcher_custody", new=_pass_through_custody,
     ):
         async with AsyncClient(
@@ -295,7 +288,6 @@ async def test_trip_detail_exposes_receipts_for_admin() -> None:
         new_callable=AsyncMock,
         return_value=_fake_trip_detail(),
     ), patch(
-        # FP-83's dispatcher custody fields read the DB; this test is only about receipts.
         "app.api.v1.endpoints.trips.with_dispatcher_custody", new=_pass_through_custody,
     ):
         async with AsyncClient(

@@ -14,11 +14,9 @@ interface Props {
 }
 
 const SOURCE_LABEL = { driver_phone: 'driver phone', vehicle_tracker: 'vehicle tracker', trailer_tracker: 'trailer tracker' } as const
-// The coordinates a SAPS docket asks for: five decimals is about a metre.
 const COORDINATE_DECIMALS = 5
 
 function Heading({ children }: { children: React.ReactNode }): React.JSX.Element {
-  // Same weight as a Disclosure title, so the two open blocks and the folded ones read as one list.
   return <h3 className="text-sm font-bold text-on-surf">{children}</h3>
 }
 

@@ -62,8 +62,6 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
   const fromDate = filters.fromDate ?? ''
   const toDate = filters.toDate ?? ''
   const [debouncedQ, setDebouncedQ] = useState(rawQ)
-  // Read once per mount: a changed preference applies on the next visit, so a cursor stack
-  // built for one page size is never replayed with another.
   const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
   useEffect(() => {
@@ -84,8 +82,6 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
   const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined])
   const [pageIndex, setPageIndex] = useState(0)
 
-  // Adjust pagination during render so the fetch effect never observes a new filter
-  // with the previous filter's cursor for one intervening request.
   const [previousFilterKey, setPreviousFilterKey] = useState(filterKey)
   if (filterKey !== previousFilterKey) {
     setPreviousFilterKey(filterKey)
@@ -100,9 +96,6 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
   const runFetch = useCallback((showLoadingSpinner: boolean) => {
     const generation = ++requestGenerationRef.current
     if (showLoadingSpinner) {
-      // A page or filter transition changes what the rows mean. Clear the old
-      // result up front so a failed foreground request cannot label those rows as
-      // belonging to the newly selected page or filters.
       setItems(EMPTY)
       setTotalItems(0)
       setNextCursor(null)
@@ -125,13 +118,9 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
       .catch((err: unknown) => {
         if (requestGenerationRef.current !== generation) return
         setError(err instanceof Error ? err.message : 'An unexpected error occurred')
-        // Only a silent page-one realtime refresh has a same-query result worth
-        // retaining. Foreground transitions cleared their mismatched rows above.
         setIsStale(!showLoadingSpinner)
         setIsLoading(false)
       })
-  // normalizedFilters is represented by the primitive key to avoid refetching when a
-  // caller supplies a fresh object literal with unchanged values.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, cursor])
 

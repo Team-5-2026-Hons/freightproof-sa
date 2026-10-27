@@ -24,8 +24,6 @@ vi.mock('@/lib/supabase', () => ({
 describe('api client', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: cache is warm, so getSession is never the hot path unless a test
-    // explicitly simulates a cold start by returning null.
     mockGetAccessToken.mockReturnValue('cached-token')
   })
 
@@ -49,8 +47,6 @@ describe('api client', () => {
   })
 
   it('surfaces a fetch timeout as ApiError with status 0', async () => {
-    // AbortSignal.timeout() rejects fetch with this exact DOMException once the request
-    // ceiling is hit — mimic it directly rather than waiting out a real 12s timer.
     const fetchSpy = vi.fn().mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'))
     vi.stubGlobal('fetch', fetchSpy)
 
@@ -153,9 +149,7 @@ describe('api client', () => {
     })
     const fetchSpy = vi
       .fn()
-      // First attempt: the cached token has expired server-side.
       .mockResolvedValueOnce({ ok: false, status: 401, statusText: 'Unauthorized', json: () => Promise.resolve({ detail: 'Token expired' }) })
-      // Retry: succeeds with the refreshed token.
       .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ id: 'trip-1' }) })
     vi.stubGlobal('fetch', fetchSpy)
 
@@ -190,7 +184,6 @@ describe('api client', () => {
       name: 'ApiError',
       status: 401,
     })
-    // Exactly one fetch: refreshSession failing must not trigger a retry attempt.
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(mockRefreshSession).toHaveBeenCalledTimes(1)
     await expect(api.get('/api/v1/trips/me/active')).rejects.toBeInstanceOf(ApiError)
@@ -217,8 +210,6 @@ describe('api client', () => {
       name: 'ApiError',
       status: 401,
     })
-    // Exactly two fetches (original + the single allowed retry) — a second 401 must
-    // not trigger a second refresh/retry cycle.
     expect(fetchSpy).toHaveBeenCalledTimes(2)
     expect(mockRefreshSession).toHaveBeenCalledTimes(1)
     await expect(api.get('/api/v1/trips/me/active')).rejects.toBeInstanceOf(ApiError)
@@ -236,8 +227,6 @@ describe('api client — superseded device', () => {
   })
 
   it('signs the driver out instead of refreshing when the backend says another device took over', async () => {
-    // A refresh would return a token for the SAME Supabase session, so retrying could
-    // only be refused identically — and this account is now in use on another handset.
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
@@ -257,15 +246,12 @@ describe('api client — superseded device', () => {
     expect(mockSignOut).toHaveBeenCalled()
     expect(mockRefreshSession).not.toHaveBeenCalled()
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    // Stored so the login screen can say why the driver ended up back there.
     expect(window.sessionStorage.getItem(SIGNED_OUT_REASON_KEY)).toBe('Signed in on another device.')
 
     vi.unstubAllGlobals()
   })
 
   it('still refreshes and retries an ordinary expired-token 401', async () => {
-    // The regression guard for the check above: it must key off the detail, not the
-    // status, or every stale token would sign the driver out of the app.
     const fetchSpy = vi.fn()
       .mockResolvedValueOnce({
         ok: false, status: 401, statusText: 'Unauthorized',
@@ -284,8 +270,6 @@ describe('api client — superseded device', () => {
     vi.unstubAllGlobals()
   })
 
-  // FP-83 contract "Stable errors": domain conflicts arrive as a {code, message, ...} detail
-  // object, while every older endpoint still sends a string or a 422 field-error array.
   describe('coded error details', () => {
     function stubErrorResponse(status: number, detail: unknown): void {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -323,7 +307,6 @@ describe('api client — superseded device', () => {
 
       const err = await api.get('/api/v1/x').catch((e: unknown) => e)
 
-      // Surfaced, not dropped: the caller must be able to treat it as an unrecognised conflict.
       expect(err).toMatchObject({ code: 'A_CODE_THIS_BUILD_DOES_NOT_KNOW' })
       vi.unstubAllGlobals()
     })

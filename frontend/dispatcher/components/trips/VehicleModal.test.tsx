@@ -32,7 +32,6 @@ describe('VehicleModal', () => {
 
     expect(screen.getByText('Scania')).toBeInTheDocument()
     expect(screen.getByText('R500')).toBeInTheDocument()
-    // VIN was never overridden, so this is the null-fields path, not a stub value.
     expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0)
   })
 

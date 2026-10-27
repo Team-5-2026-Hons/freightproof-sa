@@ -24,7 +24,6 @@ from app.schemas.analytics_chat import SpendStatus
 logger = logging.getLogger(__name__)
 
 SPEND_KEY_PREFIX = "ai_chat_spend:v1"
-# Longer than any month, so last month's counter is gone soon after it stops mattering.
 SPEND_KEY_TTL_SECONDS = 40 * 24 * 60 * 60
 MICRO_USD_PER_USD = 1_000_000
 

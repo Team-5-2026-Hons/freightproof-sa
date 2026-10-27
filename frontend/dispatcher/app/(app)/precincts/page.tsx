@@ -23,7 +23,6 @@ type OwnerFilter = 'all' | 'mine' | 'shared'
 export default function PrecinctsPage(): React.JSX.Element {
   const router = useRouter()
   const { precincts, isLoading, error: fetchError, refetch } = usePrecincts()
-  // Skeleton cards only for the first load, so a refetch keeps the cards on screen.
   const initialLoad = isLoading && precincts.length === 0
   const { user } = useAuth()
   const { notify } = useToast()
@@ -37,10 +36,6 @@ export default function PrecinctsPage(): React.JSX.Element {
     }
   }, [fetchError, notify])
 
-  // Ownership drives what a dispatcher can do with a row, so it is worth showing
-  // rather than leaving them to discover it from a 404.
-  // useCallback so the memo below can depend on isOwned by identity rather than on the
-  // `user` it closes over — same behaviour, but the dependency is one the linter can see.
   const isOwned = useCallback(
     (precinct: Precinct): boolean =>
       String(precinct.principal_organization_id) === String(user?.organization_id),
@@ -159,7 +154,6 @@ export default function PrecinctsPage(): React.JSX.Element {
             </div>
 
             <p className="text-[10px] text-on-surf-v text-center">
-              {/* Required by OpenStreetMap's tile usage policy — not a nicety, a licence condition. */}
               © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline hover:text-on-surf">OpenStreetMap</a> contributors
             </p>
           </>

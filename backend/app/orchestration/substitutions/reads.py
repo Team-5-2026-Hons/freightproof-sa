@@ -81,8 +81,6 @@ async def _org_trip(db: AsyncSession, *, trip_id: uuid.UUID, organization_id: uu
     return trip
 
 
-# ── dispatcher ───────────────────────────────────────────────────────────────
-
 
 async def _trip_request_rows(db: AsyncSession, *, trip_id: uuid.UUID) -> list[DriverSubstitutionRequest]:
     return list((await db.execute(
@@ -128,8 +126,6 @@ async def list_late_evidence(db: AsyncSession, *, trip_id: uuid.UUID, actor: Use
         }))
     return out
 
-
-# ── driver ───────────────────────────────────────────────────────────────────
 
 
 async def _request_on_trip(db: AsyncSession, *, trip_id: uuid.UUID, request_id: uuid.UUID) -> DriverSubstitutionRequest:
@@ -245,15 +241,12 @@ async def get_driver_context(
     return DriverSubstitutionContextRead.model_validate({
         **base.model_dump(),
         "confirmations": await _confirmation_details(db, request_id=request.id),
-        # A finished request is a snapshot of the arrangement, never later live trip context.
         "remaining_stops": await _remaining_stops(db, trip) if live else [],
         "current_phase": PhaseType(trip.current_phase) if live and trip.current_phase else None,
         "findings": await _open_findings(db, trip.id) if live else [],
         "artifacts": await _signed(await _handover_photos(db, request_id=request.id, driver_id=driver_id)),
     })
 
-
-# ── participation history ────────────────────────────────────────────────────
 
 
 async def _own_periods(db: AsyncSession, trip: Trip, driver_id: uuid.UUID) -> list[CustodyPeriodRead]:
@@ -373,7 +366,7 @@ def _recorded_phase_context(phases: list[PhaseEvent], effective_at: datetime) ->
     if not boundaries or any(moment is None for _, moment in boundaries):
         return None
     if [index for index, _ in boundaries] != list(range(len(boundaries))):
-        return None  # A resolved phase after a gap cannot justify a chronological label.
+        return None
     moments = [moment for _, moment in boundaries if moment is not None]
     if any(a > b for a, b in zip(moments, moments[1:])) or effective_at in moments:
         return None

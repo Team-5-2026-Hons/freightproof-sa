@@ -178,7 +178,6 @@ class ConsignmentAlreadyAssignedError(Exception):
     def __init__(self, pp_reference: str, trip_reference: str | None) -> None:
         self.pp_reference = pp_reference
         self.trip_reference = trip_reference
-        # A foreign holder still blocks, but its internal trip identity is private.
         holder = f"trip {trip_reference}" if trip_reference is not None else "another trip"
         super().__init__(
             f"Waybill {pp_reference!r} is already assigned to {holder}. "
@@ -192,7 +191,6 @@ class ConsignmentScannedOnCancelledTripError(ConsignmentAlreadyAssignedError):
 
     def __init__(self, pp_reference: str, trip_reference: str | None) -> None:
         super().__init__(pp_reference, trip_reference)
-        # The parent's "already on trip X" is not the reason here; say what is.
         holder = f"cancelled trip {trip_reference}" if trip_reference is not None else "another cancelled trip"
         self.args = (
             f"Waybill {pp_reference!r} was scanned on {holder}, so its "
@@ -213,8 +211,6 @@ class ConsignmentCitedByIncidentError(ConsignmentAlreadyAssignedError):
         super().__init__(pp_reference, trip_reference)
         self.incident_references = incident_references
         holder = f"cancelled trip {trip_reference}" if trip_reference is not None else "another cancelled trip"
-        # An empty tuple is the foreign-operator case (the caller blanks the trip identity), so
-        # the incident references are withheld along with it.
         cited = f"incident {', '.join(incident_references)}" if incident_references else "an incident"
         self.args = (
             f"Waybill {pp_reference!r} cannot be used on a new trip: its parcels are cited by {cited} "
@@ -403,7 +399,6 @@ class CustodyAccessError(Exception):
     """
 
     code: str = ""
-    # Safe to show a driver; never includes a trip, driver or evidence detail.
     message: str = ""
 
     def __init__(self) -> None:

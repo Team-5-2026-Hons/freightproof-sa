@@ -5,9 +5,6 @@ import { mockPrecincts, mockTrips, TRIP_0035_ID } from '@shared/lib/mocks'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { Trip } from '@shared/lib/types/trip'
 
-// PhaseEvidence's unloading/arrival branches end in PhaseOverrideAction, which imports
-// lib/api/client -> lib/supabase/client (throws without a real Supabase URL at import
-// time) and calls useToast() — mocked the same way TripTimeline.test.tsx isolates itself.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),

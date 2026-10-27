@@ -5,14 +5,8 @@ import type { RealtimeEvent } from './types'
 
 export const STREAM_PATH = '/api/v1/stream'
 
-// SSE frames are separated by a blank line.
 export const FRAME_SEPARATOR = '\n\n'
 
-// Reconnect backoff: exponential from 1s, capped at 15s, then halved-plus-jitter so a
-// fleet of dispatchers doesn't reconnect in lockstep after a backend blip.
-// The backend sends a ": heartbeat" comment after 15s of silence (HEARTBEAT_SECONDS in
-// app/api/v1/endpoints/stream.py). No bytes for 2.5 of those means the connection died without
-// closing, so the client gives up on it; the margin absorbs a slow proxy without false alarms.
 export const STREAM_STALL_MS = 40_000
 
 export const BACKOFF_BASE_MS = 1_000
@@ -23,8 +17,6 @@ export function backoffMs(attempt: number, rng: () => number = Math.random): num
   return capped / 2 + rng() * (capped / 2)
 }
 
-// Parse one raw SSE frame into an event, or null for comment/heartbeat/empty frames
-// (`: connected`, `: heartbeat`) and anything unparseable.
 export function parseFrame(frame: string): RealtimeEvent | null {
   const dataLines = frame.split('\n').filter(line => line.startsWith('data:'))
   if (dataLines.length === 0) return null

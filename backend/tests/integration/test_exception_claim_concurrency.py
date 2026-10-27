@@ -63,8 +63,6 @@ async def test_simultaneous_claims_leave_exactly_one_claimer(test_engine, seeded
 
     assert sorted(status for _user_id, status in outcomes) == [_CLAIMED, _REFUSED]
     winner = next(user_id for user_id, status in outcomes if status == _CLAIMED)
-    # Asserted separately: a lock that serialised the writes but still let the loser
-    # overwrite would pass the count above while recording the wrong claimer.
     async with AsyncSession(test_engine, expire_on_commit=False) as session:
         stored = await session.get(TripException, seeded["exception_id"])
     assert stored.claimed_by_user_id == winner

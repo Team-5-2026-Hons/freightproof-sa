@@ -50,8 +50,6 @@ class DriverMetrics(BaseModel):
     confirmation_dwell_events_count: int
     phase_events_count: int
     override_count: int
-    # FP-83: closed trips this driver shared through a handover. Excluded from trip_count and the
-    # whole-trip rates (they cannot be fairly split), so a ranking can say what it left out.
     shared_trip_count: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
@@ -96,7 +94,6 @@ class DriverMetrics(BaseModel):
     def unloading_dwell_minutes_avg(self) -> float | None:
         return safe_ratio(self.unloading_dwell_minutes_sum, self.unloading_dwell_events_count)
 
-    # The caveat travels with the number so a UI built on it cannot drop it.
     @computed_field(  # type: ignore[prop-decorator]
         description=(
             "Not purely driver behaviour: a slow receiver at the destination also "
@@ -138,7 +135,6 @@ class VehicleStreak(BaseModel):
 
     vehicle_id: UUID
     highest_streak_trips: int
-    # None until a mechanical incident has closed at least one streak.
     lowest_streak_trips: int | None
 
 
@@ -176,10 +172,7 @@ class LaneMetrics(BaseModel):
     destination_precinct_id: UUID
     trip_count: int
     exception_count: int
-    # "How long does this route physically take" ...
     actual_transit_minutes: DurationStats
-    # ... versus "are we keeping the schedule we promise for it" (actual - planned, per
-    # trip). Can hold fewer samples than actual_transit_minutes: not every trip has a plan.
     schedule_delta_minutes: DurationStats
 
     @computed_field  # type: ignore[prop-decorator]
@@ -196,8 +189,6 @@ class FacilityMetrics(BaseModel):
     precinct_id: UUID
     confirmed_count: int
     mismatch_count: int
-    # Kept, not discarded: a high count here means the precinct's Pulsit COVERAGE is
-    # broken, a different problem from trucks not being where drivers said.
     unwitnessed_count: int
 
     @computed_field  # type: ignore[prop-decorator]

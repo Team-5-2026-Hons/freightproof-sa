@@ -32,10 +32,8 @@ from app.db.models.people import UQ_DRIVERS_ORG_ID_NUMBER, Driver
 from app.orchestration.fleet.drivers import create_driver, update_driver
 from app.schemas.people import DriverCreateBody, DriverUpdateBody
 
-# Postgres error code for unique_violation — the service maps only this to DuplicateResourceError.
 _UNIQUE_VIOLATION_SQLSTATE = "23505"
 
-# A valid 13-digit SA ID (passes DriverCreateBody.validate_id_number).
 _VALID_ID_NUMBER = "9001015009081"
 
 
@@ -54,8 +52,6 @@ class _FakeUniqueViolation(Exception):
         super().__init__(constraint_name)
         self.constraint_name = constraint_name
 
-
-# ── Test doubles ───────────────────────────────────────────────────────────────
 
 def _mock_db(scalar_result: object | None = None) -> MagicMock:
     """AsyncSession double for fleet.drivers.
@@ -76,8 +72,6 @@ def _mock_db(scalar_result: object | None = None) -> MagicMock:
         now = datetime.now(timezone.utc)
         for obj in added:
             cols = obj.__table__.columns
-            # uuid PKs use a Python-side default=uuid.uuid4 applied by the ORM on
-            # flush; with a mocked session that never runs, so simulate it here.
             if "id" in cols and getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
             if "created_at" in cols and getattr(obj, "created_at", None) is None:
@@ -133,8 +127,6 @@ def _first_of_type(db: MagicMock, model: type) -> Any:
     raise AssertionError(f"No {model.__name__} was added to the session")
 
 
-# ── G1.1: create_driver anchors once with a PII-free payload ─────────────────────
-
 async def test_create_driver_anchors_once_without_pii() -> None:
     db = _mock_db()
     anchor = _anchor_stub()
@@ -165,19 +157,15 @@ async def test_create_driver_anchors_once_without_pii() -> None:
 
     payload = kwargs["canonical_payload"]
     payload_str = str(payload)
-    # POPIA: no raw personal data may reach the chain.
     assert data.full_name not in payload_str
     assert data.id_number not in payload_str
     assert data.phone_number not in payload_str
     assert data.license_number not in payload_str
-    # Only the SHA-256 of the licence number is permitted, and it must be present.
     expected_hash = hashlib.sha256(data.license_number.encode("utf-8")).hexdigest()
     fields = payload["fields"]
     assert "license_number" not in fields
     assert fields["license_number_sha256"] == expected_hash
 
-
-# ── G1.2: cosmetic update records an event but does NOT anchor ───────────────────
 
 async def test_update_driver_cosmetic_does_not_anchor_but_records_event() -> None:
     driver = _make_driver()
@@ -192,14 +180,11 @@ async def test_update_driver_cosmetic_does_not_anchor_but_records_event() -> Non
     assert driver.full_name == "Renamed Driver"
     event = _first_of_type(db, DriverEvent)
     assert event.event_type == DriverEventType.COSMETIC_UPDATE.value
-    # No critical change → the fallback diff is persisted (real service behaviour).
     assert event.changed_fields == {
         "_no_critical_change": True,
         "_patch": {"full_name": "Renamed Driver"},
     }
 
-
-# ── G1.3: critical update anchors, payload carries ONLY the critical diff ────────
 
 async def test_update_driver_critical_anchors_only_the_diff() -> None:
     old_license = "DRV-OLD-001"
@@ -218,7 +203,6 @@ async def test_update_driver_critical_anchors_only_the_diff() -> None:
     assert kwargs["receipt_type"] is BlockchainReceiptType.DRIVER_UPDATED
 
     payload = kwargs["canonical_payload"]
-    # Plaintext licence numbers must never appear — only the hashed diff.
     assert old_license not in str(payload)
     assert new_license not in str(payload)
     assert payload["fields"] == {
@@ -230,8 +214,6 @@ async def test_update_driver_critical_anchors_only_the_diff() -> None:
     event = _first_of_type(db, DriverEvent)
     assert event.event_type == DriverEventType.LICENSE_RENEWED.value
 
-
-# ── G1.4: unknown id raises ResourceNotFoundError ───────────────────────────────
 
 async def test_update_driver_unknown_id_raises_not_found() -> None:
     db = _mock_db(scalar_result=None)
@@ -245,8 +227,6 @@ async def test_update_driver_unknown_id_raises_not_found() -> None:
 
     anchor.assert_not_called()
 
-
-# ── G1.5: unique violation on create raises DuplicateResourceError ──────────────
 
 async def test_create_driver_duplicate_raises_duplicate_resource() -> None:
     db = _mock_db()

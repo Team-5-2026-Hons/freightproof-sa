@@ -66,7 +66,6 @@ describe('useIncidents filters', () => {
 
     rerender({ filters: { status: 'closed' } })
     await flush()
-    // The open request is still in flight, so the closed one waits behind it.
     expect(mockedList).toHaveBeenCalledTimes(1)
 
     await act(async () => { resolvers[0]!([incident('open-1', 'open')]) })

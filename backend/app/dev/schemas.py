@@ -14,15 +14,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 from app.db.models.enums import ExceptionType, PhaseStatus
 from app.integrations.scan_feed import ScanDirection
 
-# A staged scan cannot exceed this many barcodes. Purely a guard against a typo in
-# the panel turning into thousands of rows; no real consignment approaches it.
 MAX_STAGED_BARCODES = 500
 
-# Mirrors phases.state._is_resolved's definition of "already decided" — stated
-# again here (not imported) because that predicate is private to phases.state,
-# which this slice is explicitly scoped to leave untouched. A phase in one of
-# these statuses is not going to change its mind about a scan; the panel uses
-# this to know when triggering a scan for that phase no longer makes sense.
 CLOSED_PHASE_STATUSES: frozenset[str] = frozenset({
     PhaseStatus.COMPLETED.value, PhaseStatus.EXCEPTION.value, PhaseStatus.OVERRIDDEN.value,
 })
@@ -48,17 +41,9 @@ class DevTripStop(BaseModel):
     precinct_name: str
     pickup_consignments: list[DevConsignment]
     delivery_consignments: list[DevConsignment]
-    # Status of the phase event gating each scan direction AT THIS STOP, so the panel
-    # can refuse a scan that no longer makes sense. None = no such phase event.
-    # See CLOSED_PHASE_STATUSES for which values mean "already decided".
     loading_phase_status: Optional[str] = None
     confirmation_phase_status: Optional[str] = None
-    # Status of the DEPARTURE phase for the leg that ends at this stop — the truck
-    # physically leaving the origin is the precondition for any destination scan.
-    # None when no departure precedes this stop (i.e. it is the origin).
     preceding_departure_status: Optional[str] = None
-    # Scan IN at this stop opens once ARRIVAL is decided: the warehouse scans after the
-    # driver has inspected the seal, never while the truck is still at the gate.
     arrival_phase_status: Optional[str] = None
     unloading_phase_status: Optional[str] = None
 
@@ -79,14 +64,9 @@ class DevTripSummary(BaseModel):
     status: str
     current_phase: Optional[str]
     stops: list[DevTripStop]
-    # Trip.driver_id/Driver.full_name are both non-nullable, but this stays Optional
-    # so a join miss degrades to a blank label in the panel rather than a 500 mid-demo.
     driver_full_name: Optional[str] = None
     created_at: datetime
-    # Trip.current_stop: the stop sequence the ledger says the trip is at. A cache, read
-    # here only to pick which stop the panel's actions address.
     current_stop_sequence: Optional[int] = None
-    # Horse first, then trailers by registration.
     vehicles: list[DevVehicle] = []
 
 
@@ -133,9 +113,6 @@ class ScanTriggerRequest(BaseModel):
     def reject_oversized_map(
         cls, v: Optional[dict[str, list[str]]],
     ) -> Optional[dict[str, list[str]]]:
-        # max_length on the `barcodes` field only guards that flat list — this map
-        # has no single field-level cap, so the total across all its lists is
-        # enforced here instead.
         if v is not None and sum(len(barcodes) for barcodes in v.values()) > MAX_STAGED_BARCODES:
             raise ValueError(f"Total staged barcodes must not exceed {MAX_STAGED_BARCODES}")
         return v
@@ -177,7 +154,6 @@ class CloseScanSessionResponse(BaseModel):
     trip_id: uuid.UUID
     trip_stop_id: uuid.UUID
     direction: ScanDirection
-    # One per consignment at this stop — a stop may serve several waybills.
     sessions_closed: int
 
 
@@ -231,10 +207,6 @@ class FlushMockStateResponse(BaseModel):
     keys_deleted: int
 
 
-# ---------------------------------------------------------------------------
-# FP-116 "move the truck" — dev-only Pulsit mock position control
-# ---------------------------------------------------------------------------
-
 
 class WaypointRead(BaseModel):
     """One waypoint the presenter can move the truck to.
@@ -248,30 +220,11 @@ class WaypointRead(BaseModel):
     label: str
     sequence: int
     description: str
-    # None only for the "no signal" waypoint, which is the tracker going dark rather
-    # than a place — never defaulted to 0.0, which is a real coordinate.
     latitude: Optional[Decimal]
     longitude: Optional[Decimal]
     intended_distance_metres: Optional[int]
     expected_confirmed: Optional[bool]
 
-
-# ---------------------------------------------------------------------------
-# FP-197 — trip-stop-relative scenario mode, alongside the legacy
-# fixed-waypoint mode above.
-#
-# WHY A SECOND MODE: the legacy waypoints are fixed Cape Town coordinates, generated
-# once from the seeded demo depot (see demo_waypoints.py's module docstring). A trip
-# whose real stops sit somewhere else entirely can still have its tracker "moved to
-# the precinct" and land nowhere near where the geofence check is actually looking —
-# "move the truck" and "evaluate geofence" silently talking about different places.
-# Scenario mode fixes that by computing every offset FROM the trip's own chosen stop,
-# so the two always agree on where "the precinct" is.
-#
-# Named constants rather than bare literal strings at call sites, mirroring
-# demo_waypoints.py's WAYPOINT_* precedent for the legacy mode. Final, so mypy reads
-# each as its Literal and it can be passed where a DevTruckScenario is expected.
-# ---------------------------------------------------------------------------
 
 SCENARIO_AT_STOP: Final = "at_stop"
 SCENARIO_INSIDE_TOLERANCE: Final = "inside_tolerance"
@@ -280,10 +233,6 @@ SCENARIO_THREE_KM: Final = "three_km"
 SCENARIO_FIFTY_KM: Final = "fifty_km"
 SCENARIO_NO_SIGNAL: Final = "no_signal"
 
-# The one place this six-way enum is spelled out. `app/dev/services/truck.py`
-# imports the constants above from here (schemas -> orchestration is the wrong
-# direction for the reverse import — orchestration already depends on schemas
-# elsewhere in this codebase, e.g. trips/creation.py, so this keeps that same direction).
 DevTruckScenario = Literal[
     "at_stop", "inside_tolerance", "outside_tolerance", "three_km", "fifty_km", "no_signal",
 ]
@@ -316,8 +265,6 @@ class MoveTruckRequest(BaseModel):
         has_scenario = self.scenario is not None
 
         if has_waypoint == has_scenario:
-            # Both True (both supplied) or both False (neither supplied) — either
-            # way there is no single unambiguous mode to act on.
             raise ValueError(
                 "Provide exactly one of waypoint_id (a fixed demo location) or "
                 "scenario (a trip-stop-relative mode) — not both, and not neither."
@@ -360,14 +307,9 @@ class MoveTruckResponse(BaseModel):
     waypoint_id: str
     waypoint_label: str
 
-    # Which tracker actually moved, echoed back so the panel can prove it addressed the
-    # trip's own horse rather than a device id someone typed.
     device_id: str
     vehicle_registration: str
 
-    # The EXPECTED precinct — the trip's current phase stop, exactly as this field has
-    # always meant. Named in the response because it is not always the origin, and a
-    # distance without its reference point is not a fact.
     precinct_id: uuid.UUID
     precinct_name: str
 
@@ -375,45 +317,21 @@ class MoveTruckResponse(BaseModel):
     longitude: Optional[Decimal]
     has_position: bool
 
-    # None when there is no fix to measure. Distinct from 0.0, which means the tracker
-    # is sitting exactly on the precinct centre. Measured against the EXPECTED
-    # precinct above, not the scenario-mode target below.
     distance_metres: Optional[float]
     geofence_radius_metres: Optional[int]
     gps_tolerance_metres: int
-    # None on the no-signal waypoint/scenario: no fix means no verdict, deliberately
-    # not `false`. A tracker that cannot be reached has not accused anyone.
     geofence_confirmed: Optional[bool]
     in_tolerance_band: bool
     verdict_reason: str
 
-    # ---- FP-197 additions, all nullable: null in legacy waypoint mode, and
-    # null for target_* when scenario=no_signal names no stop. ----
-
-    # The stop scenario mode actually staged the tracker relative to. Distinct from
-    # `expected_trip_stop_id` below whenever the operator deliberately picks a stop
-    # other than the trip's current one (the whole point of this mode).
     target_trip_stop_id: Optional[uuid.UUID] = None
     target_precinct_name: Optional[str] = None
-    # The distance scenario mode computed and offset from `target_trip_stop_id`'s
-    # precinct centre — the number the scenario buttons promise, independent of
-    # whatever `distance_metres` above says about the EXPECTED stop.
     target_distance_metres: Optional[float] = None
-    # Which scenario produced this response, or null in legacy waypoint mode.
     scenario: Optional[DevTruckScenario] = None
 
-    # The stop `precinct_id`/`precinct_name`/`distance_metres` above actually describe
-    # — always populated (both modes), since the EXPECTED stop is resolved every
-    # request regardless of which mode moved the tracker. Restates precinct_name under
-    # an unambiguous name so the panel is never forced to reuse a legacy field whose
-    # name alone does not say "expected" when a target is also on screen.
     expected_trip_stop_id: Optional[uuid.UUID] = None
     expected_precinct_name: Optional[str] = None
 
-
-# ---------------------------------------------------------------------------
-# Rig scenarios and the on-road tracker check
-# ---------------------------------------------------------------------------
 
 RigScenario = Literal[
     "at_stop", "away_from_stop", "en_route", "left_before_departure", "trailer_uncoupled", "silent",
@@ -461,7 +379,6 @@ class RoadFindingRead(BaseModel):
     severity: str
     vehicle_id: uuid.UUID
     description: str
-    # False when this run matched a finding already on record — shown, not re-written.
     newly_recorded: bool
 
 
@@ -496,9 +413,6 @@ class PpManifestTriggerResponse(BaseModel):
     snapshot_sha256: str
 
 
-# ---- "Move the phone" (FP demo scaffolding) ------------------------------------------
-# A closed, server-defined vocabulary, exactly like the truck's scenarios: the browser
-# never sends coordinates, it names a place on THIS trip and the server resolves it.
 PHONE_AT_ORIGIN = "at_origin"
 PHONE_AT_DESTINATION = "at_destination"
 PHONE_AT_STOP = "at_stop"
@@ -551,11 +465,8 @@ class MovePhoneResponse(BaseModel):
     placement: DevPhonePlacement
     placement_label: str
     staged: bool
-    # Null for `release`: there is no coordinate when the device is reporting for itself.
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
     trip_stop_id: Optional[uuid.UUID] = None
     precinct_name: Optional[str] = None
-    # Says in the response what the ledger will say, so a presenter is never under the
-    # impression a staged walk is recorded as a real capture.
     recorded_as: str = "simulated"

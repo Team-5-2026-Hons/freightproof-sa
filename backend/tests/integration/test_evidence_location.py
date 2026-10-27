@@ -113,7 +113,6 @@ async def test_rejects_another_drivers_trip(db_session) -> None:
     trip, _ = await _seed(db_session)
     _, other_driver = await _seed(db_session)
 
-    # Never held by this driver: indistinguishable from a missing trip (FP-83), not a 403.
     with pytest.raises(ResourceNotFoundError):
         await record_location_pings(
             db_session, trip_id=trip.id, driver_id=other_driver.id, pings=[_ping()],

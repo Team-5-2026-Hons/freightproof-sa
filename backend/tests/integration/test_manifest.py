@@ -200,7 +200,6 @@ async def test_dispatcher_manifest_multi_consignment_returns_all(
     body = resp.json()
     returned_ids = {c["consignment_id"] for c in body["consignments"]}
     assert returned_ids == {str(cons_a.id), str(cons_b.id)}
-    # Per-client grouping: each consignment carries its own client org.
     clients = {c["client_organization_id"] for c in body["consignments"]}
     assert len(clients) == 2
 
@@ -208,7 +207,7 @@ async def test_dispatcher_manifest_multi_consignment_returns_all(
 async def test_driver_linehaul_multi_consignment_sums_unit_counts(
     client: AsyncClient, seed_trip_with_two_consignments,
 ):
-    trip, _cons_a, _cons_b, driver, _user, _org = seed_trip_with_two_consignments  # unit_count_expected: 10 and 4
+    trip, _cons_a, _cons_b, driver, _user, _org = seed_trip_with_two_consignments
 
     token = make_token(sub=str(driver.id), role="driver")
     resp = await client.get(f"/api/v1/trips/{trip.id}/manifest", headers=auth_header(token))
@@ -216,7 +215,6 @@ async def test_driver_linehaul_multi_consignment_sums_unit_counts(
     assert resp.status_code == 200
     body = resp.json()
     assert body["consolidated_unit_count"] == 14
-    # Theft-risk rule: the driver response must never contain parcel-grain data.
     assert "consignments" not in body
     assert "parcels" not in body
 
@@ -224,7 +222,6 @@ async def test_driver_linehaul_multi_consignment_sums_unit_counts(
 async def test_driver_linehaul_falls_back_to_parcel_count_when_no_unit_counts(
     client: AsyncClient, seed_trip_with_consignment,
 ):
-    # Legacy consignment (unit_count_expected=None, 3 parcels) keeps pre-FP-112 behaviour.
     trip, driver, _user, _org = seed_trip_with_consignment
 
     token = make_token(sub=str(driver.id), role="driver")
@@ -267,12 +264,10 @@ async def seed_trip_with_mixed_unit_counts(db_session):
     db_session.add(trip)
     await db_session.flush()
 
-    # FP-112 consignment: unit_count_expected set — its 3 parcels are ignored for the count.
     cons_a = Consignment(
         id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="PP-C",
         client_organization_id=client_a.id, parcel_count_expected=3, unit_count_expected=10,
     )
-    # Legacy consignment: no unit_count_expected — falls back to its own parcel count (5).
     cons_b = Consignment(
         id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="PP-D",
         client_organization_id=client_b.id, parcel_count_expected=5, unit_count_expected=None,
@@ -296,9 +291,6 @@ async def seed_trip_with_mixed_unit_counts(db_session):
 async def test_driver_linehaul_mixed_unit_counts_applies_fallback_per_consignment(
     client: AsyncClient, seed_trip_with_mixed_unit_counts,
 ):
-    # cons_a: unit_count_expected=10 (used as-is). cons_b: unit_count_expected=None,
-    # 5 parcels (fallback applies to cons_b only) -- expected total is 10 + 5 = 15,
-    # not 10 (which would mean cons_b's parcels were silently dropped).
     trip, _cons_a, _cons_b, driver, _user, _org = seed_trip_with_mixed_unit_counts
 
     token = make_token(sub=str(driver.id), role="driver")
@@ -343,8 +335,6 @@ async def seed_empty_leg_trip(db_session):
 async def test_driver_linehaul_empty_leg_returns_zero_not_404(
     client: AsyncClient, seed_empty_leg_trip,
 ):
-    # Empty leg = repositioning run, no cargo by definition — a defined zero response,
-    # not a 404 (which would otherwise fire because there are no consignments to load).
     trip, driver, _user, _org = seed_empty_leg_trip
 
     token = make_token(sub=str(driver.id), role="driver")

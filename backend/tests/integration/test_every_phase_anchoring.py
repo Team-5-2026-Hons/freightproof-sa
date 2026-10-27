@@ -52,10 +52,6 @@ from app.orchestration.verification.phase_payloads import reconstruct_pending_ph
 from app.orchestration.verification.service import verify_subject
 
 from tests.conftest import auth_header, make_token
-# override_get_db is autouse and never referenced by name below, so importing it is
-# enough for pytest to pick it up — no F811 risk. seed_trip IS referenced by name as a
-# test parameter below, which ruff reads as redefining the import (F811), so it is
-# re-seeded locally instead (matching test_arrival_phase.py's own precedent).
 from tests.integration.test_phases import (  # noqa: F401  (override_get_db is a fixture)
     _complete_activation, _complete_arrival, _complete_in_transit, _make_artifact,
     _make_attributed_artifact, _make_linehaul_pdf, _phase_id, _walk_to_in_transit, override_get_db,
@@ -145,7 +141,7 @@ async def _walk_to_closed(client: AsyncClient, db_session, trip, token: str) -> 
     unloading -> confirmation. The shortest legal path to a fully closed trip."""
     await _walk_to_in_transit(client, db_session, trip, token)
     await _complete_in_transit(client, trip, token)
-    await _complete_arrival(client, db_session, trip, token)  # default seal "AB-1234" matches departure
+    await _complete_arrival(client, db_session, trip, token)
     await _complete_unloading(client, trip, token)
     await _complete_confirmation(client, db_session, trip, token)
 
@@ -168,7 +164,7 @@ async def test_every_phase_of_a_completed_trip_ends_anchored_with_matching_recei
     await _walk_to_closed(client, db_session, trip, token)
 
     phases = await _all_phases(db_session, trip.id)
-    assert len(phases) == 8  # trip_creation + 7 driver-facing rows, single-leg plan
+    assert len(phases) == 8
 
     non_creation = [p for p in phases if PhaseType(p.phase_type) != PhaseType.TRIP_CREATION]
     assert len(non_creation) == 7
@@ -199,11 +195,9 @@ async def test_every_phase_of_a_completed_trip_ends_anchored_with_matching_recei
         assert receipt.receipt_type == _PHASE_RECEIPT_TYPES[phase_type]
         assert receipt.data_hash == event.event_hash
 
-    # Loading anchors v3 (linehaul PDF), every other phase keeps its existing contract.
     loading_event = next(p for p in phases if PhaseType(p.phase_type) == PhaseType.LOADING)
     loading_payload = await reconstruct_pending_phase_payload(db_session, loading_event)
     assert loading_payload is not None
-    # Driver-performed, so the v3 loading evidence sits inside the v4 actor envelope.
     assert loading_payload["payload_version"] == 4
     assert loading_payload["evidence"]["payload_version"] == 3
     assert "linehaul_pdf_sha256" in loading_payload["evidence"]
@@ -226,8 +220,6 @@ async def test_arrival_seal_mismatch_still_anchors_and_reconstructs(
     await _walk_to_in_transit(client, db_session, trip, token)
     await _complete_in_transit(client, trip, token)
 
-    # Departure's seal defaults to "AB-1234" (test_phases._walk_to_in_transit); a
-    # different arrival seal is the mismatch this test exists to anchor.
     await _complete_arrival(client, db_session, trip, token, seal_number_at_arrival="ZZ-9999")
 
     arrival = next(p for p in await _all_phases(db_session, trip.id) if PhaseType(p.phase_type) == PhaseType.ARRIVAL)
@@ -280,8 +272,6 @@ async def test_dispatcher_override_of_a_pending_phase_anchors_with_override_rece
     assert reconstructed is not None
     assert compute_payload_hash(reconstructed) == loading.event_hash
 
-    # Anchoring the reconstructed override payload under the phase's OWN receipt
-    # type (LOADING) must be rejected: the row is overridden, not driver-evidenced.
     rejected = await anchor_phase_event(
         db_session, phase_event_id=loading.id,
         canonical_payload=reconstructed, receipt_type=_PHASE_RECEIPT_TYPES[PhaseType.LOADING],
@@ -291,7 +281,6 @@ async def test_dispatcher_override_of_a_pending_phase_anchors_with_override_rece
     assert loading.anchor_status == AnchorStatus.FAILED
     assert loading.blockchain_receipt_id is None
 
-    # The correct receipt type — PHASE_OVERRIDE — anchors it.
     anchored = await anchor_phase_event(
         db_session, phase_event_id=loading.id,
         canonical_payload=reconstructed, receipt_type=receipt_type_for(loading),
@@ -302,8 +291,6 @@ async def test_dispatcher_override_of_a_pending_phase_anchors_with_override_rece
     receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
     assert receipt.receipt_type == BlockchainReceiptType.PHASE_OVERRIDE
 
-
-# ── recovery sweep: overridden rows and loading's optional linehaul photo ──────
 
 async def test_recover_phase_anchor_picks_up_an_overdue_override_and_anchors_it(
     client: AsyncClient, db_session, seed_trip,
@@ -332,8 +319,6 @@ async def test_recover_phase_anchor_picks_up_an_overdue_override_and_anchors_it(
     loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
     assert loading.status == PhaseStatus.OVERRIDDEN
     assert loading.event_hash is not None
-    # Simulate a dispatch that never landed a receipt — recover_phase_anchor's own
-    # eligibility case (anchor_status FAILED/PENDING, no receipt, overdue updated_at).
     loading.anchor_status = AnchorStatus.FAILED
     loading.updated_at = datetime.now(UTC) - timedelta(minutes=10)
     await db_session.flush()
@@ -426,8 +411,6 @@ async def test_loading_with_linehaul_scan_and_pdf_anchors_the_pdf_hash_and_rebui
     assert compute_payload_hash(rebuilt) == loading.event_hash
 
 
-# ── tamper detection: a row edited after anchoring must verify as DB_MISMATCH ──
-
 async def test_verify_subject_detects_tampered_seal_condition_after_arrival_anchors(
     client: AsyncClient, db_session, seed_trip,
 ):
@@ -439,7 +422,7 @@ async def test_verify_subject_detects_tampered_seal_condition_after_arrival_anch
     token = make_token(sub=str(driver.id), role="driver")
     await _walk_to_in_transit(client, db_session, trip, token)
     await _complete_in_transit(client, trip, token)
-    await _complete_arrival(client, db_session, trip, token)  # default seal "AB-1234" matches departure
+    await _complete_arrival(client, db_session, trip, token)
 
     arrival = next(
         p for p in await _all_phases(db_session, trip.id) if PhaseType(p.phase_type) == PhaseType.ARRIVAL

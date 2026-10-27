@@ -5,7 +5,6 @@
 export type RouteCoordinate = [number, number]
 
 export interface TripRouteLeg {
-  /** TripStop.sequence of the stop this leg leaves, matching an in_transit row's stop_sequence. */
   from_stop_sequence: number
   to_stop_sequence: number
   distance_metres: number

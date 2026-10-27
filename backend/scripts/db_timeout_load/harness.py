@@ -41,8 +41,6 @@ class Harness:
     client: AsyncClient
     pool: PoolMetrics
     budgets: Budgets
-    # Tasks that existed before the harness ran any request; anything newer still alive
-    # after a cycle settles is a leak.
     baseline_tasks: set[asyncio.Task[object]]
     scenario: str = HEALTHY
 
@@ -55,8 +53,6 @@ class Harness:
         semaphore = asyncio.Semaphore(concurrency)
 
         async def send(index: int) -> None:
-            # Queueing at the load generator is excluded from request latency, but included
-            # in wave wall time. Only concurrency requests compete for the application pool.
             async with semaphore:
                 await measure(self.client, specs[index % len(specs)], samples, self.request_watchdog)
 
@@ -75,8 +71,6 @@ class Harness:
         failures = request_failures(samples, FAULT_CONCURRENCY)
         if not all(s.valid_success for s in samples):
             failures.append("Healthy recovery wave did not fully succeed")
-        # One committed write on the same engine, verified on a separate connection. A
-        # timed-out write is never retried: a lost commit acknowledgement is ambiguous.
         mutation = await self.world.reset_notice()
         writes, duration = await self.wave([mutation], 1, 1)
         failures.extend(request_failures(writes, 1))
@@ -101,12 +95,9 @@ class Harness:
         }
 
     def settled(self, counts: dict[str, int]) -> bool:
-        # Only the pool's retained connections may keep a live relay between cycles.
         return counts["unexpected_tasks"] == 0 and counts["relay_tasks"] <= queue_pool(self.engine).size()
 
     async def settled_tasks(self) -> dict[str, int]:
-        # TCP EOF and asyncpg cancellation acknowledgements can settle one event-loop
-        # turn after HTTP completion. Idle pool relays are expected; request tasks are not.
         deadline = perf_counter() + TEARDOWN_SECONDS
         while True:
             counts = self.task_counts()
@@ -115,7 +106,6 @@ class Harness:
             await asyncio.sleep(SETTLE_POLL_SECONDS)
 
     async def warm_pool(self) -> None:
-        # Open every slot at once, so each one has a live relay socket to silence.
         ready = asyncio.Barrier(POOL_CAPACITY)
 
         async def hold() -> None:
@@ -145,13 +135,9 @@ async def open_harness(world: World, database: str, budgets: Budgets) -> AsyncIt
     async def driver() -> DriverRead:
         return world.driver
 
-    # Each resource registers its cleanup as soon as it exists, so a failure part-way
-    # through setup still closes what was opened. Cleanups run in reverse order.
     async with AsyncExitStack() as cleanup:
         port = await proxy.start()
         cleanup.push_async_callback(proxy.close)
-        # Drop the cached rate-limit/chat-budget Redis client so this event loop builds its
-        # own from the local REDIS_URL, and close that one at teardown.
         rate_limit.reset_client()
         cleanup.push_async_callback(close_redis_client)
         url = target.set(host="127.0.0.1", port=port).update_query_dict({"ssl": "disable"})
@@ -161,23 +147,17 @@ async def open_harness(world: World, database: str, budgets: Budgets) -> AsyncIt
             "DB_MAX_OVERFLOW": MAX_OVERFLOW,
             **budgets.settings(),
         })
-        # The real engine factory, so the pool and timeout policy are production's.
         engine = create_db_engine(config)
         cleanup.push_async_callback(engine.dispose)
-        # Unsilence the relay before the engine is disposed, so its close is not stalled.
         cleanup.callback(proxy.restore)
         use_schema(engine, world.schema)
         pool = PoolMetrics(engine)
         pool.attach()
-        # The engine reads its config object, but DatabaseSession._cleanup and the 503
-        # handler's log read the global settings, so both must carry the same budgets.
         for name, value in budgets.settings().items():
             cleanup.enter_context(patch.object(settings, name, value))
-        # Keep get_db and its commit/rollback/close lifecycle; only the engine changes.
         cleanup.enter_context(patch.object(session_module, "AsyncSessionLocal", async_sessionmaker(
             engine, class_=DatabaseSession, expire_on_commit=False,
         )))
-        # A synthetic identity replaces sign-in; organization scoping stays real.
         cleanup.enter_context(patch.dict(app_main.app.dependency_overrides, {
             get_current_dispatcher: user, get_current_driver: driver,
         }))
@@ -185,7 +165,6 @@ async def open_harness(world: World, database: str, budgets: Budgets) -> AsyncIt
         app_logger = logging.getLogger(app_main.__name__)
         app_logger.addHandler(handler)
         cleanup.callback(app_logger.removeHandler, handler)
-        # raise_app_exceptions=False: a 500 must reach the sample as a response.
         transport = ASGITransport(app=app_main.app, raise_app_exceptions=False)  # type: ignore[arg-type]
         client = await cleanup.enter_async_context(AsyncClient(transport=transport, base_url="http://fp299.test"))
         yield Harness(world, engine, proxy, client, pool, budgets, baseline_tasks=asyncio.all_tasks())

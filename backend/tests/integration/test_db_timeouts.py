@@ -42,7 +42,6 @@ TEST_USER = UserRead(
     id=uuid4(), organization_id=uuid4(), email="timeouts@example.test", full_name="Timeout test",
     is_active=True, created_at=datetime.now(UTC), updated_at=datetime.now(UTC),
 )
-# The driver endpoints under test read only current_driver.id.
 TEST_DRIVER = SimpleNamespace(id=uuid4())
 
 
@@ -54,7 +53,6 @@ async def select_one(db: DatabaseSession, **kwargs: object) -> list[object]:
 
 async def active_statements(connection: AsyncConnection, marker: str) -> int:
     """Count server backends still executing a statement tagged with marker."""
-    # PostgreSQL snapshots activity once per transaction; clear it so each poll is current.
     await connection.execute(text("SELECT pg_stat_clear_snapshot()"))
     count = await connection.scalar(text(
         "SELECT count(*) FROM pg_stat_activity"
@@ -78,8 +76,6 @@ async def stalled_database() -> AsyncGenerator[int, None]:
         server.close()
         for writer in connections:
             writer.close()
-        # Python 3.13 waits for accepted transports too, so close them before waiting
-        # on the listener. A fixture teardown hang must also fail rather than stall CI.
         async with asyncio.timeout(WATCHDOG):
             await asyncio.gather(*(writer.wait_closed() for writer in connections))
             await server.wait_closed()
@@ -113,7 +109,7 @@ class SilencingProxy:
                     writer.write(data)
                     await writer.drain()
         except OSError:
-            pass  # The other side reset; closing below ends the relay either way.
+            pass
         finally:
             writer.close()
 
@@ -137,9 +133,6 @@ def disposable_test_url() -> URL:
     if not settings.TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL required for real PostgreSQL timeout checks")
     url = make_url(settings.TEST_DATABASE_URL)
-    # These checks need no schema and never use DATABASE_URL as a fallback. Match
-    # the existing disposable compose/CI database, not a shared Supabase project.
-    # A parallel run (pytest -n) gives each worker freightproof_test_gwN; still the disposable one.
     database = (url.database or "").split("_gw", 1)[0]
     if url.host not in {"localhost", "127.0.0.1", "::1", "test-db"} or database != "freightproof_test":
         pytest.fail("FP-275 tests require the local disposable freightproof_test database")
@@ -274,7 +267,6 @@ async def test_service_conflict_survives_real_stalled_rollback(
             with pytest.raises(ConsignmentAlreadyAssignedError) as caught:
                 await _sync_cargo_entry(session, "test-waybill", rejected_sync(), uuid4())
 
-    # Still the 409, but with the holder withheld: ownership can't be checked on a dead connection.
     assert type(caught.value) is ConsignmentAlreadyAssignedError
     assert caught.value.__cause__ is primary
     assert caught.value.trip_reference is None
@@ -301,8 +293,6 @@ async def test_slow_command_times_out_and_discards_connection(local_engine: Asyn
 
     async with local_engine.connect() as recovered:
         assert await recovered.scalar(text("SELECT 1")) == 1
-        # Freeing the client is not enough: PostgreSQL must cancel the statement too, or
-        # its backend keeps running (and holding locks) after the 503 (FP-299).
         deadline = loop.time() + WATCHDOG
         while await active_statements(recovered, marker) and loop.time() < deadline:
             await asyncio.sleep(SHORT_TIMEOUT)
@@ -335,8 +325,6 @@ async def test_pre_ping_timeout_is_classified_and_releases_pool(
 async def test_silent_connection_command_timeout_is_bounded(
     proxied_engine: tuple[AsyncEngine, SilencingProxy],
 ) -> None:
-    # A half-open socket never acknowledges the cancel. asyncpg 0.32+ (the requirements.txt
-    # floor) bounds that close; 0.30-0.31 waited for the acknowledgement forever.
     engine, proxy = proxied_engine
     async with engine.connect() as connection:
         await connection.execute(text("SELECT 1"))
@@ -422,7 +410,6 @@ async def test_real_api_pool_timeout_returns_503_and_recovers(
 async def test_partner_timeout_is_not_labelled_database_failure(
     api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # No query: the session remains lazy and its empty rollback/close needs no DB.
     monkeypatch.setattr(trips, "list_trips", AsyncMock(side_effect=TimeoutError("partner timeout")))
 
     response = await api_client.get("/api/v1/trips")
@@ -456,9 +443,6 @@ AUDIT_PACK_BODY = {
 PHASE_COMPLETE_BODY = {"phase_type": PhaseType.IN_TRANSIT.value, "idempotency_key": "fp-275-availability"}
 
 
-# Every route that maps SQLAlchemyError to a 500 must let an availability error reach
-# the shared 503 handler instead. The trip case uses the manifest preview because it
-# needs no body; create and create-from-manifest share the same _trip_http_error mapper.
 @pytest.mark.parametrize(
     ("module", "service", "method", "path", "body"),
     [
@@ -526,8 +510,6 @@ async def test_handover_preserves_primary_sql_error_when_rollback_also_fails(
 async def test_refused_connection_is_classified_and_returns_503(
     api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # Bind then release a port: nothing listens on it, so the connect is refused, the
-    # common shape of "the database is down" as opposed to a stalled handshake.
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]

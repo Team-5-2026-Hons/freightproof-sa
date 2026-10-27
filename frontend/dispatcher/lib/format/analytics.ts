@@ -7,7 +7,6 @@ export const NO_DATA = '—'
 
 const PERCENT = 100
 const MINUTES_PER_HOUR = 60
-// Exceptions per trip is a ratio, not a share: it can exceed 1, so it needs decimals.
 const RATIO_DECIMALS = 2
 
 /** "67% (2/3)". "—" when there is nothing to divide by: no observations is not 0%. */
@@ -50,8 +49,6 @@ export function fmtOptionalCount(count: number | null): string {
   return count === null ? NO_DATA : String(count)
 }
 
-// Rand in the South African style ("R 1 284 300"). Whole rand for totals: cents on an
-// estimate would be false precision. Rates show cents, since a fuel rate is quoted that way.
 const RAND_LOCALE = 'en-ZA'
 const RAND_WHOLE = new Intl.NumberFormat(RAND_LOCALE, { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 })
 const RAND_CENTS = new Intl.NumberFormat(RAND_LOCALE, {
@@ -68,9 +65,6 @@ export function fmtRandRate(value: number | null): string {
   return value === null ? NO_DATA : RAND_CENTS.format(value)
 }
 
-// Chart axes have room for about four characters beside their heading, so large amounts are
-// shortened there: 160 000 reads "160k". The heading ("Rand") names the unit; tooltips and
-// tables keep the full fmtRand figure.
 const THOUSAND = 1_000
 const MILLION = 1_000_000
 const AXIS_AMOUNT = new Intl.NumberFormat(RAND_LOCALE, { maximumFractionDigits: 1 })

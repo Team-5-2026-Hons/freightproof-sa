@@ -31,7 +31,6 @@ function scanning(trip: Trip, type: 'loading' | 'unloading', status: Trip['statu
     status,
     closed_at: status === 'cancelled' ? '2026-05-09T09:00:00Z' : null,
     consignments: [consignment],
-    // Everything before the target is done, so the target is the plan's first unresolved phase.
     phases: trip.phases.map(phase => phase.sequence_number >= target.sequence_number
       ? { ...phase, status: 'pending' as const, completed_at: null }
       : { ...phase, status: 'completed' as const, completed_at: phase.completed_at ?? '2026-05-09T08:00:00Z' }),
@@ -109,7 +108,6 @@ describe('buildPhaseCardModel', () => {
   it('awaits checks on the active phase of a running trip, and still offers the live scan count', () => {
     const base = tripFor(TRIP_0041_ID)
     const loading = phaseOf(base, 'loading')
-    // Re-open loading so it is the plan's lowest unresolved phase.
     const trip: Trip = {
       ...base,
       phases: base.phases.map(phase => phase.sequence_number >= loading.sequence_number

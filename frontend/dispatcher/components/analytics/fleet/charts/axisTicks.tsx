@@ -9,7 +9,6 @@ import {
   AXIS_CHAR_WIDTH_PX, AXIS_FONT_SIZE, AXIS_LABEL_GAP_PX, CATEGORY_LINE_PX, COLUMN_AXIS_HEIGHT, COLUMN_LABEL_GAP_PX,
 } from './chartStyle'
 
-// Recharts' own offset for tick text: one line below the tick mark.
 const LABEL_DY = '0.71em'
 
 /** Smallest step n so labelling every n-th of `bucketCount` buckets across `plotWidth` px keeps
@@ -25,8 +24,6 @@ export function isLabelled(index: number, bucketCount: number, step: number): bo
   return (bucketCount - 1 - index) % step === 0
 }
 
-// A canvas measures text exactly as the chart draws it. Created on first use; null where there
-// is no real canvas (server rendering, and jsdom in tests), which falls back to an estimate.
 let measureContext: CanvasRenderingContext2D | null | undefined
 
 function canMeasure(): boolean {
@@ -66,12 +63,8 @@ export function wrappedLineCount(label: string, maxWidth: number): number {
 }
 
 export interface ColumnLabelLayout {
-  /** Each name's wrap width: its column's share of the plot, less a gap. Null = don't wrap. */
   labelWidth: number | null
-  /** The x-axis band: one line, plus a line for each extra line the longest name needs. */
   axisHeight: number
-  /** False when some single word is wider than its column: wrapping can't help, so the chart
-   *  should lie its bars sideways with the names beside them instead. */
   fits: boolean
 }
 
@@ -85,7 +78,6 @@ export function columnLabelLayout(labels: readonly string[], chartWidth: number 
   const labelWidth = chartWidth === null || labels.length === 0
     ? null
     : (chartWidth - reservedWidth) / labels.length - COLUMN_LABEL_GAP_PX
-  // Unmeasured: draw as columns on one line until the first measurement says otherwise.
   if (labelWidth === null) return { labelWidth: null, axisHeight: COLUMN_AXIS_HEIGHT, fits: true }
   const fits = labelWidth > 0 && labels.every((label) => longestWordWidth(label) <= labelWidth)
   if (!fits) return { labelWidth: null, axisHeight: COLUMN_AXIS_HEIGHT, fits: false }

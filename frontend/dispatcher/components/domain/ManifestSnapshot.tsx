@@ -6,8 +6,6 @@ import type { PPManifestSnapshot } from '@shared/lib/types/pp-manifest'
 
 export interface ManifestSnapshotProps {
   snapshot: PPManifestSnapshot
-  /** only-record: a cancelled trip whose waybills moved, so this is all there is.
-   *  reference: collapsed beside the live list, for comparison. */
   variant: 'only-record' | 'reference'
 }
 

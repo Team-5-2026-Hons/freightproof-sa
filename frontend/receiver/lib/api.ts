@@ -15,9 +15,6 @@ const LOCAL_DEV_API_URL = 'http://localhost:8000'
 function resolveBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL
   if (configured) return configured
-  // A production bundle that fell back to loopback would "work" in every build check and
-  // then fail on every receiver's phone, where localhost is the phone itself. Fail the
-  // build instead.
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
       'NEXT_PUBLIC_API_URL must be set for a production build; refusing to ship the localhost fallback.',
@@ -28,13 +25,9 @@ function resolveBaseUrl(): string {
 
 const BASE_URL = resolveBaseUrl()
 
-// The scan is read-only and the receiver is staring at a spinner; a write may legitimately
-// take longer (it carries a signature image and does ledger work), and aborting one that is
-// merely slow invites a second attempt against a single-use token.
 const SCAN_TIMEOUT_MS = 15_000
 const WRITE_TIMEOUT_MS = 30_000
 
-/** `HandoverError.status` when no HTTP response arrived at all — the same 0 fetch uses for a network error. */
 const NETWORK_FAILURE_STATUS = 0
 const NETWORK_FAILURE_MESSAGE = 'The server could not be reached.'
 const UNREADABLE_REPLY_MESSAGE = 'The server\'s reply could not be read.'
@@ -49,7 +42,6 @@ export class HandoverError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    /** Only set for a 429 that carried a readable Retry-After. */
     public readonly retryAfterMs?: number,
   ) {
     super(message)
@@ -118,7 +110,6 @@ function messageFromBody(body: unknown): string | null {
   return null
 }
 
-// Name only, never the error object or its message: both can quote request details.
 function failureName(err: unknown): string {
   return err instanceof Error ? err.name : 'unknown'
 }
@@ -128,10 +119,8 @@ async function readFailureMessage(res: Response): Promise<string> {
   try {
     body = await res.json()
   } catch (err: unknown) {
-    // A proxy or gateway error page is not JSON. Fall back to the status line below.
     console.warn('[handover] error response had no readable body:', res.status, failureName(err))
   }
-  // HTTP/2 has no reason phrase, so statusText is often empty.
   return messageFromBody(body) ?? (res.statusText || `Request failed (${res.status})`)
 }
 
@@ -157,8 +146,6 @@ async function parse<T>(res: Response): Promise<T> {
   try {
     return (await res.json()) as T
   } catch (err: unknown) {
-    // A 2xx whose body never arrived or isn't JSON (captive portal, connection lost
-    // mid-body). We can't tell what the server did, so it is reported as "no answer".
     console.warn('[handover] success response had no readable body:', failureName(err))
     throw new HandoverError(NETWORK_FAILURE_STATUS, UNREADABLE_REPLY_MESSAGE)
   }
@@ -166,8 +153,6 @@ async function parse<T>(res: Response): Promise<T> {
 
 function timeoutSignal(timeoutMs: number): AbortSignal {
   if (typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(timeoutMs)
-  // Older WebViews on shared warehouse phones lack AbortSignal.timeout. Without this every
-  // request would throw before it left the device.
   const controller = new AbortController()
   setTimeout(() => {
     controller.abort(new DOMException('The request timed out.', 'TimeoutError'))
@@ -180,9 +165,6 @@ async function request<T>(url: string, init: RequestInit, timeoutMs: number): Pr
   try {
     res = await fetch(url, { ...init, credentials: 'include', signal: timeoutSignal(timeoutMs) })
   } catch (err: unknown) {
-    // TypeError (offline, DNS, CORS) and TimeoutError/AbortError all mean "no answer".
-    // The URL carries the live capability token, so only the error's name is logged and
-    // the HandoverError message is fixed text.
     console.warn('[handover] request did not complete:', failureName(err))
     throw new HandoverError(NETWORK_FAILURE_STATUS, NETWORK_FAILURE_MESSAGE)
   }
@@ -220,7 +202,6 @@ export interface VerificationState {
 }
 
 export interface VerifyStarted {
-  /** Null on every degradation path — quota spent, vendor down, no document. NOT an error. */
   session_url: string | null
   tier: string
   unverified_reason: string | null
@@ -236,8 +217,6 @@ export async function recordConsent(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // The server requires `consented` (no default), so a body that omits it can never be
-      // read as agreement; a refusal goes through recordConsentDecline.
       body: JSON.stringify({ consent_text: consentText, consented: true, has_document: hasDocument }),
     },
     WRITE_TIMEOUT_MS,
@@ -291,9 +270,6 @@ export async function resolveVerification(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // A body, never the URL: the name and ID number would otherwise be written to the
-      // server's access log and every proxy and platform log in front of it. These are the
-      // typed identity only; the session id is still never sent.
       body: JSON.stringify({ receiver_name: receiverName, receiver_id_number: receiverIdNumber }),
     },
     WRITE_TIMEOUT_MS,

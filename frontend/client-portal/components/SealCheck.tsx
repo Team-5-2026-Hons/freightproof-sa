@@ -34,14 +34,8 @@ function loadErrorText(err: unknown): string {
 export function SealCheck({ packId }: { packId: string }) {
   const [seal, setSeal] = useState<PublicPackSeal | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // When the seal was read, for "Expired on…": taken in the fetch handler because the clock is
-  // not something a render may read.
   const [loadedAt, setLoadedAt] = useState(0)
-  // Bumped by "Check again": the seal is fetched afresh, because a pack sealed moments after
-  // issue only shows its receipt on a later read.
   const [attempt, setAttempt] = useState(0)
-  // The result is kept with the seal it belongs to, so a fresh seal reads as "Checking…" and a
-  // late answer for an older one can never be shown against it.
   const [checked, setChecked] = useState<{ seal: PublicPackSeal; result: AnchorCheckResult } | null>(null)
 
   useEffect(() => {
@@ -75,8 +69,6 @@ export function SealCheck({ packId }: { packId: string }) {
     }
   }, [seal])
 
-  // Only a first load that failed replaces the page; once a seal is on screen an error from
-  // a refresh is shown beside it instead.
   if (!seal) {
     return error
       ? <p role="alert" className="px-4 py-24 text-center text-sm text-muted">{error}</p>

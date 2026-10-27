@@ -4,7 +4,6 @@ import { stepTitle } from '../step-titles'
 
 describe('stepTitle', () => {
   it('test_every_step_in_every_recipe_has_a_driver_facing_title', () => {
-    // A new step slug without a title would fall back silently; fail loudly instead.
     for (const slugs of Object.values(STEP_SLUGS)) {
       for (const slug of slugs) expect(stepTitle(slug), slug).not.toBeNull()
     }

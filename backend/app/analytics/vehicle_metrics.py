@@ -53,7 +53,6 @@ async def get_vehicle_streaks(
     """Whole-history streaks. Takes no month range: a streak filtered to "last 3 months"
     has no meaning — it is either still running or it is not."""
     view = VehicleIncidentStreaksView
-    # Columns, not entities — see rollup.sum_over_months on the identity map.
     stmt = (
         select(view.vehicle_id, view.highest_streak_trips, view.lowest_streak_trips)
         .where(view.operator_organization_id == organization_id)
@@ -77,8 +76,6 @@ async def trips_since_last_incident(
     same attribution as the vehicle_incident_streaks view: incidents recorded against
     this vehicle, or against no vehicle on a trip it was the horse of.
     No incident returns all closed trips."""
-    # Departure from the phase ledger, not trips.actual_departure_at, which holds
-    # only the last leg's departure on a multi-stop trip.
     departures = (
         select(PhaseEvent.trip_id, func.min(PhaseEvent.completed_at).label("departed_at"))
         .where(
@@ -98,7 +95,6 @@ async def trips_since_last_incident(
         on_this_vehicle,
         Trip.status == TripStatus.CLOSED,
     )
-    # Same attribution rule as the views.
     is_incident = exists().where(
         TripException.trip_id == Trip.id,
         TripException.exception_type == ExceptionType.MECHANICAL,
@@ -125,7 +121,6 @@ async def trips_since_last_incident(
         .where(*closed_trips_of_vehicle)
     )
     if last_incident is not None:
-        # (departed_at, id) ordering matches the view's window, so ties resolve deterministically.
         count_stmt = count_stmt.where(
             tuple_(departures.c.departed_at, Trip.id)
             > tuple_(last_incident.departed_at, last_incident.trip_id)

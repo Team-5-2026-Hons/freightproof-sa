@@ -27,20 +27,8 @@ from datetime import datetime
 from app.core.geo import haversine_metres
 from app.schemas.action_location import ProximityReason, ProximityVerdict
 
-# How much later than `evaluated_at` a source timestamp may read before it is
-# treated as a fabricated or clock-skewed "future" fix rather than an honest
-# near-simultaneous capture. Kept small and separate from `max_skew_seconds`:
-# ordinary clock drift between two independent devices (the driver's phone and
-# the Pulsit tracker) is exactly what the skew check exists to tolerate, so this
-# slack only needs to absorb the much smaller jitter between a device's own
-# clock and the server's `evaluated_at` instant.
 FUTURE_FIX_SLACK_SECONDS: float = 5.0
 
-# The fixed order reasons appear in on every call, regardless of which checks
-# actually tripped. Defined once as a tuple and filtered below, so two
-# assessments that fail the same two gates always render the same two-item list
-# in the same order — a UI list that silently reordered itself between two
-# otherwise-identical evaluations would be a bug users notice instantly.
 _REASON_ORDER: tuple[ProximityReason, ...] = (
     "missing_phone",
     "missing_tracker",
@@ -107,9 +95,6 @@ def evaluate_proximity(
         triggered.add("missing_tracker")
 
     if driver_captured_at is None or tracker_captured_at is None:
-        # We need BOTH timestamps to compare timing at all — an absent side means
-        # "cannot verify timing", not "assume it's live" (same stance
-        # evidence.corroboration._within_corroboration_skew takes).
         triggered.add("missing_time")
 
     if driver_accuracy_metres is None:
@@ -117,11 +102,6 @@ def evaluate_proximity(
     elif driver_accuracy_metres > max_phone_accuracy_metres:
         triggered.add("poor_accuracy")
 
-    # Freshness and future-fix checks run independently per source timestamp,
-    # whenever that particular timestamp exists — even if the OTHER side's
-    # timestamp is missing, since "missing_time" above already reports that half
-    # of the story and a present timestamp's own freshness is still real
-    # information.
     for captured_at in (driver_captured_at, tracker_captured_at):
         if captured_at is None:
             continue
@@ -142,20 +122,12 @@ def evaluate_proximity(
     if (
         driver_lat is not None and driver_lng is not None
         and tracker_lat is not None and tracker_lng is not None
-    ):  # equivalent to `not missing_phone and not missing_tracker`, spelled out so mypy narrows
+    ):
         separation_metres = haversine_metres(driver_lat, driver_lng, tracker_lat, tracker_lng)
 
     if reasons:
         verdict: ProximityVerdict = "unverified"
     elif separation_metres is None:
-        # Unreachable in practice: an empty `reasons` means neither
-        # `missing_phone` nor `missing_tracker` triggered, which is exactly the
-        # condition that guarantees `separation_metres` was computed above. Kept
-        # as an explicit branch — rather than an assert — so this function's
-        # return type stays honest to a type-checker without leaning on control
-        # flow it cannot see across, and so a future edit that breaks the
-        # invariant fails safe into 'unverified' instead of a crash or a
-        # fabricated pass.
         verdict = "unverified"
     else:
         verdict = "within_limit" if separation_metres <= max_separation_metres else "separated"

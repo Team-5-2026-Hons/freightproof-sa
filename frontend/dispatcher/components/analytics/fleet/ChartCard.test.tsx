@@ -260,7 +260,6 @@ describe('ChartCard info popover', () => {
   it('names the figure\'s source inside the "i", labelled, and never on the card face', () => {
     renderCard()
 
-    // Clean card faces (fleet spec D22): the source must not be visible before the "i" is opened.
     expect(screen.queryByText(SOURCE)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: INFO_BUTTON }))
 

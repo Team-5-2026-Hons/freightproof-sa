@@ -13,7 +13,6 @@ vi.mock('@/lib/api/client', () => {
   return { api: { get: vi.fn() }, ApiError }
 })
 const get = vi.mocked(api.get)
-// The title and info button are the card's header in every state; they never come and go.
 const headerShown = (): boolean =>
   screen.queryByRole('heading', { level: 1, name: 'Find a parcel' }) !== null
   && screen.queryByRole('button', { name: 'About parcel search' }) !== null
@@ -267,7 +266,6 @@ describe('Parcel Search — layout, focus and announcements', () => {
 
     resolve({ barcode: BARCODE, items: [], next_after: null })
     await screen.findByRole('region', { name: 'No matching parcel' })
-    // The button follows the results by one render (the results report their loading state up), so wait for it.
     await waitFor(() => expect(button).toBeEnabled())
   })
 
@@ -388,7 +386,6 @@ describe('Parcel Search — parcel-first page', () => {
     expect(within(overview).getAllByRole('heading', { level: 3, name: 'What was recorded for this parcel' })).toHaveLength(1)
   })
 
-  // Moved from the evidence-note tests: the caveats now sit once in the parcel record popover, beside the status badge.
   it('shows the scan-source, vehicle-position and sealed-contents caveats and the coverage note once, in the popover', async () => {
     const user = userEvent.setup()
     const state = await showTrace(makeTrace())

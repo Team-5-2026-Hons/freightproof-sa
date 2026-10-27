@@ -13,12 +13,8 @@ const CUSTOM = 'custom'
 interface PeriodControlProps {
   value: PeriodSelection
   onChange: (selection: PeriodSelection) => void
-  /** SAST "YYYY-MM-DD". No period may end after it. */
   today: string
-  /** Where All time starts (from the tiles); null until they load. */
   allTimeStart: string | null
-  /** The presets to offer, in order: the View by's own list, or the general one for a period
-   *  with no View by. The custom range always comes last. */
   presets?: readonly PresetId[]
   label?: string
 }
@@ -33,8 +29,6 @@ export function PeriodControl({
 
   function selectPreset(choice: string): void {
     if (choice === CUSTOM) {
-      // Seed the custom range with what is on screen now, so choosing Custom alone changes
-      // no chart until a date is edited.
       const current = resolvePeriod(value, today)
       onChange({ preset: CUSTOM, start: current.start ?? allTimeStart ?? today, end: current.end })
       return

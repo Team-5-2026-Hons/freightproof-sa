@@ -12,7 +12,6 @@ interface Props {
   onSubmit: (file: File, note: string) => Promise<boolean>
 }
 
-// What the backend's MIME sniffer accepts (app/storage/mime_allowlist.py).
 const ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp,image/heic'
 
 /** Attach a document (a SAPS case slip, a client letter). Rendered only while the backend's

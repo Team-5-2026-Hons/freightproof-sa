@@ -46,16 +46,6 @@ async def override_phase(
         db, trip_id=trip_id, operator_organization_id=operator_organization_id, lock=True,
     )
 
-    # A terminal trip is not overridable, and this guard is load-bearing rather
-    # than defensive. cancel_trip deliberately leaves every phase row PENDING —
-    # that is the honest record of a plan abandoned partway through — so on a
-    # CANCELLED trip every row still looks overridable. recompute_position()
-    # below ends with an UNCONDITIONAL trip.status = CLOSED once nothing is
-    # unresolved, so overriding the last pending row of a cancelled trip would
-    # silently rewrite CANCELLED as CLOSED and destroy the terminal fact the
-    # cancellation recorded. complete_phase never hits this because it goes
-    # through _gate_and_load, which already checks trip status; override_phase
-    # deliberately does not use that driver-scoped gate, so it needs its own.
     if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED):
         raise TripStateError(
             current_status=TripStatus(trip.status).value,
@@ -65,14 +55,8 @@ async def override_phase(
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
     if event.status not in (PhaseStatus.PENDING, PhaseStatus.IN_PROGRESS):
-        # Matches PhaseSequenceError's existing vocabulary ("cannot complete X:
-        # reason") rather than inventing a new exception type for one more state
-        # check — the reason clause just names the row's real status.
         raise PhaseSequenceError(f"phase status is '{PhaseStatus(event.status).value}'", "Override")
 
-    # Same order rule as the driver's gate: closing phase N while an earlier phase is still
-    # open leaves a gap in the ledger that nothing explains. The dispatcher UI never offers
-    # it, but the invariant belongs here, not in the UI.
     earlier = await first_unresolved_earlier_phase(
         db, trip_id=trip_id, sequence_number=event.sequence_number,
     )
@@ -82,27 +66,13 @@ async def override_phase(
     event.status = PhaseStatus.OVERRIDDEN
     event.dispatcher_override_user_id = user_id
     event.dispatcher_override_note = note
-    # Dated even though not completed. `status` already carries the "this
-    # didn't really happen" truth — an undated row in the dispatcher's
-    # chronological timeline (which reads completed_at for its card timestamp)
-    # is a worse lie than a dated one. Mirrors _finish_phase's own
-    # `event.completed_at = event.completed_at or now()` above.
     event.completed_at = event.completed_at or datetime.now(UTC)
 
-    # Revised 2026-09-23: the override itself is anchored, with its own
-    # PHASE_OVERRIDE receipt type. An override is exactly what a dispute questions, so
-    # who did it, to which phase and why must be as tamper-evident as a driver's
-    # completion. It used to leave anchor_status PENDING forever, so the gap read as a
-    # receipt still owed. The gap is now carried honestly by status OVERRIDDEN and by
-    # the receipt type, which can never be mistaken for the phase's own receipt
-    # (receipt_type_for). No driver evidence is claimed: the payload commits only to
-    # the override record, and the note (free text) only as a keyed hash.
     _anchor_phase(db, event=event, canonical_payload=compute_override_canonical_payload_v2(
         phase_event_id=event.id, trip_id=trip_id, phase_type=PhaseType(event.phase_type),
         override_user_id=user_id, override_note=note,
     ))
 
-    # The human intervention lands on the ledger, not just in an audit column.
     await register_exception(db, TripException(
         trip_id=trip_id, phase_event_id=event.id,
         exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
@@ -112,11 +82,6 @@ async def override_phase(
     ))
 
     if event.phase_type == PhaseType.ARRIVAL:
-        # The seal check lives in advance_arrival, so overriding arrival skips it and
-        # nothing downstream would notice. Record the gap on the leg itself. WARNING,
-        # not CRITICAL, for the same reason an overridden departure's missing seal is
-        # WARNING in advance_arrival: the absence is explained by an authorised action
-        # that is already on the ledger as the DISPATCHER_NOTE above.
         db.add(TripException(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_UNVERIFIED, source=ExceptionSource.SYSTEM,
@@ -128,9 +93,6 @@ async def override_phase(
             ),
         ))
 
-    # May legitimately CLOSE the trip if this was the last unresolved row — that
-    # is correct and must not be special-cased; _is_resolved already treats
-    # OVERRIDDEN as resolved for gating purposes.
     await recompute_position(db, trip)
     await db.flush()
 
@@ -142,9 +104,6 @@ async def override_phase(
         ),
     )
 
-    # Always PHASE_COMPLETED for an override — the plan position moved, same
-    # refetch as any completion (unlike _finish_phase, this is not conditional on
-    # the trip closing; that distinction belongs to cancel_trip's TRIP_CLOSED).
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.PHASE_COMPLETED))
 
     return await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)

@@ -76,7 +76,6 @@ export function HijackResponseGuide(props: Props): React.JSX.Element {
 
 function StepActions({ step, tripLive, documentUploadEnabled, onStopTrip, onRecordAction, onRecordSaps, onAttachCaseSlip, onIssuePack }: Props & { step: ResponseStep }): React.JSX.Element | null {
   if (step.state === 'done' || step.state === 'not_applicable') {
-    // Done steps can still take a correction or a second record, except the trip stop.
     if (step.key === 'saps_reported') return <Button size="sm" variant="ghost" onClick={onRecordSaps}>Add details</Button>
     return null
   }

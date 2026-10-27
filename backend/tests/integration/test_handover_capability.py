@@ -222,4 +222,4 @@ async def test_issued_token_hash_never_equals_the_raw_token(db_session):
     )
 
     assert token.token_hash != raw_token
-    assert len(token.token_hash) == 64  # SHA-256 hex digest
+    assert len(token.token_hash) == 64

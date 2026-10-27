@@ -57,8 +57,6 @@ export function PhaseCardBody({ trip, phase, model, precincts, receipt, recorded
         )}
       </div>
       {isResolved(phase) && <PhaseAudit phase={phase} receipt={receipt} />}
-      {/* An action, not a record: it stays below the zones, and the component itself renders
-          nothing for a resolved phase or a closed trip. */}
       <PhaseOverrideAction phase={phase} tripId={trip.id} tripStatus={trip.status} onOverridden={onChanged} />
     </div>
   )

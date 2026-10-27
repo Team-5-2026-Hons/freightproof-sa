@@ -23,14 +23,12 @@ class CostProfileRead(BaseModel):
 
     diesel_price_per_litre: float
     litres_per_100km: float
-    # Derived (price × consumption ÷ 100), sent so the screen never redoes the sum.
     fuel_per_km: float
     running_cost_per_km: float
     driver_cost_per_hour: float
     delay_cost_per_hour: float
     fixed_cost_per_trip: float
     road_factor: float
-    # True until an admin first saves: the figures use the starting rates from Bruce's figures.
     is_default: bool
     updated_at: datetime | None
     updated_by_name: str | None
@@ -61,18 +59,11 @@ class CostProfileUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _at_least_one_rate(self) -> Self:
-        # An empty (or all-null) body would still stamp "last changed by" without changing anything.
         if all(getattr(self, name) is None for name in type(self).model_fields):
             raise ValueError("send at least one rate to change")
         return self
 
 
-# ── GET /analytics/fleet/cost ────────────────────────────────────────────────
-# Rand amounts are floats rounded to the cent, hours and km to one decimal: computed in
-# Decimal (app/analytics/cost_model.py) and converted only here, at the response edge.
-
-# Where a lane's distance came from: every leg routed by road, every leg estimated as a
-# straight line × road factor, or some of each.
 DistanceSource = Literal["road", "estimate", "mixed"]
 
 
@@ -89,7 +80,6 @@ class OperatingCost(_Frozen):
     fixed: float
     total: float
     trips_costed: int
-    # Closed trips with no final arrival time: no driving time, so not costed at all.
     trips_not_costed: int
     distance_km: float
     legs_routed: int
@@ -103,7 +93,6 @@ class DelayCost(_Frozen):
     late_hours: float
     problem_trips: int
     late_problem_trips: int
-    # Problem trips with no planned or no actual arrival: lateness can't be measured.
     lateness_unknown: int
 
 
@@ -139,7 +128,6 @@ class LaneCost(_Frozen):
     destination_name: str | None
     trip_count: int
     operating_total: float
-    # None when no trip on the lane could be costed (no arrival time).
     operating_per_trip: float | None
     delay_cost: float
     value_exposed: float
@@ -148,11 +136,9 @@ class LaneCost(_Frozen):
 
 class CostResponse(_Frozen):
     period: PeriodEcho
-    # The rates these figures were worked out with, so every figure carries its source.
     rates: CostProfileRead
     operating: OperatingCost
     delay: DelayCost
     exposure: ValueExposed
     buckets: list[CostBucket]
-    # Highest operating cost first.
     lanes: list[LaneCost]

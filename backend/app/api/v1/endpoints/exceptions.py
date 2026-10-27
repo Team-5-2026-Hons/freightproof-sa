@@ -53,12 +53,9 @@ from app.schemas.transit import (
 
 router = APIRouter(prefix="/trips/{trip_id}/exceptions", tags=["exceptions"])
 
-# Org-scoped, not trip-scoped. The dispatcher's exception queue spans every trip in
-# the organisation, which a /trips/{trip_id} prefix structurally cannot serve.
 dispatcher_router = APIRouter(prefix="/exceptions", tags=["exceptions"])
 
 
-# Budgeted generously: a panic alert must never be refused for a double-press.
 @router.post("", response_model=TripExceptionRead, status_code=http_status.HTTP_201_CREATED,
              dependencies=[Depends(rate_limit(EVIDENCE_WRITE))])
 async def raise_exception_endpoint(
@@ -67,7 +64,6 @@ async def raise_exception_endpoint(
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> TripExceptionRead:
-    # Convert via str() so the binary float's error tail doesn't leak into the stored Decimal.
     gps_lat = Decimal(str(payload.gps_lat)) if payload.gps_lat is not None else None
     gps_lng = Decimal(str(payload.gps_lng)) if payload.gps_lng is not None else None
     try:
@@ -90,8 +86,6 @@ async def raise_exception_endpoint(
         raise custody_http_exception(exc) from exc
 
 
-# Declared BEFORE /{exception_id}: FastAPI matches routes in declaration order, or
-# "review-queue" would be parsed as the exception_id path parameter.
 @dispatcher_router.get("/review-queue", response_model=list[TripExceptionListItem])
 async def review_queue_endpoint(
     db: AsyncSession = Depends(get_db),
@@ -101,9 +95,6 @@ async def review_queue_endpoint(
     return await list_review_queue(db, organization_id=current_user.organization_id)
 
 
-# Rate-limited as a single mutation: one request, one bounded transaction. Declared before
-# /{exception_id}/... routes; a POST on a fixed path cannot collide with them, but keeping
-# the fixed paths together is the convention here.
 @dispatcher_router.post("/review-batch", response_model=list[TripExceptionRead],
                         dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def review_batch_endpoint(
@@ -166,15 +157,12 @@ async def get_exception_detail_endpoint(
     try:
         return await get_exception_detail(
             db, exception_id=exception_id, organization_id=current_user.organization_id,
-            # Receipts are admin-only everywhere else, so the pointer into one is too.
             include_hedera_refs=current_user.role == DispatcherRole.ADMIN_DISPATCHER,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-# Rate-limited like other dispatcher mutations, not for cost control — it's a
-# blast-radius cap on a write that lands on an evidence record.
 @dispatcher_router.patch("/{exception_id}/review", response_model=TripExceptionRead,
                          dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def review_exception_endpoint(
@@ -196,10 +184,8 @@ async def review_exception_endpoint(
             take_over=payload.take_over,
         )
     except ResourceNotFoundError as exc:
-        # 404, not 403, on a wrong-organisation id — a 403 would confirm the row exists.
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ExceptionAlreadyReviewedError as exc:
-        # 409, not a 200 carrying the winner's row; detail names no person.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail=(
@@ -208,7 +194,6 @@ async def review_exception_endpoint(
             ),
         ) from exc
     except ExceptionClaimedByColleagueError as exc:
-        # 409: a colleague claimed it after this page loaded. The message names no person.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 

@@ -4,14 +4,12 @@
 import { ROUTES } from '@/lib/constants/routes'
 import type { TripFormParams } from '@shared/lib/types/assistant'
 
-/** The link's keys. Short, and named for the form's fields. */
 export const PREFILL_KEYS = {
   mode: 'mode', manifest: 'manifest', driver: 'driver', horse: 'horse', trailers: 'trailers',
   origin: 'origin', destination: 'destination', departure: 'departure', arrival: 'arrival',
 } as const
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-// What the form's datetime-local inputs hold (SAST wall-clock), and nothing looser.
 const FORM_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/
 const POSITIVE_INTEGER = /^[1-9]\d{0,8}$/
 
@@ -26,7 +24,6 @@ export interface TripPrefill {
   destinationId: string | null
   departure: string | null
   arrival: string | null
-  /** Keys present but malformed, so the form can say some values were left blank. */
   dropped: string[]
 }
 

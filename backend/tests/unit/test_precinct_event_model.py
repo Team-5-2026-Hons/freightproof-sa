@@ -25,7 +25,6 @@ def test_precinct_event_carries_the_same_columns_as_vehicle_event():
     precinct_columns = {c.name for c in PrecinctEvent.__table__.columns}
     vehicle_columns = {c.name for c in VehicleEvent.__table__.columns}
 
-    # Normalise the one column that is legitimately named after its owning entity.
     normalised_precinct_columns = (precinct_columns - {"precinct_id"}) | {"vehicle_id"}
 
     assert normalised_precinct_columns == vehicle_columns

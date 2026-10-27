@@ -31,7 +31,6 @@ _MOCK_PATCH_CALLABLES = frozenset({
     "unittest.mock.patch.multiple",
     "unittest.mock.patch.dict",
 })
-# The third-party `mock` package spells it the same way under a different root.
 _MOCK_PACKAGE_ROOT = "mock.patch"
 _MOCKER_PATCH_CHAINS = frozenset({
     ("mocker", "patch"), ("mocker", "patch", "object"), ("mocker", "patch", "multiple"),
@@ -44,7 +43,7 @@ _TARGET_KEYWORD = "target"
 class PatchSite:
     path: str
     line: int
-    target: str  # resolved dotted path of the patched object
+    target: str
 
 
 def _collect_aliases(tree: ast.AST) -> dict[str, str]:
@@ -56,7 +55,6 @@ def _collect_aliases(tree: ast.AST) -> dict[str, str]:
                 if imported.asname:
                     aliases[imported.asname] = imported.name
                 else:
-                    # `import a.b.c` binds only `a`; the attribute chain supplies the rest.
                     root = imported.name.split(".")[0]
                     aliases[root] = root
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
@@ -102,7 +100,6 @@ def _resolve(node: ast.expr, aliases: dict[str, str], constants: dict[str, str] 
     constant, or of a name/attribute chain rooted at an import."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
-    # Imports keep priority: a name that is both imported and assigned is treated as the import.
     if isinstance(node, ast.Name) and node.id not in aliases and constants and node.id in constants:
         return constants[node.id]
     chain = _raw_chain(node)

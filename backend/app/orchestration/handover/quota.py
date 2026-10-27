@@ -24,8 +24,6 @@ async def consume_quota_slot(db: AsyncSession, *, provider: str = PROVIDER_DIDIT
     """
     period = datetime.now(UTC).strftime("%Y-%m")
 
-    # DO NOTHING, not DO UPDATE: the increment below is the only thing allowed to
-    # move the counter.
     await db.execute(
         pg_insert(IdvsQuotaLedger)
         .values(period=period, provider=provider, sessions_used=0)

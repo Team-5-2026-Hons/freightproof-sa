@@ -45,7 +45,6 @@ class Bucket:
     """One bar or point on a trend chart, keyed by its first calendar day."""
 
     start: date
-    # Not a whole week/month/year inside the period; the chart draws it faded.
     is_partial: bool
 
 
@@ -172,13 +171,9 @@ class OccurrenceDays:
     the denominators of the busy-pattern charts, so the 31st is divided only by
     months that have one."""
 
-    # Every day has each hour of the day exactly once.
     total_days: int
-    # Monday = 0 ... Sunday = 6.
     weekday: dict[int, int]
-    # 1 ... 31.
     day_of_month: dict[int, int]
-    # 1 ... 12. A day count, so the chart reads "average per day in March".
     month_of_year: dict[int, int]
 
 
@@ -200,7 +195,6 @@ def _block_at(moment: datetime) -> tuple[DayBlock, datetime]:
     for block, first_hour, end_hour in DAY_BLOCKS:
         if first_hour <= moment.hour < end_hour:
             return block, start_of_day(moment.date()) + timedelta(hours=end_hour)
-    # DAY_BLOCKS covers every hour 0-23, so reaching here means the constant was broken.
     raise ValueError(f"DAY_BLOCKS does not cover hour {moment.hour}")
 
 
@@ -285,7 +279,6 @@ def expiry_band(expiry: date | None, today: date) -> ExpiryBand | None:
     return None
 
 
-# Nearest to the plan first, paired with LATE_BUCKET_EDGES_MINUTES.
 _EARLY_PLAN_BANDS: tuple[PlanBand, PlanBand, PlanBand] = (
     PlanBand.EARLY_0_15, PlanBand.EARLY_15_60, PlanBand.EARLY_60_180,
 )

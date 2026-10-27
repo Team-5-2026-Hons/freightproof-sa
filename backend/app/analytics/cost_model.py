@@ -17,7 +17,6 @@ from app.core.geo import haversine_metres
 
 MINUTES_PER_HOUR = Decimal(60)
 METRES_PER_KM = Decimal(1000)
-# Consumption is quoted per 100 km (the way fleet managers and truck makers state it).
 KM_PER_CONSUMPTION_UNIT = Decimal(100)
 
 _CENTS = Decimal("0.01")
@@ -46,22 +45,6 @@ class CostRates:
         return self.diesel_price_per_litre * self.litres_per_100km / KM_PER_CONSUMPTION_UNIT
 
 
-# The starting rates, used until an admin saves their own. Calibrated so Bruce's own
-# example comes out right (a JHB–DBN run costs about R20,000; this model gives ~R20,200):
-#   Bruce, 1 Sep 2026: a JHB–DBN run ≈ R20,000, fuel ≈ 50% of it
-#       → R10,000 over 568 km (N3 by road) ≈ R17.60/km.
-#   Diesel: R33.29/L, the DMPR regulated inland 50ppm price from 7 Oct 2026. Update it
-#       when the price changes. Consumption: R17.60/km ÷ R33.29/L ≈ 53 L/100 km,
-#       worked back from Bruce's figures (plausible for a loaded interlink on the N3;
-#       not measured on a real truck). Together: R17.64/km.
-#   Bruce, 28 Jul 2026: a driver ≈ R30,000/month; ÷ 195 working hours (45 h/week × 4.33)
-#       ≈ R155/h. Assumed ≈ 9 h of driving on the run → ≈ R1,395.
-#   The rest, R20,000 − R10,000 − R1,395 ≈ R8,600 ÷ 568 km ≈ R15.10/km
-#       (tyres, maintenance, tolls, the vehicle itself).
-#   Delay: the driver R155/h plus the truck standing idle, its non-fuel cost spread
-#       over the run's hours (R8,600 ÷ 9 h ≈ R955/h) → ≈ R1,100/h.
-#   Road factor: 568 km by road ÷ 500 km straight line between JHB and DBN ≈ 1.14 → 1.15.
-#   Fixed per trip: Bruce gave no figure, so it starts at zero.
 DEFAULT_COST_RATES = CostRates(
     diesel_price_per_litre=Decimal("33.29"),
     litres_per_100km=Decimal("53.0"),

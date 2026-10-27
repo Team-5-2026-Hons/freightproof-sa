@@ -94,8 +94,6 @@ async def loaded(db: AsyncSession, w: SubWorld) -> None:
     await db.flush()
 
 
-# ── handover uploads ─────────────────────────────────────────────────────────
-
 
 async def test_a_pending_incoming_driver_can_upload_takeover_evidence(db_session: AsyncSession, storage: list[bytes]):
     w, pending = await armed(db_session)
@@ -109,7 +107,6 @@ async def test_a_pending_incoming_driver_can_upload_takeover_evidence(db_session
     assert (row.artifact_id, row.driver_id, row.purpose, row.request_id, row.role) == (
         read.id, w.b, "handover", pending.id, "incoming",
     )
-    # An upload is not a confirmation.
     assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).version == pending.version
 
 
@@ -198,7 +195,6 @@ async def test_a_confirmation_may_cite_only_the_drivers_own_upload_for_this_hand
     await loaded(db_session, w)
     outgoing_photo = await handover_upload(db_session, w, pending, w.a, SubstitutionRole.OUTGOING)
     incoming_photo = await handover_upload(db_session, w, pending, w.b, SubstitutionRole.INCOMING)
-    # B's ordinary trip photo (not a handover upload) does not count either.
     plain = EvidenceArtifact(
         id=uuid.uuid4(), trip_id=w.trip_id, artifact_type=ArtifactType.PHOTO.value, s3_key="k", s3_bucket="b",
         file_hash=hashlib.sha256(jpeg()).hexdigest(), mime_type="image/jpeg", captured_by_driver_id=w.b,
@@ -227,8 +223,6 @@ async def test_a_confirmation_may_cite_only_the_drivers_own_upload_for_this_hand
     assert cited_ids == {outgoing_photo.id, incoming_photo.id}
 
 
-# ── phase deduplication after a takeover ─────────────────────────────────────
-
 
 async def test_the_new_driver_cannot_inherit_the_previous_drivers_identical_phase_photo(
     db_session: AsyncSession, storage: list[bytes],
@@ -250,8 +244,6 @@ async def test_the_new_driver_cannot_inherit_the_previous_drivers_identical_phas
 
     assert (await get_row(db_session, EvidenceArtifact, a_photo.id)).captured_by_driver_id == w.a
 
-
-# ── late uploads ─────────────────────────────────────────────────────────────
 
 
 async def late_upload(db: AsyncSession, w: SubWorld, driver_id: uuid.UUID, sequence: int, body: ValidatedArtifactUpload | None = None):
@@ -275,11 +267,11 @@ async def test_late_upload_rules(db_session: AsyncSession, storage: list[bytes])
     w = await build_world(db_session)
     await complete_handover(db_session, w, outgoing=w.a, incoming=w.b)
 
-    with pytest.raises(SubstitutionInvalidError):  # A never held period 1
+    with pytest.raises(SubstitutionInvalidError):
         await late_upload(db_session, w, w.a, 1)
-    with pytest.raises(SubstitutionInvalidError):  # B's period 1 is current: use the live route
+    with pytest.raises(SubstitutionInvalidError):
         await late_upload(db_session, w, w.b, 1)
-    with pytest.raises(ResourceNotFoundError):  # C never held the trip
+    with pytest.raises(ResourceNotFoundError):
         await late_upload(db_session, w, w.c, 0)
 
     assert await uploads(db_session) == []

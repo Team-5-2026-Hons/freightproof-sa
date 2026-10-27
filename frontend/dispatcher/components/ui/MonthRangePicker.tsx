@@ -11,8 +11,6 @@ export type { MonthRange }
 interface MonthRangePickerProps {
   value: MonthRange
   onChange: (range: MonthRange) => void
-  /** Latest selectable month, "YYYY-MM-01". Defaults to the current SAST month — a later
-   *  month cannot hold closed trips yet. Injectable so tests do not depend on today. */
   latestMonth?: string
   className?: string
 }
@@ -22,8 +20,6 @@ const MONTH_LABELS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ] as const
 
-// Matches the history page's lower bound: it predates the platform, so no real trip is
-// ever out of reach.
 const EARLIEST_YEAR = 2020
 
 type Bound = 'start' | 'end'
@@ -41,7 +37,6 @@ export function MonthRangePicker({ value, onChange, latestMonth, className }: Mo
   )
 
   function select(bound: Bound, month: string): void {
-    // Plain string comparison is chronological for "YYYY-MM-01" (see lib/format/month).
     const chosen = month > latest ? latest : month
     onChange(
       bound === 'start'

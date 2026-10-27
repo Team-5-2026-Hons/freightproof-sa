@@ -1,8 +1,6 @@
 // HashScan links for Hedera topics. The base is per-environment (testnet vs mainnet).
 const DEFAULT_HASHSCAN_BASE = 'https://hashscan.io/testnet'
 
-// A receipt written before the sweep resolved a topic carries the string 'None' rather than
-// null; treating it as an anchor would render "Verified" beside a /topic/None link.
 const NO_TOPIC = 'None'
 
 /** True only for a real Hedera topic id: not null, not empty, not the 'None' placeholder. */

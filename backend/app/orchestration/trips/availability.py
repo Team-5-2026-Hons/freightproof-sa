@@ -46,12 +46,9 @@ from app.orchestration.substitutions.availability import (
 )
 from app.schemas.availability import BusyEntry, CrewResourceType
 
-# Tuples, not sets: a row's status can come back as a plain str, and a str-Enum member hashes by
-# its *name*, so `"active" in {TripStatus.ACTIVE}` is False. Tuple membership compares by equality.
 OCCUPYING_STATUSES: tuple[TripStatus, ...] = (
     TripStatus.CREATED, TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD,
 )
-# A held trip is still the trip its crew is on; it is merely blocked from advancing.
 LIVE_STATUSES: tuple[TripStatus, ...] = (TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD)
 
 _RESOURCE_ORDER: dict[CrewResourceType, int] = {
@@ -88,11 +85,8 @@ class OccupyingTrip:
 
     trip: Trip
     trailer_ids: frozenset[uuid.UUID]
-    # Every timed stop, in stop-sequence order.
     slot_times: tuple[datetime, ...]
-    # Who holds the trip now. Trip.driver_id is only the original driver.
     current_driver_id: uuid.UUID
-    # The pending takeover, if any: it reserves the incoming driver (see substitutions.availability).
     reservation: PendingReservation | None = None
 
 
@@ -197,8 +191,6 @@ async def occupying_trips(
     )
     shares: list[ColumnElement[bool]] = []
     if crew.driver_id is not None:
-        # The current driver, not Trip.driver_id (the original), and the incoming driver of a
-        # pending takeover: both occupy this driver, at different times.
         shares.append(current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id) == crew.driver_id)
         shares.append(Trip.id.in_(
             select(DriverSubstitutionRequest.trip_id).where(
@@ -252,16 +244,13 @@ def _occupied_window(
     status = TripStatus(trip.status)
     start, planned_end = planned_window(trip.planned_departure_at, trip.planned_arrival_at, occupying.slot_times)
     if start is None:
-        # A CREATED trip with no schedule can never be activated (scheduling._reject_if_not_due),
-        # so it has no claim on anyone. A live one predates that rule and is plainly in use: busy
-        # since it was created.
         if status not in LIVE_STATUSES:
             return None
         start = trip.created_at
     return hold_start(status, start, now), busy_until(status, planned_end, now), planned_end
 
 
-_Held = tuple[datetime, datetime | None, datetime | None]  # (busy_from, busy_until, planned_end)
+_Held = tuple[datetime, datetime | None, datetime | None]
 
 
 def _shared_resources(

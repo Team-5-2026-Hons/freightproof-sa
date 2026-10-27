@@ -21,9 +21,6 @@ from app.orchestration.handover.verdict import resolve_verdict
 logger = logging.getLogger(__name__)
 
 
-# The vendor's integration guidance names 300s. A valid HMAC alone doesn't prove
-# recency, so without this a captured delivery could replay indefinitely. A
-# protocol constant, not a config field: fixed by the vendor's contract, not by env.
 WEBHOOK_MAX_CLOCK_SKEW_SECONDS = 300
 
 
@@ -42,8 +39,6 @@ def verify_webhook_signature(raw_body: bytes, presented_signature: Optional[str]
         return False
 
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    # Bytes, not str: compare_digest raises TypeError on a non-ASCII str, which would turn
-    # a forged header into a 500 instead of a refusal.
     return hmac.compare_digest(expected.encode("ascii"), presented_signature.encode("utf-8"))
 
 
@@ -69,8 +64,6 @@ def webhook_timestamp_is_fresh(
 
     skew = abs(int(datetime.now(UTC).timestamp()) - dispatched_at)
     if skew > max_skew_seconds:
-        # Logged with the delta: a webhook rejected for freshness vs. a bad
-        # signature need to be distinguishable at 2am.
         logger.warning(
             "Rejected an IDVS webhook %ss out of date (limit %ss) — replay, or check this "
             "server's clock", skew, max_skew_seconds,
@@ -98,8 +91,6 @@ async def ingest_webhook_decision(
         logger.warning("IDVS webhook carried no session_id; ignoring")
         return
 
-    # FOR UPDATE, the lock the receiver's resolve holds: a webhook arriving mid-resolve waits,
-    # then sees the row that resolve wrote and annotates it rather than overwriting the verdict.
     verification = (
         await db.execute(
             select(ReceiverIdentityVerification).where(
@@ -114,16 +105,12 @@ async def ingest_webhook_decision(
 
     decision = _parse_decision(payload, fallback_session_id=str(session_id))
 
-    # `!=`, never `is not`: status is mapped_column(String(20)), so a freshly
-    # loaded row is a bare str, not the enum member. Value comparison works
-    # because these enums subclass str.
     if verification.status != ReceiverVerificationStatus.PENDING:
         verification.late_decision_status = decision.status.value
         verification.late_decision_at = datetime.now(UTC)
         await db.flush()
         logger.info(
             "Late IDVS decision for verification=%s recorded as annotation (status stands at %s)",
-            # Coerced, not `.value` directly: a bare str has no `.value`.
             verification.id, ReceiverVerificationStatus(verification.status).value,
         )
         return

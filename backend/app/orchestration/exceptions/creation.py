@@ -37,12 +37,9 @@ from app.schemas.transit import TripExceptionRead
 logger = logging.getLogger(__name__)
 
 
-# Mirrors TripContext.tsx's criticalTypes set on the frontend — keep in sync.
 _CRITICAL_TYPES = {ExceptionType.PANIC_BUTTON, ExceptionType.SEAL_BROKEN_IN_TRANSIT, ExceptionType.SEAL_MISMATCH}
 
 
-# Name of the partial unique index on (trip_id, client_report_id), matched against
-# violated_constraint() below so an unrelated unique-violation is never misread as a replay.
 _CLIENT_REPORT_ID_INDEX = "uq_exceptions_trip_client_report_id"
 _DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS = 2.0
 
@@ -87,9 +84,6 @@ async def _driver_report_assessment(
                     trip.id, exc.id, telemetry_error,
                 )
 
-        # The report row IS the capture: its own gps_lat/gps_lng and the device
-        # timestamp the client sent, compared once against the tracker. Never stored
-        # as a checkpoint and never turned into a second, system-generated exception.
         assessment = location_assessment.build_capture_assessment(
             driver_lat=float(exc.gps_lat) if exc.gps_lat is not None else None,
             driver_lng=float(exc.gps_lng) if exc.gps_lng is not None else None,
@@ -169,7 +163,6 @@ def pick_breakdown_vehicle(
         return None
 
     if vehicle_type is None:
-        # An older app that doesn't ask the question.
         if trailer_id is not None:
             logger.warning(
                 "Breakdown on trip=%s carried trailer_id=%s with no vehicle_type. "
@@ -196,7 +189,6 @@ def pick_breakdown_vehicle(
         return None
 
     if len(trip_trailer_ids) == 1:
-        # "Trailer" alone already names it, so the app sends no plate here.
         only_trailer_id = trip_trailer_ids[0]
         if trailer_id is not None and trailer_id != only_trailer_id:
             logger.warning(
@@ -221,7 +213,6 @@ async def _resolve_breakdown_vehicle(
     vehicle_type: VehicleType | None, trailer_id: uuid.UUID | None,
 ) -> uuid.UUID | None:
     """Load the trip's trailers and hand the decision to pick_breakdown_vehicle."""
-    # A report carrying neither field always resolves to None; skip the query.
     if vehicle_type is None and trailer_id is None:
         return None
     result = await db.execute(
@@ -269,21 +260,6 @@ async def _insert_report_or_load_winner(
         db.add(exc)
         await db.flush()
     else:
-        # The pre-check above closes the common case, but two replays of the same
-        # queued entry (a driver's app retrying while an earlier attempt's response is
-        # still in flight) can both pass it before either has inserted. The partial
-        # unique index on (trip_id, client_report_id) lets exactly one of those two
-        # inserts through; this savepoint is what lets the LOSING request recover
-        # instead of dying with it.
-        #
-        # A bare `except IntegrityError` here would be wrong: Postgres aborts the
-        # whole transaction the moment the flush fails, so the SELECT this branch
-        # needs to run next (to find and return the winner) would itself fail with
-        # "current transaction is aborted" — turning a race this code means to
-        # tolerate into a 500. `db.begin_nested()` opens a SAVEPOINT around just the
-        # insert, so only that savepoint rolls back on conflict and the outer
-        # transaction — and this request's earlier reads, and its caller's eventual
-        # commit — remain perfectly usable.
         try:
             async with db.begin_nested():
                 db.add(exc)
@@ -298,11 +274,6 @@ async def _insert_report_or_load_winner(
                 db, trip_id=trip_id, client_report_id=client_report_id,
             )
             if winner is None:
-                # The index fired on this exact (trip_id, client_report_id) pair, so a
-                # row satisfying it must exist — unless the winning transaction rolled
-                # back after committing the index entry but before this SELECT ran,
-                # which the index's own guarantees make impossible. Re-raise rather
-                # than silently return nothing to a caller expecting a created row.
                 raise
             logger.info(
                 "Exception replay lost the insert race, returning the winner: "
@@ -346,27 +317,15 @@ async def raise_exception(
         )),
     )
 
-    # Idempotent replay, checked before the row is even built: a lost response, or a
-    # retry the offline queue reuses the same client_report_id for, must return the
-    # ORIGINAL exception (with its original photos and anchor events, whatever this body
-    # says) rather than raise a second one for the same real-world report. This pre-check
-    # is the common case (the earlier attempt already committed and this process can see
-    # it); the race where two attempts land in the same instant is handled below, after the
-    # insert, by the partial unique index.
     if client_report_id is not None:
         existing = await _find_by_client_report_id(
             db, trip_id=trip_id, client_report_id=client_report_id,
         )
         if existing is not None:
-            # Legacy trips keep their replay semantics. Once custody has moved, only the driver
-            # who raised it may be answered with the stored report.
             if custody.sequence > 0 and existing.performed_by_driver_id != driver_id:
                 raise IdempotencyKeyReusedError()
             return await build_exception_read(db, existing)
 
-    # Evidence ownership, checked before anything is written: the FK alone only proves an
-    # artifact exists SOMEWHERE, not that it belongs to THIS trip. Raises before any row is
-    # built, so a rejected claim leaves no trace.
     photo_ids = resolve_photo_ids(supporting_artifact_id, supporting_artifact_ids)
     await validate_trip_artifacts(db, trip_id=trip_id, artifact_ids=photo_ids)
 
@@ -374,19 +333,11 @@ async def raise_exception(
         db, trip_id=trip_id, claimed_phase_event_id=phase_event_id,
     )
 
-    # After the replay return above, so a resent report keeps the vehicle it was first
-    # stored with, even if the resend answers differently.
     vehicle_id = await _resolve_breakdown_vehicle(
         db, trip=trip, exception_type=exception_type,
         vehicle_type=vehicle_type, trailer_id=trailer_id,
     )
 
-    # Bound before the row rather than inlined into it: the realtime event below must
-    # carry the same severity the row is written with. While these were two separate
-    # expressions the event did not carry one at all — every driver-raised exception
-    # published as ordinary, so a PANIC_BUTTON (CRITICAL, _CRITICAL_TYPES above) reached
-    # the dispatcher quieter than a system-detected parcel-count mismatch. Reading both
-    # from one binding is what makes that unable to recur.
     severity = (
         ExceptionSeverity.CRITICAL if exception_type in _CRITICAL_TYPES
         else ExceptionSeverity.WARNING
@@ -395,10 +346,6 @@ async def raise_exception(
     exc = TripException(
         trip_id=trip_id,
         phase_event_id=phase_event.id if phase_event is not None else None,
-        # Scope to the stop that phase is anchored to, exactly as the system-detected
-        # exceptions in orchestration/phases already do (parcel/waybill count mismatches).
-        # Nullable throughout: trip_creation carries no stop, and neither does an
-        # exception on a trip with no plan.
         trip_stop_id=phase_event.trip_stop_id if phase_event is not None else None,
         exception_type=exception_type,
         source=ExceptionSource.DRIVER,
@@ -424,9 +371,6 @@ async def raise_exception(
 
     await anchor_new_report(db, exc, photo_ids=photo_ids)
 
-    # Telemetry is enrichment, never a gate. The driver report has already been
-    # inserted, and an unavailable/slow tracker produces an unverified snapshot on
-    # this same row rather than a recursively-generated system exception.
     await _driver_report_assessment(
         db,
         trip=trip,
@@ -436,8 +380,6 @@ async def raise_exception(
     )
     await db.refresh(exc)
 
-    # Notify dispatchers watching this trip so the exception surfaces live (published
-    # after commit). A thin ping — the exception's GPS/description never crosses the channel.
     enqueue_event(
         db, trip.operator_organization_id,
         TripEvent(

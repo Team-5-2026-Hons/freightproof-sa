@@ -16,17 +16,12 @@ from html import escape
 
 from app.schemas.audit_pack import AuditPackManifest, CoverageGap, PositionFix
 
-# Metres per degree of latitude — close enough everywhere for a drawing (±0.5%).
 METRES_PER_DEGREE = 111_320.0
 
-# Space kept clear round the edge so markers and labels are never clipped.
 PADDING_PX = 36.0
 
-# A single precinct would otherwise fill the page at street scale; frame at least this
-# much ground so a one-stop trip still reads as a map.
 MIN_EXTENT_METRES = 2_000.0
 
-# Scale bar aims for roughly this length before rounding to a 1-2-5 distance.
 SCALE_BAR_TARGET_PX = 120.0
 
 STOP_MIN_RADIUS_PX = 5.0
@@ -49,7 +44,6 @@ class _Frame:
         span_x = max(max(xs) - min(xs), MIN_EXTENT_METRES)
         span_y = max(max(ys) - min(ys), MIN_EXTENT_METRES)
         self.scale = min((width - 2 * PADDING_PX) / span_x, (height - 2 * PADDING_PX) / span_y)
-        # Centre the route inside the padded box on both axes.
         self._origin_x = (min(xs) + max(xs)) / 2 - (width / 2) / self.scale
         self._origin_y = (min(ys) + max(ys)) / 2 - (height / 2) / self.scale
 
@@ -122,7 +116,6 @@ def render_route_svg(manifest: AuditPackManifest, *, width: int = 800, height: i
 
     points = [
         *((s.lat, s.lng) for s in stops),
-        # Outline corners too, so a large site is never clipped by the frame.
         *(corner for s in stops for corner in (s.geofence_polygon or [])),
         *((f.lat, f.lng) for f in trail),
         *((f.lat, f.lng) for _, f in exception_fixes),
@@ -138,7 +131,6 @@ def render_route_svg(manifest: AuditPackManifest, *, width: int = 800, height: i
         x, y = frame.px(stop.lat, stop.lng)
         name = escape(stop.precinct_name, quote=True)
         if stop.geofence_polygon:
-            # The outline itself, to scale — the shape the verdicts were judged against.
             corners = " ".join(f"{cx},{cy}" for cx, cy in (frame.px(lat, lng) for lat, lng in stop.geofence_polygon))
             body.append(
                 f'<polygon class="stop" points="{corners}" data-name="{name}" '

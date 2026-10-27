@@ -26,7 +26,6 @@ import {
   weekdayName,
 } from './period'
 
-// A Wednesday. Fixed so every preset has a known answer.
 const TODAY = '2026-09-16'
 const MONDAY = '2026-09-07'
 

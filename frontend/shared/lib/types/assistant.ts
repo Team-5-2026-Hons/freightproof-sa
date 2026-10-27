@@ -59,7 +59,6 @@ export interface TripListCard {
   window_end: string | null
   rows: TripRow[]
   truncated: boolean
-  /** Where the whole list lives: the Dashboard for live trips, Trip History for closed and cancelled ones. */
   full_list: 'dashboard' | 'history'
 }
 
@@ -71,9 +70,7 @@ export interface IncidentRow {
   trip_id: string
   trip_reference: string
   received_at: string
-  /** Who is investigating it, once claimed. */
   investigated_by: string | null
-  /** What the investigation found, once closed. */
   outcome: IncidentOutcome | null
 }
 
@@ -82,10 +79,8 @@ export type IncidentOutcome =
 
 export interface IncidentListCard {
   type: 'incident_list'
-  /** "Open incidents", "Closed incidents" or "Incidents". */
   title: string
   rows: IncidentRow[]
-  /** More match than shown: the Incidents page has them all. */
   truncated: boolean
 }
 
@@ -96,7 +91,6 @@ export interface ReviewQueueCard {
   by_severity: NeedsReview
   claimed: number
   unclaimed: number
-  /** Of `total`: on trips already closed or cancelled. */
   on_finished_trips: number
 }
 
@@ -108,14 +102,11 @@ export interface TripCard {
   open_incidents: IncidentRow[]
   delivery_confirmed_at: string | null
   closed_at: string | null
-  /** Minutes: positive late, negative early; null without both times. */
   departure_delay_minutes: number | null
   arrival_delay_minutes: number | null
-  /** On the manifest; null for an empty leg. */
   parcels_booked: number | null
   parcels_scanned_out: number
   parcels_scanned_in: number
-  /** The trip page's Record integrity tally: stored receipts only, never the live Verify check. */
   journey_lock_anchored: boolean
   receipts_owed: number
   receipts_anchored: number
@@ -129,7 +120,6 @@ export interface BookingRow {
   origin: string
   destination: string
   busy_from: string
-  /** null: busy until the trip is closed (a live trip past its planned end). */
   busy_until: string | null
   planned_until: string | null
 }
@@ -165,7 +155,6 @@ export interface VehicleCard {
   on_trip_now: BookingRow[]
   exceptions_to_review: NeedsReview
   exception_types: string[]
-  /** Other exceptions on trips it was used on: about the trip, not the vehicle. */
   trip_exceptions_to_review: NeedsReview
   recent_breakdowns: number
   open_incidents: IncidentRow[]
@@ -176,7 +165,6 @@ export type DocumentKind = 'driver_licence' | 'vehicle_disc'
 export interface ExpiryRow {
   record: RecordRef
   document: DocumentKind
-  /** null only for one named record with no date recorded. */
   expiry: string | null
   expired: boolean
 }
@@ -184,10 +172,8 @@ export interface ExpiryRow {
 /** Drivers' licences and vehicles' discs: expired or due within `within_days`, or one record's date. */
 export interface ExpiryListCard {
   type: 'expiry_list'
-  /** null when one named driver or vehicle was asked about. */
   within_days: number | null
   rows: ExpiryRow[]
-  /** Active records with no expiry date recorded. */
   without_date: number
   truncated: boolean
 }
@@ -198,7 +184,6 @@ export interface HistoryRow {
   status: CoarseTripStatus
   origin: string
   destination: string
-  /** When it closed, else left, else was planned to leave, else was booked. */
   happened_at: string
 }
 
@@ -206,7 +191,6 @@ export interface HistoryRow {
 export interface HistoryCard {
   type: 'history'
   who: RecordRef
-  /** null: all time. */
   window_start: string | null
   window_end: string | null
   total: number
@@ -214,7 +198,6 @@ export interface HistoryCard {
   cancelled: number
   live: number
   booked: number
-  /** The newest trips, newest first. */
   recent: HistoryRow[]
 }
 
@@ -223,14 +206,12 @@ export type RosterKind = 'driver' | 'horse' | 'trailer' | 'depot'
 export interface RosterDepot {
   depot: RecordRef
   address: string | null
-  /** Ours, or shared with us by another organisation. */
   owned: boolean
 }
 
 export interface RosterGroupCard {
   kind: RosterKind
   active_total: number
-  /** null for depots (they have no inactive state). */
   inactive_total: number | null
   records: RecordRef[]
   depots: RosterDepot[]
@@ -274,7 +255,6 @@ export interface RouteTimeCard {
   past_trip_count: number
   typical_minutes: number | null
   slow_minutes: number | null
-  /** The past times were faster than the road allows (demo or test trips), so they aren't shown. */
   history_left_out: boolean
   history_from: string
   history_to: string
@@ -354,7 +334,6 @@ export interface OpenTripFormAction {
 export type PageName =
   | 'dashboard' | 'trip' | 'history' | 'exceptions' | 'incidents' | 'drivers' | 'driver'
   | 'vehicles' | 'vehicle' | 'precincts' | 'precinct' | 'parcels' | 'analytics'
-  /** The Add forms, opened empty (never filled in: the driver form asks for personal data). */
   | 'add_precinct' | 'add_driver' | 'add_vehicle'
 
 export interface OpenPageAction {
@@ -376,16 +355,12 @@ export interface AssistantTurn {
 
 export interface AssistantRequest {
   question: string
-  /** Oldest first, at most 10 (the server rejects more). */
   history: AssistantTurn[]
-  /** The records the question means, when it came from a choice card's button. */
   refs: RecordRef[]
 }
 
 export interface AssistantSpend {
-  /** This organisation's assistant spend this month, in US dollars. */
   spent_usd: number
-  /** Both chats, every organisation: what the shared monthly budget counts. */
   all_chats_spent_usd: number
   budget_usd: number
   available: boolean

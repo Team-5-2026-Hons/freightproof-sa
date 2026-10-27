@@ -21,7 +21,6 @@ export type Grain = 'week' | 'month' | 'year'
 
 export interface CriticalWaiting {
   count: number
-  /** ISO instant the longest-waiting one was raised. null when nothing is waiting. */
   oldest_created_at: string | null
 }
 
@@ -57,8 +56,6 @@ export interface FleetTiles {
   critical_waiting: CriticalWaiting
   licence_expiry: LicenceExpiry
   unused_vehicles: UnusedVehicles
-  /** "YYYY-MM-DD" (SAST): the first day "All time" covers, so the page knows which View-by
-   *  options All time allows before any chart asks for data. */
   all_time_start: string
 }
 
@@ -73,7 +70,6 @@ export interface PeriodEcho {
 /** Chart 1.1: closed trips that first departed in the bucket. */
 export interface TripsBucket {
   bucket_start: string
-  /** Not a whole week/month/year inside the period: drawn faded. */
   is_partial: boolean
   loaded_count: number
   empty_count: number
@@ -92,7 +88,6 @@ export interface CancellationsBucket {
 export interface CancelledTrip {
   trip_id: TripId
   trip_reference: string
-  /** ISO instant. */
   cancelled_at: string
 }
 
@@ -100,16 +95,13 @@ export interface FleetActivity {
   period: PeriodEcho
   trips: TripsBucket[]
   cancellations: CancellationsBucket[]
-  /** Newest first. */
   cancelled_trips: CancelledTrip[]
 }
 
 export interface PatternBar {
   key: number
   event_count: number
-  /** Days of the period with this hour / weekday / date / month: the divisor. */
   day_count: number
-  /** null when the period never reaches this bar (e.g. the 31st in a short period). */
   average_per_day: number | null
 }
 
@@ -177,9 +169,6 @@ export interface FleetOnTime {
   plan_spread: PlanSpread
 }
 
-// Every count excludes dispatcher notes: every cancellation and override records one, so
-// counting them would make "problems" rise whenever a dispatcher does their job.
-
 /** Chart 3.1. Info is returned but not drawn (nothing raises it today). */
 export interface ProblemsPerTripBucket {
   bucket_start: string
@@ -232,9 +221,6 @@ export interface FleetProblems {
   by_step: ProblemStepCount[]
   risky_times: RiskyTimeBlock[]
 }
-
-// Not limited to closed trips: reviewing is independent of trip status. Migration-only
-// legacy_review markers are never counted.
 
 export type ReviewAgeBand = 'under_1h' | '1h_to_24h' | '1d_to_3d' | 'over_3d'
 
@@ -304,7 +290,6 @@ export interface ReceiverSignoffBucket {
 }
 
 export interface SignoffFlags {
-  /** Confirmations sent from a device already signed in to FreightProof (FP-240). */
   same_phone_count: number
   rejected_attempt_count: number
 }
@@ -332,16 +317,13 @@ export interface LaneRisk {
   destination_precinct_id: PrecinctId
   destination_name: string | null
   trip_count: number
-  /** First departure to final arrival, per trip, pooled for the whole period. */
   driving_minutes: DurationStats
-  /** Excludes dispatcher notes, unlike the lane view's exception_count. */
   problem_count: number
   problems_per_trip: number | null
 }
 
 export interface FleetRoutes {
   period: PeriodEcho
-  /** Busiest first. */
   sites: SiteActivity[]
   lanes: LaneRisk[]
 }
@@ -354,7 +336,6 @@ export interface IncidentPin {
   trip_reference: string
   exception_type: ExceptionType
   severity: ExceptionSeverity
-  /** ISO instant. */
   created_at: string
   lat: number
   lng: number
@@ -363,6 +344,5 @@ export interface IncidentPin {
 export interface FleetIncidents {
   period: PeriodEcho
   pins: IncidentPin[]
-  /** Reports in the period that carried no location. */
   unlocated_count: number
 }

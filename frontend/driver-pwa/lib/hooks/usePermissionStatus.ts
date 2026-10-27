@@ -10,8 +10,6 @@ export type PermissionKind = 'location' | 'camera'
 export type PermissionStatus = 'granted' | 'denied' | 'ask'
 
 async function read(kind: PermissionKind): Promise<PermissionStatus> {
-  // The Capacitor plugins answer on both native and web (where they wrap
-  // navigator.permissions), so one call path covers the APK, the iOS app and the PWA.
   const state = kind === 'location'
     ? (await Geolocation.checkPermissions()).location
     : (await Camera.checkPermissions()).camera
@@ -34,13 +32,11 @@ export function usePermissionStatus(kind: PermissionKind): PermissionStatus | nu
       read(kind)
         .then((next) => { if (!cancelled) setStatus(next) })
         .catch((err: unknown) => {
-          // Expected on platforms without the API; logged so a real failure is traceable.
           console.info(`usePermissionStatus(${kind}): status unavailable`, err)
           if (!cancelled) setStatus(null)
         })
     }
     refresh()
-    // The fix for "denied" is the phone's Settings app; re-read when the driver returns.
     const onVisible = () => { if (document.visibilityState !== 'hidden') refresh() }
     document.addEventListener('visibilitychange', onVisible)
     return () => {

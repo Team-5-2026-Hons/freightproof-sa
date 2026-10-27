@@ -14,7 +14,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('qrcode', () => ({
   default: {
     toCanvas: vi.fn(async (canvas: HTMLCanvasElement, _value: string, opts: { width: number }) => {
-      // Precisely what the real library does to the element it is handed.
       canvas.width = opts.width
       canvas.height = opts.width
       canvas.style.width = `${opts.width}px`
@@ -38,8 +37,6 @@ describe('QrCode', () => {
   })
 
   it('caps the box at the requested size rather than fixing it there', async () => {
-    // A ceiling, not a fixed width: the square has to shrink on a narrow handset, or the
-    // page scrolls sideways — which is the failure this whole file exists for.
     const { container } = render(<QrCode value="https://r.test/h/aaa" maxSizePx={260} />)
 
     const box = container.querySelector('canvas')?.parentElement

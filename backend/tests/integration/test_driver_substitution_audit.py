@@ -46,7 +46,6 @@ async def test_audit_crew_uses_sequence_and_period_identity(db_session: AsyncSes
     w = await world_with_licences(db_session)
     await handover(db_session, w, outgoing=w.a, incoming=w.b)
     await handover(db_session, w, outgoing=w.b, incoming=w.c)
-    # The third takeover is by A again, whose identity is PENDING: an admin attests it.
     await set_identity(db_session, w.a, IdvsStatus.PENDING)
     pending = await arrange_substitution(db_session, trip_id=w.trip_id, actor=dispatcher(w), payload=arrangement(w, incoming=w.a))
     first = await confirm_substitution(
@@ -60,7 +59,6 @@ async def test_audit_crew_uses_sequence_and_period_identity(db_session: AsyncSes
         payload=CompleteSubstitutionRequest(client_request_id=uuid.uuid4(), expected_version=second.version,
                                             identity_unavailable_reason="IDVS outage"),
     )
-    # Contradict chronology: the newest amendment claims the earliest time.
     rows = list((await db_session.execute(
         select(DriverSubstitution).where(DriverSubstitution.trip_id == w.trip_id).order_by(DriverSubstitution.sequence_number)
     )).scalars())
@@ -72,7 +70,6 @@ async def test_audit_crew_uses_sequence_and_period_identity(db_session: AsyncSes
     subs = manifest.driver.substitutions
     assert [s.sequence_number for s in subs] == [1, 2, 3]
     assert [s.incoming_identity_status for s in subs] == ["verified", "verified", "pending"]
-    # The arranger, the completing actor and the attesting admin are distinct recorded facts.
     assert (subs[0].completed_by, subs[2].completed_by) == ("driver", "dispatcher")
     assert (subs[2].arranged_by_name, subs[2].identity_attested_by_name) == ("D", "D")
     assert subs[2].identity_attested_at is not None and subs[0].identity_attested_at is None
@@ -152,7 +149,7 @@ async def test_pack_tier_follows_the_substitution_anchor_status_not_just_the_rec
     )
     db_session.add(receipt)
     await db_session.flush()
-    assert row.anchor_status == AnchorStatus.PENDING.value  # the real completion leaves it owed
+    assert row.anchor_status == AnchorStatus.PENDING.value
     tiers = {}
 
     tiers["pending, no receipt"] = (await manifest_for(db_session, w)).driver.substitutions[0].tier

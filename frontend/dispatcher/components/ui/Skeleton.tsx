@@ -9,7 +9,6 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ variant = 'block', lines = 1, className }: SkeletonProps) {
-  // Shimmer animation is suppressed automatically via globals.css prefers-reduced-motion rule.
   const base = 'bg-surface-container-high animate-pulse rounded-xl'
 
   if (variant === 'text') {

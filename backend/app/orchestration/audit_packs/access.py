@@ -65,12 +65,9 @@ from app.storage.supabase_storage import (
 
 logger = logging.getLogger(__name__)
 
-# Column width of audit_pack_access_events.user_agent; longer strings are cut, not refused.
 USER_AGENT_MAX_LENGTH = 400
 
 
-# VerifyStatus → the public vocabulary; one table so a new status can't slip through as
-# an unrecognised string on the insurer's page.
 _LIVE_STATUS: dict[VerifyStatus, LiveCheckStatus] = {
     VerifyStatus.VERIFIED: "verified",
     VerifyStatus.DB_MISMATCH: "db_mismatch",
@@ -110,7 +107,6 @@ class Requester:
 
     client_ip: str | None
     user_agent: str | None
-    # The viewer grant this browser earned with the emailed code (FP-291), if any.
     grant: str | None = None
 
 
@@ -132,7 +128,6 @@ async def _live_pack(db: AsyncSession, *, raw_token: str, requester: Requester, 
         select(AuditPack).where(AuditPack.token_hash == hash_token(raw_token))
     )).scalar_one_or_none()
     if pack is None:
-        # Never echo the token into logs or errors: it is the credential.
         raise ResourceNotFoundError("Audit pack link", "<redacted>")
     if pack.revoked_at is not None:
         _log(db, pack, AuditPackAccessEventType.DENIED_REVOKED, requester)
@@ -165,7 +160,7 @@ async def open_shared_pack(
     if requires_viewer_password(pack) and not await grant_is_valid(db, pack, raw_grant=requester.grant, now=now):
         _log(db, pack, AuditPackAccessEventType.DENIED_UNVERIFIED, requester)
         await db.flush()
-        assert pack.recipient_email is not None  # requires_viewer_password checked it
+        assert pack.recipient_email is not None
         raise EmailVerificationRequired(mask_email(pack.recipient_email))
     _log(db, pack, event_type, requester)
     await db.flush()
@@ -253,8 +248,6 @@ def _manifest_artifact_ids(manifest: AuditPackManifest) -> set[uuid.UUID]:
         *(e for c in manifest.checkpoints for e in c.evidence),
         *(e for x in manifest.exceptions for e in x.evidence),
     ]
-    # v2 lists every exception photo twice (evidence for v1 readers, photos with receipts);
-    # either list is the issuer naming the file.
     return {f.artifact_id for f in files} | {p.artifact_id for x in manifest.exceptions for p in x.photos}
 
 
@@ -284,7 +277,6 @@ async def _check_seal(pack: AuditPack, receipt: BlockchainReceipt | None, hedera
             hedera.verify_hash, receipt.hedera_topic_id, receipt.hedera_sequence_number, receipt.data_hash,
         )
     except HederaServiceError:
-        # Mirror unreachable is not tamper evidence — keep the two apart.
         return "error"
     return "verified" if matched else "hedera_mismatch"
 
@@ -332,8 +324,6 @@ async def verify_shared_pack(db: AsyncSession, pack: AuditPack, *, now: datetime
     for record in manifest.anchored_records:
         outcome = await verify_subject(
             db, subject_type=SubjectType(record.subject_type), subject_id=record.subject_id, hedera_service=hedera,
-            # The pack froze this receipt; a later duplicate for the same subject must not
-            # change what the pack's own record is checked against.
             receipt_id=record.receipt_id,
         )
         records.append(LiveRecordCheck(

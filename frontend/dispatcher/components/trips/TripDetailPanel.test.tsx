@@ -14,9 +14,6 @@ import { ApiError } from '@/lib/api/client'
 import type { AsyncState } from '@/lib/hooks/useAsyncData'
 import type { IncidentSummary } from '@/lib/types/incident'
 
-// CancelTripDialog's cancelTrip call reaches the API client, which builds a Supabase
-// client at import time — same reason TripExceptionsPanel.test.tsx mocks this module.
-// The exceptions tab's cards word a claim as mine or a colleague's.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-me' } }) }))
 
 vi.mock('@/lib/context/ForensicModeContext', () => ({
@@ -28,7 +25,6 @@ vi.mock('@/lib/supabase/client', () => ({
   getAccessToken: vi.fn(),
 }))
 
-// Isolate from the real HTTP layer — the dialog must never call this during a dismissal.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
   return { ...actual, cancelTrip: vi.fn() }
@@ -42,13 +38,9 @@ vi.mock('@/lib/hooks/useManifest', () => ({ useManifest: () => ({ manifest: null
 
 const mockedCancelTrip = vi.mocked(cancelTrip)
 
-// Supporting photos in the exceptions tab resolve through this map; most tests here never open that tab.
 const NO_ARTIFACTS = new Map<string, EvidenceArtifactWithUrl>()
 
 const trip = mockTrips[0]!
-// mockTrips[0] is a closed trip (TRP-2026-0035), so its own "Cancel trip" trigger is
-// correctly hidden — the cancellation-dialog tests below need a still-cancellable trip,
-// with the same stops/precincts fixture data, to exercise the trigger and dialog.
 const activeTrip = { ...trip, status: 'active' as const }
 
 function renderPanel(onChanged = vi.fn(), tripOverride = trip, extra: Partial<React.ComponentProps<typeof TripDetailPanel>> = {}) {
@@ -73,7 +65,6 @@ function renderPanel(onChanged = vi.fn(), tripOverride = trip, extra: Partial<Re
   ) }
 }
 
-// The page reads the trip's incidents once and hands them down; each test says what it hands.
 let incidentState: AsyncState<IncidentSummary[]>
 function incidents(data: IncidentSummary[], isLoading = false) {
   incidentState = { data, isLoading, error: null, refetch: vi.fn(), refetchSilent: vi.fn() }
@@ -177,7 +168,6 @@ describe('TripDetailPanel Info audit section', () => {
     expect(await screen.findByText('CAS TEST/2026')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Schedule & seal' })).toBe(info)
     expect(surface.scrollTop).toBe(240)
-    // Police details are read again in place: the audit list is not reloaded and the button is the same element.
     expect(listAuditPacks).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Record police details' })).toBe(oldTrigger)
     await waitFor(() => expect(oldTrigger).toHaveFocus())
@@ -186,9 +176,6 @@ describe('TripDetailPanel Info audit section', () => {
 
 describe('TripDetailPanel precinct preview placement', () => {
   it('opens the precinct preview as a sibling of the overlay, not nested inside its dialog', async () => {
-    // vitest.setup.ts defaults matchMedia to non-matching, which is the below-dock-width
-    // path where DetailPanel wraps its children in its own <dialog> — the exact
-    // condition that made a nested PrecinctModal centre on the wrong box.
     renderPanel()
     const stop = trip.stops[0]!
     const precinct = mockPrecincts.find(p => p.id === stop.precinct_id)!
@@ -228,9 +215,6 @@ describe('TripDetailPanel exception badge', () => {
 
 describe('TripDetailPanel cancellation dialog placement', () => {
   it('opens the cancellation dialog as a sibling of the overlay, not nested inside its dialog', async () => {
-    // Same defect as the precinct preview above: below the dock width DetailPanel wraps
-    // its children in its own <dialog>, and CancelTripAction's old uncontrolled Modal
-    // nested inside that open overlay centred on the ancestor's box, not the viewport.
     renderPanel(vi.fn(), activeTrip)
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel trip' }))
@@ -277,7 +261,6 @@ describe('TripDetailPanel exceptions tab', () => {
 
   it('hands the trip artifacts to the exception footer so the supporting photo resolves', () => {
     renderExceptions({})
-    // The pane opens compact; the footer is on the full card.
     fireEvent.click(screen.getByRole('tab', { name: 'Detailed' }))
 
     expect(within(screen.getByText('Supporting evidence').closest('details')!).getByRole('img', { name: 'Supporting photo' })).toHaveAttribute('src', photo.signed_url)
@@ -347,11 +330,9 @@ describe('TripDetailPanel tab help', () => {
 
     const anchor = screen.getByRole('button', { name: 'About the Info tab' }).closest('[data-keep-exception-selection]')!
 
-    // A zero-height row, with the icon lifted into the padding, so the content starts where it did before the help existed.
     expect(anchor.parentElement!.className).toContain('h-0')
     expect(anchor.className).toContain('absolute')
     expect(anchor.className).toContain('-top-[22px]')
-    // The 14px glyph sits 5px inside its 24px button, so the button overhangs the padding by that much to put the glyph on the content's right edge.
     expect(anchor.className).toContain('-right-[5px]')
   })
 })
@@ -394,7 +375,6 @@ describe('TripDetailPanel Info sections', () => {
     for (const name of ['Route', 'Driver & custody', 'Incidents', 'Audit packs']) expect(open(name)).toBe(false)
     expect(screen.getByRole('heading', { name: 'Incidents' }).closest('details')).toHaveTextContent('None')
     expect(screen.getByRole('heading', { name: 'Audit packs' }).closest('details')).toHaveTextContent('For insurers, clients and SAPS')
-    // Grey text, not a chip, while all is quiet.
     expect(within(screen.getByRole('heading', { name: 'Incidents' }).closest('details')!).queryByText('None')!.className).not.toMatch(/bg-/)
   })
 
@@ -404,7 +384,6 @@ describe('TripDetailPanel Info sections', () => {
 
     const section = screen.getByRole('heading', { name: 'Incidents' }).closest('details') as HTMLDetailsElement
     expect(section.open).toBe(true)
-    // The chip wears the incident's own status colour (amber for open, blue for investigating), never a third.
     expect(within(section).getByText(`1 ${status}`).className).toMatch(status === 'open' ? /bg-warn-c/ : /bg-sec-c/)
   })
 
@@ -473,7 +452,6 @@ describe('TripDetailPanel Info sections', () => {
       const details = section.querySelector('details') as HTMLDetailsElement
       expect(details.open).toBe(true)
 
-      // The space reserved so the scroll can land is released once it has.
       await waitFor(() => expect(section.style.minHeight).toBe(''))
       await userEvent.click(screen.getByRole('heading', { name: 'Audit packs' }))
 
@@ -526,7 +504,6 @@ describe('TripDetailPanel Info sections', () => {
     })
 
     it('offers the fact sheet for a recorded hijacking without a critical exception', async () => {
-      // A hijacking reported by phone never raised a panic; the server still builds its sheet.
       incidents([OPEN_INCIDENT])
       renderPanel(vi.fn(), withSeverity('warning'))
 

@@ -52,7 +52,6 @@ const mockedGet = vi.mocked(api.get)
 const mockedPost = vi.mocked(api.post)
 const TILES_PATH = '/api/v1/analytics/fleet/tiles'
 const CHAT_STATUS_PATH = '/api/v1/analytics/chat/status'
-// Off unless a test switches it on, so the chat button is absent by default.
 let chatStatus: ChatStatus = { enabled: false, spend: null }
 const NO_BANDS = { expired: 0, within_30_days: 0, within_90_days: 0, within_180_days: 0, no_date: 0 }
 
@@ -265,7 +264,6 @@ describe('Analytics page', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Year' }))
 
     await waitFor(() => expect(screen.getByLabelText('Period')).toHaveValue('all_time'))
-    // Only the tab's own Period list: Activity's busy-patterns card has a period list of its own.
     expect(within(screen.getByLabelText('Period')).getAllByRole('option').map((option) => option.textContent))
       .toEqual(['This year', 'Last 3 years', 'All time', 'Custom range…'])
   })
@@ -414,7 +412,6 @@ describe('Analytics page', () => {
       chatStatus = ON
       renderPage()
       const button = await screen.findByRole('button', { name: 'Ask about these figures' })
-      // Spent elsewhere since the page loaded (e.g. in a panel that has since been closed).
       chatStatus = { ...ON, spend: { ...ON.spend, spent_usd: 0.55 } }
 
       fireEvent.click(button)
@@ -467,7 +464,6 @@ describe('Analytics page', () => {
         spend: ON.spend,
       }
       mockedPost.mockResolvedValue(answer)
-      // Like the real router: replacing the address changes what useSearchParams reads next render.
       replace.mockImplementation((href: string) => { searchParams = new URLSearchParams(href.split('?')[1]) })
       renderPage()
       fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))

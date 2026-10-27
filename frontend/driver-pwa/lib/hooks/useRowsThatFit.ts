@@ -16,7 +16,6 @@ export function useRowsThatFit(ref: RefObject<HTMLElement | null>, rowHeightPx: 
     if (el === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver((entries) => {
       const height = entries[0]?.contentRect.height ?? 0
-      // At least one row: a section that can show nothing would just look broken.
       setCount(Math.max(1, Math.floor(height / rowHeightPx)))
     })
     observer.observe(el)

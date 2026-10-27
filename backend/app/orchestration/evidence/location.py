@@ -18,9 +18,6 @@ from app.schemas.locations import LocationPingCreate
 
 logger = logging.getLogger(__name__)
 
-# A finished trip's trail is closed. Late pings for one are dropped rather than 404'd:
-# the offline queue can legitimately surface a fix captured before the trip closed, and
-# failing that request would make the PWA retry a write that can never succeed.
 _CLOSED_STATUSES = {TripStatus.CLOSED, TripStatus.CANCELLED}
 
 
@@ -41,8 +38,6 @@ async def record_location_pings(
     )
 
     if trip.status in _CLOSED_STATUSES:
-        # Logged, not silent: a client still pinging a closed trip is a real client bug
-        # worth seeing, it just isn't the driver's problem to retry.
         logger.info(
             "Dropped %d location ping(s) for %s trip %s", len(pings), trip.status, trip_id,
         )
@@ -52,9 +47,6 @@ async def record_location_pings(
         TripLocationPing(
             trip_id=trip_id,
             driver_id=driver_id,
-            # str() before Decimal: float -> Decimal directly carries the float's binary
-            # rounding error into a fixed-point column (Decimal(-26.0942) is
-            # -26.09419999...). The string form is what Numeric(10, 7) actually meant.
             lat=Decimal(str(ping.lat)),
             lng=Decimal(str(ping.lng)),
             accuracy_m=None if ping.accuracy_m is None else Decimal(str(ping.accuracy_m)),

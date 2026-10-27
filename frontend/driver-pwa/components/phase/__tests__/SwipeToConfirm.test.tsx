@@ -10,14 +10,8 @@ import { SwipeToConfirm, CONFIRM_DISPATCH_MS, PANIC_DISPATCH_MS } from '../Swipe
 import { PREF_TAP_TO_CONFIRM } from '@/lib/constants/preferences'
 import { playHaptic } from '@/lib/haptics'
 
-// The haptics are asserted as calls: the real plugin has no native side under jsdom.
 vi.mock('@/lib/haptics', () => ({ playHaptic: vi.fn() }))
 
-// jsdom ships no PointerEvent constructor, so Testing Library falls back to a bare Event
-// and silently drops clientX — every drag would then compute as NaN and read as "didn't
-// move", making the negative assertions below pass for entirely the wrong reason. This
-// minimal polyfill over MouseEvent (which does carry clientX) is what makes the drag tests
-// actually exercise the drag.
 class PointerEventPolyfill extends MouseEvent {
   public readonly pointerId: number
 
@@ -30,29 +24,19 @@ class PointerEventPolyfill extends MouseEvent {
 // @ts-expect-error — installing a polyfill onto the jsdom window, which has no PointerEvent
 window.PointerEvent = PointerEventPolyfill
 
-// Mirrors the component's own constants. Track width 400 - thumb 48 - padding (4 * 2) = 344.
 const TRACK_WIDTH_PX = 400
 const MAX_TRAVEL_PX = TRACK_WIDTH_PX - 48 - 8
-// The component's own export, so the test can never drift from the real delay.
 const SETTLE_DURATION_MS = CONFIRM_DISPATCH_MS
 
-// jsdom reports offsetWidth as 0 for everything, which would leave the component's travel
-// distance at 0 and make every drag look like a no-op. Stubbing it is what lets the real
-// drag maths run under test rather than testing a degenerate case.
 beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
     configurable: true,
     value: TRACK_WIDTH_PX,
   })
-  // jsdom implements none of the Pointer Capture API; the component calls all three.
   HTMLElement.prototype.setPointerCapture = vi.fn()
   HTMLElement.prototype.releasePointerCapture = vi.fn()
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
   window.localStorage.clear()
-  // Reduce Motion on: the thumb jumps straight to each spring's target instead of
-  // animating over requestAnimationFrame frames, so these tests assert the gesture's
-  // DECISIONS (confirm or not, once, latched) rather than animation timing. The spring
-  // itself is covered in lib/motion/__tests__/spring.test.ts.
   window.matchMedia = vi.fn((query: string) => ({
     matches: query === '(prefers-reduced-motion: reduce)',
     media: query,
@@ -113,8 +97,6 @@ describe('SwipeToConfirm — the drag gesture', () => {
   })
 
   it('does NOT fire onConfirm on a short drag — the thumb springs back instead', () => {
-    // ~29% of the track. The whole point of the threshold: a driver brushing the control
-    // while climbing into the cab must not submit a phase.
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
@@ -129,7 +111,6 @@ describe('SwipeToConfirm — the drag gesture', () => {
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
-    // 85% — past halfway, still short of the 90% threshold.
     swipeTo(Math.floor(MAX_TRAVEL_PX * 0.85))
     settle()
 
@@ -160,11 +141,6 @@ describe('SwipeToConfirm — disabled', () => {
 
 describe('SwipeToConfirm — after a completed swipe', () => {
   it('stays latched after a synchronous confirm, so the track cannot be swiped a second time', () => {
-    // Every synchronous caller navigates (router.push to the next step) and this control
-    // stays mounted until that route change commits. It used to re-enable itself the
-    // instant onConfirm returned, handing back a live track whose thumb was parked at the
-    // far end and whose label had faded out — a blank strip the driver could swipe again,
-    // firing a duplicate confirm into an in-flight navigation.
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
@@ -180,9 +156,6 @@ describe('SwipeToConfirm — after a completed swipe', () => {
   })
 
   it('keeps its status label readable instead of leaving a blank track', () => {
-    // The label fades as the thumb covers it; at the end of the track that fraction is 0,
-    // which rendered "Confirmed"/"Submitting…" invisible and left the driver staring at
-    // an apparently empty control for the whole submit.
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
 
     swipeTo(MAX_TRAVEL_PX)
@@ -195,8 +168,6 @@ describe('SwipeToConfirm — after a completed swipe', () => {
 
 describe('SwipeToConfirm — async onConfirm', () => {
   it('surfaces a submitting state and blocks a second confirm while in flight', async () => {
-    // A duplicate submit here is a duplicate ledger write — the server dedupes on the
-    // addressed row, but the client must not rely on that to avoid sending it twice.
     let resolveSubmit: (() => void) | undefined
     const onConfirm = vi.fn(
       () =>
@@ -213,7 +184,6 @@ describe('SwipeToConfirm — async onConfirm', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('slider')).toHaveAttribute('aria-disabled', 'true')
 
-    // A second full swipe while the first is still in flight must be ignored.
     swipeTo(MAX_TRAVEL_PX)
     settle()
     expect(onConfirm).toHaveBeenCalledTimes(1)
@@ -224,9 +194,6 @@ describe('SwipeToConfirm — async onConfirm', () => {
   })
 
   it('re-arms once the submit settles, so a failed submit can be retried', async () => {
-    // submitAndAdvance catches its own errors: on a terminal failure it toasts and leaves
-    // the driver on this screen with their draft intact, resolving exactly as a success
-    // does. A control that stayed latched there would strand them with no way to retry.
     const onConfirm = vi.fn(() => Promise.resolve())
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
@@ -270,8 +237,6 @@ describe('SwipeToConfirm — tap-to-confirm accessibility preference', () => {
   })
 
   it('renders a plain button rather than a drag track', () => {
-    // Someone who enabled this pref has told us a drag is the barrier, so presenting a
-    // drag affordance at all would be the wrong answer.
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
 
     expect(screen.queryByRole('slider')).not.toBeInTheDocument()
@@ -294,19 +259,15 @@ describe('SwipeToConfirm — tap-to-confirm accessibility preference', () => {
 
 describe('SwipeToConfirm — the confirm moment', () => {
   beforeEach(() => {
-    // The module mock is shared by the whole file; each assertion here counts its own calls.
     vi.mocked(playHaptic).mockClear()
   })
 
   it('commits with the ✓ state and a success haptic, before handing off', () => {
-    // Arrange
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
 
-    // Act
     swipeTo(MAX_TRAVEL_PX)
 
-    // Assert — the moment is visible and felt immediately, onConfirm only after the hold.
     expect(playHaptic).toHaveBeenCalledWith('confirm')
     expect(screen.getByText('Confirmed')).toBeInTheDocument()
     expect(getTrack()).toHaveClass('bg-success')
@@ -316,13 +277,10 @@ describe('SwipeToConfirm — the confirm moment', () => {
   })
 
   it('test_names_what_just_happened_when_given_a_committed_label', () => {
-    // Arrange
     render(<SwipeToConfirm label="Swipe to Depart" committedLabel="Departed" committedHint="Opening In Transit…" onConfirm={vi.fn()} />)
 
-    // Act
     swipeTo(MAX_TRAVEL_PX)
 
-    // Assert — the green end state says the action in the past tense, and where it leads.
     expect(screen.getByText('Departed')).toBeInTheDocument()
     expect(screen.queryByText('Confirmed')).toBeNull()
     expect(screen.getByText('Opening In Transit…')).toBeInTheDocument()
@@ -335,45 +293,37 @@ describe('SwipeToConfirm — the confirm moment', () => {
   })
 
   it('ticks once as the drag crosses the commit point, not on every move past it', () => {
-    // Arrange
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
     const track = getTrack()
 
-    // Act
     fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
     fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.95, pointerId: 1 })
     fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.97, pointerId: 1 })
 
-    // Assert
     expect(vi.mocked(playHaptic).mock.calls.filter(([m]) => m === 'threshold')).toHaveLength(1)
   })
 
   it('never confirms when the system cancels the touch past the commit point', () => {
-    // Arrange — Control Center, a banner or a call takes the touch at 95%.
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
     const track = getTrack()
 
-    // Act
     fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
     fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.95, pointerId: 1 })
     fireEvent.pointerCancel(track, { clientX: MAX_TRAVEL_PX * 0.95, pointerId: 1 })
     settle()
 
-    // Assert
     expect(onConfirm).not.toHaveBeenCalled()
     expect(playHaptic).not.toHaveBeenCalledWith('confirm')
     expect(getTrack()).toHaveAttribute('aria-valuenow', '0')
   })
 
   it('confirms a deliberate flick that is past halfway and carrying momentum', () => {
-    // Arrange — 30ms between samples, 140px apart: ~4700px/s, projecting far past the end.
     const now = vi.spyOn(performance, 'now')
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
     const track = getTrack()
 
-    // Act
     now.mockReturnValue(1000)
     fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
     now.mockReturnValue(1010)
@@ -383,19 +333,16 @@ describe('SwipeToConfirm — the confirm moment', () => {
     fireEvent.pointerUp(track, { clientX: MAX_TRAVEL_PX * 0.6, pointerId: 1 })
     settle()
 
-    // Assert
     expect(onConfirm).toHaveBeenCalledTimes(1)
     now.mockRestore()
   })
 
   it('never confirms a fast twitch that has not reached halfway', () => {
-    // Arrange — just as fast, but released at 30% of the track.
     const now = vi.spyOn(performance, 'now')
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
     const track = getTrack()
 
-    // Act
     now.mockReturnValue(1000)
     fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
     now.mockReturnValue(1030)
@@ -403,21 +350,17 @@ describe('SwipeToConfirm — the confirm moment', () => {
     fireEvent.pointerUp(track, { clientX: MAX_TRAVEL_PX * 0.3, pointerId: 1 })
     settle()
 
-    // Assert
     expect(onConfirm).not.toHaveBeenCalled()
     now.mockRestore()
   })
 
   it('resists past the end of the track instead of following the finger off it', () => {
-    // Arrange
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
     const track = getTrack()
 
-    // Act — 200px of overshoot.
     fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
     fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX + 200, pointerId: 1 })
 
-    // Assert — the thumb moves less than the finger did past the boundary.
     const thumb = track.querySelector('div') as HTMLDivElement
     const travelled = Number(thumb.style.transform.match(/translateX\(([-\d.]+)px\)/)?.[1])
     expect(travelled).toBeGreaterThan(MAX_TRAVEL_PX)
@@ -425,17 +368,14 @@ describe('SwipeToConfirm — the confirm moment', () => {
   })
 
   it('hands a panic swipe off without the confirm hold, with the heavy haptic', () => {
-    // Arrange
     const onConfirm = vi.fn()
     render(<SwipeToConfirm label="Send Panic" onConfirm={onConfirm} variant="danger" />)
 
-    // Act
     swipeTo(MAX_TRAVEL_PX)
     act(() => {
       vi.advanceTimersByTime(PANIC_DISPATCH_MS)
     })
 
-    // Assert
     expect(playHaptic).toHaveBeenCalledWith('panic')
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
@@ -443,13 +383,11 @@ describe('SwipeToConfirm — the confirm moment', () => {
 
 describe('SwipeToConfirm — press reporting (overhaul 7.1b)', () => {
   it('test_reports_the_finger_down_and_lifted', () => {
-    // Arrange
     const onPressChange = vi.fn()
     render(<SwipeToConfirm label="Send Panic" variant="danger" onConfirm={vi.fn()} onPressChange={onPressChange} />)
     const track = getTrack()
     onPressChange.mockClear()
 
-    // Act / Assert — down starts the pulse, a short release stops it.
     fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
     expect(onPressChange).toHaveBeenLastCalledWith(true)
     fireEvent.pointerUp(track, { clientX: 10, pointerId: 1 })
@@ -470,10 +408,8 @@ describe('SwipeToConfirm — press reporting (overhaul 7.1b)', () => {
 
 describe('SwipeToConfirm — waiting state', () => {
   it('reads as waiting, not switched off, while disabled', () => {
-    // Arrange / Act
     render(<SwipeToConfirm label="Swipe to Submit" onConfirm={vi.fn()} disabled />)
 
-    // Assert — a full-strength neutral track with a legible label, never a 40% fade.
     const track = getTrack()
     expect(track).toHaveClass('bg-fill')
     expect(track).not.toHaveClass('opacity-40')
@@ -481,20 +417,16 @@ describe('SwipeToConfirm — waiting state', () => {
   })
 
   it('test_says_what_it_is_waiting_for_instead_of_the_action', () => {
-    // Arrange / Act
     render(<SwipeToConfirm label="Swipe to Submit" waitingLabel="Add the sheet photo first" onConfirm={vi.fn()} disabled />)
 
-    // Assert — the track names the missing thing; the slider keeps its action as its name.
     expect(screen.getByText('Add the sheet photo first')).toBeInTheDocument()
     expect(screen.queryByText('Swipe to Submit')).toBeNull()
     expect(getTrack()).toHaveAccessibleName('Swipe to Submit')
   })
 
   it('test_shows_the_action_again_once_ready', () => {
-    // Arrange / Act
     render(<SwipeToConfirm label="Swipe to Submit" waitingLabel="Add the sheet photo first" onConfirm={vi.fn()} />)
 
-    // Assert
     expect(screen.getByText('Swipe to Submit')).toBeInTheDocument()
     expect(screen.queryByText('Add the sheet photo first')).toBeNull()
   })

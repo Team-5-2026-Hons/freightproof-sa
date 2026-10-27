@@ -16,25 +16,18 @@ import type { LatLngPair } from '@shared/lib/types/precinct'
 
 import { GeofenceSchematic, SCALE_BAR_TARGET_FRACTION, niceScaleMetres } from './GeofenceSchematic'
 
-// Flat metres-per-degree for placing outline corners over the tiles (see lib/map/polygon.ts).
 const METRES_PER_DEGREE = (Math.PI * 6_371_008.8) / 180
 
-// Assumed width until the element is actually measured (server render, first paint, or
-// no ResizeObserver). Sized to a typical precinct card so the thumbnail doesn't visibly re-frame on mount.
 export const DEFAULT_THUMBNAIL_WIDTH_PX = 280
 
-// Fixed so the map band never grows/shrinks as tiles load progressively, shifting cards
-// below it. Only the width is fluid, following the card's responsive grid sizing.
 const THUMBNAIL_HEIGHT_PX = 150
 
-// Distance in pixels of the scale bar's origin corner from the thumbnail's edges.
 const SCALE_BAR_MARGIN_PX = 10
 
 interface StaticGeofenceThumbnailProps {
   latitude: number
   longitude: number
   radiusMetres: number
-  /** The property outline; drawn instead of the circle when it has 3+ corners. */
   polygon?: readonly LatLngPair[] | null
   name: string
   className?: string
@@ -56,21 +49,14 @@ export function StaticGeofenceThumbnail({
   className,
 }: StaticGeofenceThumbnailProps) {
   const outline = polygon !== null && polygon.length >= 3 ? polygon : null
-  // A single flag, not per-tile tracking: one broken tile already breaks the illusion
-  // of a continuous map. Counted, not latched — only a RUN of failures with nothing
-  // loading between them means the server is unreachable; reset by any success. Same
-  // policy and constant as GeofenceMap.
   const [tileErrorStreak, setTileErrorStreak] = useState(0)
   const hasFailed = tileErrorStreak >= TILE_ERROR_FALLBACK_THRESHOLD
 
-  // The card's width is a runtime fact (responsive grid), so it's measured to keep the
-  // fence at its intended fraction of the card at every breakpoint.
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [widthPx, setWidthPx] = useState(DEFAULT_THUMBNAIL_WIDTH_PX)
 
   useEffect(() => {
     const element = containerRef.current
-    // jsdom and older Safari have no ResizeObserver; must still render at the default width.
     if (element === null || typeof ResizeObserver === 'undefined') {
       return
     }
@@ -84,9 +70,6 @@ export function StaticGeofenceThumbnail({
     return () => observer.disconnect()
   }, [])
 
-  // Framed on the smaller dimension so the fence circle can't clip the fixed-height
-  // band. tiles.test.ts pins this invariant across realistic width/radius combos.
-  // An outline frames exactly like the circle that encloses it, so it never clips either.
   const frameRadiusMetres = outline !== null ? enclosingRadiusMetres(outline, [latitude, longitude]) : radiusMetres
   const zoom = zoomForRadius(frameRadiusMetres, latitude, Math.min(widthPx, THUMBNAIL_HEIGHT_PX))
   const tiles = tileGrid(latitude, longitude, zoom, widthPx, THUMBNAIL_HEIGHT_PX)
@@ -113,8 +96,6 @@ export function StaticGeofenceThumbnail({
   return (
     <div
       ref={containerRef}
-      // On the container, not each tile — the tiles are fragments of one image. Dropped
-      // in the failed state since GeofenceSchematic labels itself.
       role={hasFailed ? undefined : 'img'}
       aria-label={hasFailed ? undefined : `Street map showing ${name}`}
       className={`relative w-full overflow-hidden bg-surf-low ${className ?? ''}`}
@@ -130,7 +111,6 @@ export function StaticGeofenceThumbnail({
       ) : (
         <>
           {tiles.map((tile) => (
-            // Plain <img>, not next/image: already-optimal CDN-cached tiles, see file doc.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={`${tile.x}-${tile.y}`}
@@ -150,7 +130,6 @@ export function StaticGeofenceThumbnail({
             className="absolute inset-0 w-full h-full pointer-events-none"
             aria-hidden="true"
           >
-            {/* Fence, matching GeofenceSchematic's fill/stroke convention so both surfaces agree visually. */}
             {outlinePoints !== null ? (
               <polygon
                 data-testid="thumbnail-fence-outline"
@@ -171,10 +150,8 @@ export function StaticGeofenceThumbnail({
               />
             )}
 
-            {/* Centre pin marking the precinct itself. */}
             <circle cx={centreX} cy={centreY} r={4} className="fill-sec" />
 
-            {/* Scale bar pill, translucent so it stays legible over arbitrary imagery underneath. */}
             <g
               transform={`translate(${SCALE_BAR_MARGIN_PX}, ${THUMBNAIL_HEIGHT_PX - SCALE_BAR_MARGIN_PX - 8})`}
             >

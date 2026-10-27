@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatSeparation, geofenceOffsetMetres, haversineMetres, separationMetres } from './geo'
 
-// Cape Town CBD and a point ~1.11 km due north (0.01° of latitude).
 const CAPE_TOWN = { lat: -33.9249, lng: 18.4241 }
 const NORTH_1KM = { lat: -33.9149, lng: 18.4241 }
 

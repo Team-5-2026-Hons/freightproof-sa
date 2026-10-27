@@ -34,15 +34,10 @@ export type LateEvidenceSource =
 
 export type LateEvidenceOutcome =
   | { kind: 'receipt'; receipt: LateEvidenceRead }
-  /** EVIDENCE_ALREADY_RECORDED: the server already holds this exact capture from this driver. */
   | { kind: 'already-recorded' }
-  /** Network/5xx/429: everything kept, try again later. */
   | { kind: 'transient' }
-  /** Refused; kept, with the server's reason. */
   | { kind: 'refused'; reason: string }
-  /** Not this driver's to send, or no known custody period — never guessed. */
   | { kind: 'not-eligible'; reason: string }
-  /** The request id could not be saved, so a retry could not be proven the same request. */
   | { kind: 'not-saved' }
 
 const NOT_ELIGIBLE_ACTOR = 'Only the driver who captured this can send it.'
@@ -90,8 +85,6 @@ interface BuiltReport {
 
 type UploadSlot = (slot: string, dataUrl: string, capturedAt: string) => Promise<string>
 
-// The same body the live write would have sent, minus its custody field: late evidence
-// carries the period at its own top level, and the embedded payload is the existing schema.
 async function buildReport(source: LateEvidenceSource, upload: UploadSlot): Promise<BuiltReport> {
   const artifactIds: string[] = []
   const track = (id: string): string => {
@@ -104,7 +97,6 @@ async function buildReport(source: LateEvidenceSource, upload: UploadSlot): Prom
     const ids: string[] = []
     for (const photo of envelope.photos) {
       if (photo.uploadedArtifactId !== null) {
-        // Already stored by this same driver before the handover; reused, never re-uploaded.
         ids.push(track(photo.uploadedArtifactId))
       } else if (photo.blob !== null) {
         ids.push(track(await upload(`photo:${photo.id}`, await blobToDataUrl(photo.blob), photo.capturedAt)))
@@ -164,7 +156,6 @@ async function buildReport(source: LateEvidenceSource, upload: UploadSlot): Prom
     }
   }
 
-  // Location: no photos, no idempotency key of its own. Captured-at is the earliest fix.
   const earliest = entry.pings.reduce<string>(
     (min, ping) => (ping.recorded_at < min ? ping.recorded_at : min),
     entry.pings[0]?.recorded_at ?? entry.enqueuedAt,
@@ -177,8 +168,6 @@ async function buildReport(source: LateEvidenceSource, upload: UploadSlot): Prom
   }
 }
 
-// The local copy goes only after the server's explicit answer: a receipt, or proof it already
-// holds this exact capture from this driver.
 async function clearSource(source: LateEvidenceSource): Promise<void> {
   try {
     if (source.origin === 'queue') {
@@ -188,7 +177,6 @@ async function clearSource(source: LateEvidenceSource): Promise<void> {
       await removeExceptionEnvelope(source.envelope.clientReportId)
     }
   } catch (err) {
-    // Safe to leave: resending replays to the same receipt.
     console.warn('late-evidence-sync: could not clear a sent capture; it will replay to its receipt', err)
   }
 }
@@ -227,7 +215,6 @@ export async function sendLateEvidence(listed: LateEvidenceSource): Promise<Late
   const tripId = sourceTrip(source)
   const id = sourceId(source)
 
-  // The request id is saved BEFORE anything is sent, so every retry presents the same one.
   let progress: LateEvidenceProgress | null
   try {
     progress = await getLateProgress(id)
@@ -263,7 +250,6 @@ export async function sendLateEvidence(listed: LateEvidenceSource): Promise<Late
     try {
       await saveLateProgress(working)
     } catch (err) {
-      // The upload's own request id makes a retry return this same artifact.
       console.warn('late-evidence-sync: could not record an uploaded artifact id', err)
     }
     return artifact.id

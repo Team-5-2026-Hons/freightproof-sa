@@ -21,8 +21,6 @@ from app.db.models.cost import CostProfile
 from app.db.models.people import User
 from app.schemas.cost_analytics import CostProfileRead, CostProfileUpdate
 
-# CostProfile column (also the CostProfileUpdate field name) -> CostRates field. One map, so
-# the names can't drift apart silently: a field missing here makes CostRates(...) raise.
 _RATE_FIELDS: dict[str, str] = {
     "diesel_price_per_litre": "diesel_price_per_litre",
     "litres_per_100km": "litres_per_100km",
@@ -39,8 +37,6 @@ def _rates_from_row(row: CostProfile) -> CostRates:
 
 
 async def _profile_row(db: AsyncSession, organization_id: uuid.UUID) -> CostProfile | None:
-    # populate_existing: the upsert in update_cost_profile bypasses the ORM, so a row already
-    # loaded in this session would otherwise be returned with its old values.
     result = await db.execute(
         select(CostProfile)
         .where(CostProfile.operator_organization_id == organization_id)

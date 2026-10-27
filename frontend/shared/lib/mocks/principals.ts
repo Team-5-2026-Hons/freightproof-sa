@@ -2,7 +2,6 @@ import type { Organization, OrganizationId } from '@shared/lib/types/precinct'
 
 const orgId = (v: string): OrganizationId => v as unknown as OrganizationId
 
-// Linbro Express is the fictional freight operator using FreightProof in the demo.
 export const OPERATOR_ORG_ID = orgId('a0b1c2d3-e4f5-4061-8a1b-2c3d4e5f6071')
 export const FEDEX_ORG_ID    = orgId('b1c2d3e4-f5a6-4172-9b2c-3d4e5f607182')
 export const CGY_ORG_ID      = orgId('c2d3e4f5-a6b7-4283-ac3d-4e5f60718293')

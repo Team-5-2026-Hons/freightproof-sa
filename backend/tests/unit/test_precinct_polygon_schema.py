@@ -43,9 +43,7 @@ def test_outline_is_optional():
     [
         (_BOX[:2], "at least 3"),
         ([_BOX[0], _BOX[2], _BOX[1], _BOX[3]], "crosses itself"),
-        # ~10 m × 10 m.
         ([[-29.79420, 30.98200], [-29.79420, 30.98210], [-29.79429, 30.98210], [-29.79429, 30.98200]], "too small"),
-        # ~19 km × 22 km — larger than the largest allowed circle.
         ([[-29.70, 30.90], [-29.70, 31.10], [-29.90, 31.10], [-29.90, 30.90]], "too large"),
         ([[-29.7937, 30.9815], [-29.7937, 200.0], [-29.7947, 30.9825]], "less than or equal to 180"),
     ],
@@ -61,7 +59,6 @@ def test_pin_far_outside_the_outline_is_rejected():
 
 
 def test_pin_just_outside_the_outline_is_accepted():
-    # ~29 m east of the box: a gate on the street side of a building footprint.
     body = PrecinctCreateBody.model_validate(_body(longitude=30.9828))
 
     assert body.geofence_polygon is not None

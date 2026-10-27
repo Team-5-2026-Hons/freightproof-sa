@@ -82,7 +82,6 @@ describe('ParcelHistory compact rows', () => {
     expect(within(current).getByText('Active')).toBeInTheDocument()
     expect(current).toHaveTextContent('Origin Depot → Destination Depot')
   })
-  // The same red as the trip list and trip page: TRIP_STATUS_META.cancelled.chipType is critical.
   it('colours the chip from the shared trip status meta, so cancelled is red as everywhere else', () => {
     const { container } = render(view(threeTrips()))
     const [cancelled, current] = rows(container).map(item => item.querySelector('summary')!)
@@ -115,7 +114,6 @@ describe('ParcelHistory compact rows', () => {
 
     for (const item of rows(container)) expect(item.querySelector('summary a, summary button')).toBeNull()
   })
-  // Wrapping inside its own column keeps a long route or the manifest label under the reference, not back under the chevron.
   it('wraps the summary content in its own column beside the chevron, and indents the body to that column', () => {
     const { container } = render(view(threeTrips()))
     openAll(container)
@@ -142,7 +140,6 @@ describe('ParcelHistory compact rows', () => {
 })
 
 describe('ParcelHistory expanded rows', () => {
-  // The row chip and the timeline's own "Trip cancelled" step already say it; a third red chip repeated the same fact.
   it('does not repeat the status as a second chip in the expanded body', () => {
     const { container } = render(view(threeTrips()))
     openAll(container)
@@ -200,8 +197,6 @@ describe('ParcelHistory expanded rows', () => {
     expect(row(container, 'trip-2').className).not.toMatch(/shadow|rounded|overflow-hidden|bg-surf-lowest/)
     expect(row(container, 'trip-2').querySelector(':scope > div')!.className).not.toMatch(/shadow|rounded|overflow-hidden|bg-surf-lowest/)
   })
-  // jsdom does not turn Enter or Space on a <summary> into a click (browsers do); the browser pass covers the real keys,
-  // so this asserts the native contract: a <summary> that is focusable and toggles on activation.
   it('is a native summary that toggles on activation', async () => {
     const user = userEvent.setup()
     const { container } = render(view(threeTrips()))

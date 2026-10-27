@@ -6,15 +6,9 @@ interface DecodedPhoto {
   source: ImageBitmap | HTMLImageElement
   width: number
   height: number
-  // Frees decode resources (bitmap memory / object URL) once the canvas draw is done.
   release: () => void
 }
 
-// createImageBitmap with imageOrientation: 'from-image' bakes the EXIF rotation in at
-// decode time, so portrait phone photos don't land sideways on the canvas. WebViews that
-// lack the option (or can't decode the format) fall back to an <img> decode — browsers
-// have auto-oriented <img> per EXIF by default since 2020 (CSS image-orientation:
-// from-image), so orientation survives that path too.
 async function decodePhoto(file: File): Promise<DecodedPhoto> {
   if (typeof createImageBitmap === 'function') {
     try {
@@ -26,8 +20,6 @@ async function decodePhoto(file: File): Promise<DecodedPhoto> {
         release: () => bitmap.close(),
       }
     } catch (err) {
-      // Not fatal — some WebViews reject the options bag or the file format. The <img>
-      // fallback below gets its own shot at decoding before we give up.
       console.warn('createImageBitmap failed — falling back to <img> decode', err)
     }
   }
@@ -44,8 +36,6 @@ async function decodePhoto(file: File): Promise<DecodedPhoto> {
       source: img,
       width: img.naturalWidth,
       height: img.naturalHeight,
-      // The object URL must stay alive until drawImage has consumed it — release
-      // revokes it only after the caller is done drawing.
       release: () => URL.revokeObjectURL(objectUrl),
     }
   } catch (err) {
@@ -54,10 +44,6 @@ async function decodePhoto(file: File): Promise<DecodedPhoto> {
   }
 }
 
-// Downscale + re-encode the picked file BEFORE it reaches state/localStorage. The old
-// raw FileReader path stored multi-MB base64 strings — quota risk for drafts and a
-// guaranteed oversized upload later. Callers pass their own edge cap and quality —
-// evidence photos keep detail (components/phase/CameraCapture), the avatar is tiny.
 export async function fileToCompressedJpegDataUrl(
   file: File,
   maxEdgePx: number,

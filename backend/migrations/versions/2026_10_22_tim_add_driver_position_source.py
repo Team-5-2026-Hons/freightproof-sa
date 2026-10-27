@@ -25,7 +25,6 @@ Create Date: 2026-10-22
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "tim_driver_position_src"
 down_revision = "tim_add_driver_push_tokens"
 branch_labels = None

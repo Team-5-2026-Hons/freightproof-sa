@@ -26,15 +26,8 @@ import {
   type ScanDirection,
 } from '@/lib/types/dev'
 
-// Metres-to-kilometres switchover for the distance readouts below — "3200 m" is
-// harder to eyeball at a glance (and on a projector) than "3.2 km".
 const METRES_PER_KILOMETRE = 1000
 
-// Formats a distance for display with an explicit "from WHAT" phrase, or names the
-// reason there is nothing to show. FP-197 made this a parameter rather than a
-// hardcoded "from the precinct": once a response can carry two distances (the
-// EXPECTED phase-ledger stop and, in scenario mode, the simulated TARGET stop),
-// leaving either unlabelled would be exactly the ambiguity the panel copy must avoid.
 function formatDistance(distanceMetres: number | null, fromLabel: string): string {
   if (distanceMetres === null) return `distance ${fromLabel} unknown`
   return distanceMetres >= METRES_PER_KILOMETRE
@@ -42,26 +35,16 @@ function formatDistance(distanceMetres: number | null, fromLabel: string): strin
     : `${Math.round(distanceMetres)} m ${fromLabel}`
 }
 
-// Identity for a trip stop picker option is the stop's id (or sequence), never its
-// precinct name — a repeated-precinct multi-stop trip can have two stops that share
-// a name, and matching on name would silently target the wrong one.
 function tripStopLabel(stop: DevTripStop, index: number, total: number): string {
   if (index === 0) return `At origin: ${stop.precinct_name}`
   if (index === total - 1) return `At destination: ${stop.precinct_name}`
   return `Stop ${stop.sequence}: ${stop.precinct_name}`
 }
 
-// Composite identity for "which scenario+stop combination is currently staged". Stop
-// id (not name) is part of the key for the same repeated-precinct reason as
-// tripStopLabel above.
 function scenarioActiveKey(scenario: DevTruckScenario, tripStopId: string): string {
   return `${scenario}::${tripStopId}`
 }
 
-// geofence_confirmed is a tri-state, not a boolean: null on the no_signal waypoint
-// means no verdict was ever reached, which is a materially different fact from a
-// verdict that was reached and failed — collapsing it to falsy would tell the
-// operator a fix existed and failed the geofence when actually there was no fix.
 function verdictLabel(confirmed: boolean | null): string {
   if (confirmed === null) return 'No verdict: tracker dark'
   return confirmed ? 'Geofence confirmed' : 'Geofence failed'
@@ -74,14 +57,9 @@ function verdictClassName(confirmed: boolean | null): string {
 
 interface AllControlsProps {
   readonly controls: UseDevTriggersResult
-  // The trip chosen in the parent's picker. Raw controls address exactly that trip.
   readonly tripId: string
 }
 
-// One row in the derived "what's happening" picker. Built from the trip's actual
-// stops/consignments rather than an assumed origin/destination shape, so a
-// multi-stop cross-dock trip gets the right options even though only a
-// single-leg trip is demoed today.
 interface ScanOption {
   key: string
   label: string
@@ -99,21 +77,6 @@ function directionPhrase(direction: ScanDirection, precinctName: string): string
   return direction === 'out' ? `Loading at ${precinctName}` : `Unloading at ${precinctName}`
 }
 
-// Scan OUT is gated by the LOADING phase; scan IN is gated by CONFIRMATION, not
-// unloading — confirmation is where the origin scan is reconciled against the
-// destination scan (see orchestration/phase_gate.py GATED_PHASES). A scan IN
-// therefore stays legal through the whole unloading phase, and only becomes
-// illegal once confirmation itself is decided. This asymmetry is deliberate;
-// gating scan IN on unloading instead would be the "obvious" but wrong fix.
-//
-// Scan IN also carries a second, EARLIER gate that scan OUT deliberately does not:
-// the driver must have completed ARRIVAL at this stop (arrival_phase_status) — the
-// seal is inspected before any door opens, so the warehouse scans only after that.
-// Scan OUT gets no such early gate — a
-// warehouse can legitimately load a truck before the driver has even activated the
-// trip (mirrors the reasoning in backend/app/api/v1/endpoints/dev_triggers.py for
-// why loading has no activation precondition) — so do not add one here "for
-// symmetry"; the two directions are asymmetric on purpose.
 function buildScanOptions(stops: readonly DevTripStop[]): ScanOption[] {
   const options: ScanOption[] = []
   for (const stop of stops) {
@@ -129,12 +92,7 @@ function buildScanOptions(stops: readonly DevTripStop[]): ScanOption[] {
       })
     }
     if (stop.delivery_consignments.length > 0) {
-      // Order matters: "already complete" is checked first because it is the later,
-      // more definitive state — a stop that has both arrived AND finished
-      // confirmation must report the confirmation reason, not the arrival one.
       const alreadyComplete = isClosedPhaseStatus(stop.confirmation_phase_status)
-      // Scan IN waits for ARRIVAL, not departure: the warehouse scans only after the
-      // driver has inspected the seal.
       const notYetArrived = !isClosedPhaseStatus(stop.arrival_phase_status)
       const disabled = alreadyComplete || notYetArrived
       const disabledReason = alreadyComplete
@@ -155,9 +113,6 @@ function buildScanOptions(stops: readonly DevTripStop[]): ScanOption[] {
   return options
 }
 
-// One waybill's tick breakdown at confirm time, computed once so the modal can
-// render "n of m" and the mismatch/unmanifested warnings without recomputing
-// from live state (which could shift under a fast double-click).
 interface PendingScanWaybill {
   reference: string
   manifestTotal: number
@@ -173,9 +128,6 @@ type PendingAction =
       direction: ScanDirection
       barcodesByReference: Record<string, string[]>
       waybills: PendingScanWaybill[]
-      // Set only by "scan everything": the tick state to adopt ON CONFIRM. Writing
-      // it when the modal opens would destroy a hand-built selection the moment the
-      // operator opened the modal to compare, with no way back after Cancel.
       ticksOnConfirm: Record<string, Set<string>> | null
     }
   | { kind: 'closeSession'; stop: DevTripStop; direction: ScanDirection }
@@ -219,25 +171,13 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
 
   const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
 
-  // The last scenario+stop that was successfully moved to, and the full response it
-  // produced. Kept separately from the activity log because this needs to stay on
-  // screen — precinct, distance, verdict — for as long as the truck sits there, not
-  // just until the next unrelated action.
   const [activeScenarioKey, setActiveScenarioKey] = useState<string | null>(null)
   const [moveTruckResult, setMoveTruckResult] = useState<MoveTruckResponse | null>(null)
   const [phonePlacement, setPhonePlacement] = useState<DevPhonePlacement | ''>('')
   const [movePhoneResult, setMovePhoneResult] = useState<MovePhoneResponse | null>(null)
 
-  // FP-197: which of the selected trip's own stops the scenario mode targets.
-  // '' means "no stop chosen" — valid only for the no_signal scenario.
   const [selectedTripStopId, setSelectedTripStopId] = useState<string>('')
 
-  // Guards against a stale move-truck response overwriting a NEWER selection's
-  // result. Mirrors {tripId, selectedTripStopId} outside React's render cycle (kept
-  // current by the effect below) so an in-flight request can compare "what I was
-  // called with" against "what is selected NOW" after its await resolves — refs may
-  // only be read/written outside render, which rules out doing this comparison with
-  // the state values directly inside the render-time reset blocks above.
   const latestSelectionRef = useRef<{ tripId: string; selectedTripStopId: string }>({
     tripId, selectedTripStopId,
   })
@@ -245,10 +185,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     latestSelectionRef.current = { tripId, selectedTripStopId }
   }, [tripId, selectedTripStopId])
 
-  // Manifest barcodes ticked per waybill reference, and not-on-manifest barcodes
-  // added per waybill reference. Both reset whenever the stop+direction selection
-  // changes (see the effect below) so a stale tick set can never follow the
-  // operator to a different stop.
   const [tickedByReference, setTickedByReference] = useState<Record<string, Set<string>>>({})
   const [extraByReference, setExtraByReference] = useState<Record<string, string[]>>({})
   const [extraInputByReference, setExtraInputByReference] = useState<Record<string, string>>({})
@@ -264,46 +200,24 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
   const [exceptionType, setExceptionType] = useState<string>(DEMO_EXCEPTION_TYPES[0])
   const [exceptionNote, setExceptionNote] = useState<string>('Raised from the dev panel.')
 
-  // A move-truck result and its position readout belong to whichever trip's device
-  // was moved. Carrying it over to a newly selected trip would show one trip's
-  // mock position while narrating a different one.
-  //
-  // Adjusted during render rather than in a useEffect, for the same reason and by the
-  // same pattern as resetForKey below: this is state derived from the selection, not a
-  // sync with an external system, and the effect form costs an extra render pass and
-  // trips react-hooks/set-state-in-effect.
   const [resetForTripId, setResetForTripId] = useState<string>(tripId)
   if (resetForTripId !== tripId) {
     setResetForTripId(tripId)
-    // The scan target belongs to the previous trip's stops.
     setSelectedOptionKey('')
     setActiveScenarioKey(null)
     setMoveTruckResult(null)
     setSelectedTripStopId('')
-    // Any move-truck request still in flight for the PREVIOUS trip is invalidated by
-    // the effect syncing latestSelectionRef above — its response, whenever it lands,
-    // will find tripId no longer matches what it was called with.
   }
 
-  // Changing the targeted stop is the other half of "changing trip or stop clears
-  // results" (FP-197): a result on screen that named a different stop as its
-  // target would misdescribe where the tracker actually is relative to the NEWLY
-  // selected stop.
   const [resetForTripStopId, setResetForTripStopId] = useState<string>(selectedTripStopId)
   if (resetForTripStopId !== selectedTripStopId) {
     setResetForTripStopId(selectedTripStopId)
     setActiveScenarioKey(null)
     setMoveTruckResult(null)
-    // Same invalidation-by-effect as the trip reset above.
   }
 
   const selectedTrip = trips.find((t) => t.trip_id === tripId) ?? null
 
-  // FP-197: the ordered stops a scenario can target, built from the trip
-  // summary the panel already loads — no separate endpoint needed. Labels use
-  // position (origin/destination/Stop N), and option VALUES are trip_stop_id: a
-  // repeated-precinct multi-stop trip can have two stops sharing one precinct name,
-  // and matching on name would silently resolve to the wrong one.
   const stopOptions = useMemo<DevTripStop[]>(() => selectedTrip?.stops ?? [], [selectedTrip])
 
   const scanOptions = useMemo<ScanOption[]>(
@@ -323,12 +237,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
       : selectedOption.stop.delivery_consignments
   }, [selectedOption])
 
-  // All manifest barcodes start ticked (spec: "all ticked by default") whenever the
-  // selection changes; not-on-manifest additions never carry over to a new stop.
-  // This is state DERIVED from the selection, not a sync with an external system,
-  // so it's adjusted directly during render (react.dev's "adjusting state when a
-  // prop changes" pattern) rather than in a useEffect, which would cost an extra
-  // render pass and trip react-hooks/set-state-in-effect.
   const [resetForKey, setResetForKey] = useState<string>(selectedOptionKey)
   if (resetForKey !== selectedOptionKey) {
     setResetForKey(selectedOptionKey)
@@ -340,9 +248,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     setExtraByReference({})
     setExtraInputByReference({})
     setExtraErrorByReference({})
-    // The PP waybill select below draws its options from the same selection, so a
-    // reference held over from the previous stop renders as a blank select while
-    // still arming the submit button against the invisible waybill.
     setPpReference('')
   }
 
@@ -357,13 +262,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     })
   }
 
-  // Rejects two inputs that look harmless and corrupt the payload:
-  // a barcode already on the manifest is a tick, not an extra — counting it as one
-  // pushes manifestTicked past manifestTotal in the confirm modal, hides the
-  // "not on the manifest" warning, and sends a duplicate that inflates
-  // observed_count (_reconcile_consignment measures len(observed_barcodes) without
-  // deduping). A repeat of an existing extra collides on the React key, and
-  // removeExtraBarcode filters by value, so unticking one row would delete both.
   const addExtraBarcode = (reference: string): void => {
     const value = (extraInputByReference[reference] ?? '').trim()
     if (value === '') return
@@ -393,10 +291,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     }))
   }
 
-  // Builds the per-waybill payload from current tick state. Every ticked
-  // consignment sends its FULL list (manifest + extras) because
-  // MockScanFeed.stage_scans replaces prior staging rather than appending — see
-  // the comment on ScanTriggerRequest.barcodes_by_reference in lib/types/dev.ts.
   const buildBarcodesByReference = (consignments: readonly DevConsignment[]): Record<string, string[]> => {
     const result: Record<string, string[]> = {}
     for (const c of consignments) {
@@ -423,9 +317,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
 
   const openScanEverythingConfirm = (): void => {
     if (selectedOption === null) return
-    // Convenience path: what fires is the full manifest with extras dropped,
-    // regardless of what was ticked before. The payload is built here; the matching
-    // tick state is only adopted if the operator actually confirms.
     const nextTicked: Record<string, Set<string>> = {}
     const barcodesByReference: Record<string, string[]> = {}
     for (const c of consignmentsForSelection) {
@@ -465,11 +356,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     })
   }
 
-  // Deliberately bypasses the Modal/PendingAction confirmation flow every other
-  // write action here goes through. FP-199: this control is narrated live off a
-  // projector, and its whole point is "one press, one move" — a confirm-then-click
-  // round trip would fumble an instant demo beat for no safety benefit (it only ever
-  // writes mock tracker state, never anything evidentiary).
   const onMoveTruckScenario = async (scenario: DevTruckScenario): Promise<void> => {
     if (tripId === '') return
     const requiresStop = scenario !== NO_STOP_REQUIRED_SCENARIO
@@ -492,9 +378,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     }
   }
 
-  // Same deliberate bypass of the confirm flow as onMoveTruckScenario above, for the
-  // same reason: narrated live, and it writes staged mock state only. The phone is a
-  // SEPARATE control from the truck — pressing one never moves the other.
   const onMovePhone = async (placement: DevPhonePlacement): Promise<void> => {
     if (tripId === '') return
     if (placement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '') return
@@ -526,10 +409,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
           direction: pendingAction.direction,
           barcodes_by_reference: pendingAction.barcodesByReference,
         })
-        // A scan can decide the phase this stop is gated on, and buildScanOptions
-        // reads exactly those statuses to decide what stays selectable. Without a
-        // refresh the picker keeps offering a stop the scan just closed — the case
-        // the gating was added to prevent.
         if (result !== null) await loadTrips({ silent: true })
         break
       }
@@ -615,19 +494,12 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
                 {moveTruckResult.vehicle_registration} · {moveTruckResult.waypoint_label}
               </p>
               <p className="text-xs text-slate-500">
-                {/* Separate spans (not one interpolated string) so "No fix" stays an
-                    independently-matchable text node rather than being fused with the
-                    distance readout next to it. */}
                 <span>
                   {moveTruckResult.has_position && moveTruckResult.latitude !== null && moveTruckResult.longitude !== null
                     ? `${moveTruckResult.latitude}, ${moveTruckResult.longitude}`
                     : 'No fix'}
                 </span>
               </p>
-              {/* FP-197: the two distances a scenario-mode response can carry
-                  are never both labelled "from the precinct" — one names the
-                  EXPECTED phase-ledger stop, the other (only present in scenario
-                  mode) names the simulated TARGET stop actually requested. */}
               {moveTruckResult.target_precinct_name !== null && (
                 <p className="text-xs text-slate-500">
                   Simulated target: {moveTruckResult.target_precinct_name}:{' '}
@@ -829,8 +701,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
                         setExtraInputByReference((prev) => (
                           { ...prev, [c.parcel_perfect_reference]: e.target.value }
                         ))
-                        // Editing is the operator answering the rejection; keeping it
-                        // on screen would read as if the new value were rejected too.
                         setExtraErrorByReference((prev) => (
                           { ...prev, [c.parcel_perfect_reference]: null }
                         ))
@@ -871,9 +741,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
             </Button>
           </div>
 
-          {/* Visually distinct from the scan triggers above — this is the control that
-              actually unblocks the driver's phase gate, which is a much bigger action
-              than staging one more scan. */}
           <Button
             variant="danger"
             onClick={openCloseSessionConfirm}
@@ -980,11 +847,6 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
                   {pendingAction.waybills.map((wb) => (
                     <li key={wb.reference} className="text-sm">
                       <p>{wb.reference}: {wb.manifestTicked} of {wb.manifestTotal} parcels ticked</p>
-                      {/* A waybill with NOTHING scanned raises nothing here:
-                          _reconcile_consignment guards on `if events and (missing or
-                          unexpected)`, and an empty stage produces no events. That
-                          case is caught later, at loading close, by a different
-                          exception — so promising a mismatch here would be a lie. */}
                       {wb.manifestTicked < wb.manifestTotal &&
                         (wb.manifestTicked > 0 || wb.extraBarcodes.length > 0) && (
                         <p className="text-xs text-amber-700">

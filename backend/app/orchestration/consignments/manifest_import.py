@@ -85,7 +85,6 @@ async def _fetch_manifest(manifest_number: int) -> PPManifestResponse:
     except PPUnsupportedError as exc:
         raise ManifestLookupUnsupportedError() from exc
     except (ValueError, httpx.HTTPError) as exc:
-        # The real client raises ValueError (PP errorcode != 0) or httpx errors.
         logger.warning("PP manifest lookup failed for %s: %s", manifest_number, exc)
         raise PPUnavailableError(str(exc)) from exc
 
@@ -119,10 +118,9 @@ async def _waybills_held_elsewhere(
     cited_by: dict[str, tuple[str, ...]] = {}
     for consignment_id, ref, trip_id, trip_reference, status, owner_id in rows:
         if trip_id == exclude_trip_id:
-            continue  # the trip already holding this manifest is reported once, above
+            continue
         if status == TripStatus.CANCELLED and consignment_id not in scanned and consignment_id not in cited:
             continue
-        # Conflict detection is global; foreign trip identities remain tenant-private.
         own = owner_id == operator_organization_id
         identity = (trip_id, trip_reference) if own else (None, None)
         held[identity].append(ref)
@@ -148,9 +146,6 @@ async def _build_context(
 
     hubs: dict[str, Precinct] = {}
     if client is not None:
-        # The issuing client's own depots only — RTT's JNB is not FedEx's JNB (spec §7.2) —
-        # and only those this dispatcher may see. A private client depot is reported as an
-        # unlinked hub, never named.
         result = await db.execute(
             select(Precinct).where(
                 Precinct.principal_organization_id == client.id,
@@ -244,8 +239,6 @@ def _hub(hub_code: str, precinct: Precinct | None) -> PPManifestHub:
 
 def _preview(context: _ManifestContext) -> PPManifestPreviewResponse:
     header = context.manifest.header
-    # Lines and totals from the snapshot being hashed: what the dispatcher reviews is
-    # exactly what the manifest panel later shows from H0.
     shown = snapshot_read(context.snapshot)
     client_name = context.client.name if context.client is not None else header.issuer_name
     return PPManifestPreviewResponse(
@@ -348,16 +341,14 @@ async def create_trip_from_pp_manifest(
     manifest = await _fetch_manifest(payload.manifest_number)
     context = await _build_context(db, manifest, operator_organization_id=current_user.organization_id)
 
-    # 1. What the dispatcher reviewed must be what gets locked.
     if context.snapshot_sha256 != payload.expected_snapshot_sha256:
         raise PPManifestChangedError(payload.manifest_number, _preview(context).model_dump(mode="json"))
 
     _raise_for_blocking(context)
     client = context.client
-    if client is None:  # _raise_for_blocking refused CLIENT_NOT_LINKED; narrows the type
+    if client is None:
         raise PPManifestUnusableError(PPManifestWarningCode.CLIENT_NOT_LINKED.value, "Client not linked.")
 
-    # 2. Precincts: manifest first, the request only where a hub is unlinked.
     header = manifest.header
     origin = await _resolve_precinct(
         db, context.origin_precinct, payload.origin_precinct_id,
@@ -374,9 +365,6 @@ async def create_trip_from_pp_manifest(
             PPManifestErrorCode.SAME_PRECINCT.value, "Origin and destination must be different precincts.",
         )
 
-    # 3. Times: the request overrides the manifest. A departure is required after the
-    #    merge — a trip without one can never be activated (_reject_if_not_due). So is an
-    #    arrival (FP-139): without an end, nobody can say when the crew is free again.
     departure = payload.planned_departure_at or header.planned_departure_at
     arrival = payload.planned_arrival_at or header.expected_arrival_at
     if departure is None:
@@ -394,8 +382,6 @@ async def create_trip_from_pp_manifest(
     except ValueError as exc:
         raise PPManifestUnusableError(PPManifestErrorCode.SCHEDULE_INVALID.value, str(exc)) from exc
 
-    # 4–9. Driver/vehicle checks, the trip, consignments from the manifest's own
-    #      waybills, stops, phase plan, H0 snapshot, journey lock and anchor.
     try:
         return await persist_trip(
             db,
@@ -422,8 +408,6 @@ async def create_trip_from_pp_manifest(
             current_user,
         )
     except ConsignmentAlreadyAssignedError as exc:
-        # Sync rolled back the failed trip. Resolve the winning holder afresh:
-        # ownership can change during creation, so preview-time facts are insufficient.
         owner_id = (await db.execute(
             select(Trip.operator_organization_id)
             .join(Consignment, Consignment.trip_id == Trip.id)

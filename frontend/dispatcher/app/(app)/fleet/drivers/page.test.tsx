@@ -61,7 +61,6 @@ function renderPage() {
   return render(<ForensicModeProvider><FleetDriversPage /></ForensicModeProvider>)
 }
 
-// Names in the order the rows appear.
 const rowNames = (): string[] => screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link').textContent ?? '')
 
 beforeEach(() => {

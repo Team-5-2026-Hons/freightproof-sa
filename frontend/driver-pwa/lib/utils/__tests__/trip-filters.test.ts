@@ -82,9 +82,6 @@ describe('categorizeTrips', () => {
   })
 })
 
-// FP-83: a trip this driver handed over is history for them, even while the trip is still
-// 'active' for the driver who took it. Rows without `participation` (every pre-FP-83 row and
-// every full Trip) must keep grouping by status alone.
 describe('categorizeTrips with driver participation', () => {
   interface Row { id: string; status: Trip['status']; participation?: 'current' | 'former' }
 
@@ -131,7 +128,6 @@ describe('categorizeTrips with driver participation', () => {
 })
 
 describe('sortByDeparture', () => {
-  // The reported bug, exactly: a trip leaving on the 6th listed above one leaving on the 5th.
   const aug5 = makeTrip({ id: 'aug-5' as TripId, planned_departure_at: '2026-08-05T08:00:00Z' })
   const aug6 = makeTrip({ id: 'aug-6' as TripId, planned_departure_at: '2026-08-06T08:00:00Z' })
   const unscheduled = makeTrip({ id: 'no-date' as TripId, planned_departure_at: null })
@@ -213,7 +209,7 @@ describe('filterPastTrips', () => {
       makeTrip({
         id: 't3' as TripId, status: 'closed',
         origin_precinct_id: 'jhb', destination_precinct_id: 'dbn',
-        actual_arrival_at: '2026-06-15T01:00:00+02:00', // equals 2026-06-14T23:00:00Z
+        actual_arrival_at: '2026-06-15T01:00:00+02:00',
       }),
     ]
 

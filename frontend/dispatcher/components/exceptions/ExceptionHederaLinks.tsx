@@ -4,8 +4,6 @@ import { hashscanTopicUrl, isAnchoredTopic } from '@/lib/format/hashscan'
 import type { EvidenceAnchorSummary } from '@shared/lib/types/exception'
 import type { BlockchainReceiptType } from '@shared/lib/types/blockchain'
 
-// Worded as the action, never as "anchored": the dispatcher screen is review-only and must
-// not read as an operational all-clear (design note §7).
 const ACTION_LABELS: Partial<Record<BlockchainReceiptType, string>> = {
   exception_raised: 'Raised',
   exception_reviewed: 'Reviewed',

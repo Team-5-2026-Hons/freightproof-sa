@@ -11,13 +11,6 @@ from app.db.models.phases import PhaseEvent
 
 
 def _normalized_seal(seal: str) -> str:
-    # Deliberately NOT Optional. None is not a single concept here: for a stored
-    # phase_events.seal_number it means "seal unknown" (an anomaly), but for
-    # payload.seal_number_confirmed it means "no guard re-entry", which is the
-    # normal case and must never be flagged (see advance_departure). Swallowing
-    # None here would let that second, far more common case silently become a
-    # CRITICAL mismatch on every trip. Callers holding a nullable value resolve
-    # what their own None means before calling.
     return seal.strip().upper()
 
 

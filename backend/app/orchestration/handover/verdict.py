@@ -82,8 +82,6 @@ def resolve_verdict(
             exception_type=ExceptionType.RECEIVER_ID_MISMATCH,
         )
 
-    # ABANDONED / EXPIRED — the gap case. Both map to ABANDONED: "they walked away"
-    # and "the link aged out" are the same fact to the evidence record.
     return Verdict(
         status=ReceiverVerificationStatus.UNVERIFIED,
         tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
@@ -127,14 +125,8 @@ async def raise_verification_exception(
         )
     )
 
-    trip_id = trip.id  # plain value for the failure log; a rolled-back savepoint can expire `trip`
+    trip_id = trip.id
     try:
-        # Idempotent: the same finding on the same handover is one fact. A repeated resolve
-        # (a reload, a double tap) must not file it again. `trip_stop_id` may be NULL, which
-        # `==` would never match, hence the explicit IS NULL branch.
-        # The dedupe read and the insert share one SAVEPOINT so the check-then-write is a unit
-        # that rolls back together, and so a database error here rolls back to this point
-        # instead of aborting the receiver's transaction (which also carries the verdict).
         async with db.begin_nested():
             already_filed = (await db.execute(
                 select(TripException.id).where(

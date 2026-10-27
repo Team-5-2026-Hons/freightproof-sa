@@ -8,8 +8,6 @@ import { createFakeIndexedDb } from '@/lib/offline/testing/fake-indexeddb'
 import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { startPhaseSubmission, __resetPhaseSubmitterForTests } from '../phase-submitter'
 
-// Keep submitPhase, the artifact resolver, and the multipart upload real. Only the
-// HTTP boundary is replaced, so an artifact receipt cannot masquerade as a phase receipt.
 const http = vi.hoisted(() => ({ post: vi.fn(), postForm: vi.fn() }))
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 vi.mock('@/lib/api/client', async importOriginal => {
@@ -35,7 +33,6 @@ beforeEach(() => {
   __resetOfflineQueueStoreForTests()
   __resetPhaseSubmitterForTests()
   authenticateTestDriver('trip', 0)
-  // jsdom requires its own Blob for FormData; the production conversion still runs.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: async () => new Blob(['bytes'], { type: 'image/jpeg' }) }))
   http.postForm.mockReset().mockRejectedValue(duplicate('artifact-receipt'))
   http.post.mockReset()

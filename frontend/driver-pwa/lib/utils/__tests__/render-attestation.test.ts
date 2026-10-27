@@ -13,14 +13,8 @@ const TRIP_ID = '7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b'
 const RECIPIENT_NAME = 'Nomsa Dlamini'
 const RECIPIENT_ID = '9202204720082'
 
-// Stands in for the real font metrics jsdom has no way to produce. Proportional to length
-// so fitText's trim loop is genuinely exercised rather than short-circuiting on a
-// constant. The renderer allows WIDTH_PX - 2*PADDING_PX = 640px for a value, so anything
-// past ~58 characters must ellipsize.
 const STUB_CHAR_WIDTH_PX = 11
 
-// jsdom ships no 2D canvas (node-canvas isn't installed), so getContext is stubbed.
-// Recording the drawn text doubles as the assertion surface.
 function stubCanvas(): { texts: string[]; restore: () => void } {
   const texts: string[] = []
   const ctx = {
@@ -92,8 +86,6 @@ describe('fitText', () => {
   })
 
   it('terminates on a budget too small for even one character', () => {
-    // Guards the trim loop: without the `truncated.length > 0` condition this spins
-    // forever on a narrow canvas instead of degrading to a bare ellipsis.
     expect(fitText(ctx, 'CCCC', 1)).toBe('…')
   })
 })
@@ -117,8 +109,6 @@ describe('renderAttestation', () => {
     expect(texts).toContain(TRIP_ID)
   })
 
-  // The whole point of stamping the identity into the PNG rather than storing it beside
-  // the artifact: it is covered by the hash that gets anchored.
   it('draws the receiver name and ID number into the image', () => {
     const { texts } = stubCanvas()
 
@@ -166,7 +156,6 @@ describe('renderAttestation', () => {
     const drawn = texts.find((t) => t.startsWith('AAAA'))
     expect(drawn).toBeDefined()
     expect(drawn?.endsWith('…')).toBe(true)
-    // Never silently dropped: a truncated name still identifies far better than a blank.
     expect((drawn as string).length).toBeGreaterThan(10)
   })
 

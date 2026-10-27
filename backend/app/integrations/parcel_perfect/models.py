@@ -5,10 +5,6 @@ from datetime import datetime
 from typing import Optional
 
 
-# ---------------------------------------------------------------------------
-# Response dataclasses (parsed from PP JSON payload)
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class PPTrack:
@@ -53,29 +49,21 @@ class PPWaybillDetails:
     pieces: int
     duedate: str
     declared_value: Optional[float]
-    # Destination
     dest_address: str
     dest_town: str
     dest_person: str
     dest_contact: str
-    # Origin — useful for pre-populating the trip creation form
     orig_person: str
     orig_town: str
     orig_address: str
-    # Service and logistics
     service: str
     actual_weight_kg: Optional[float]
-    freight_total: Optional[float]       # total charge incl. VAT from PP
-    # POD — empty string = not yet delivered; date string = delivery confirmed
+    freight_total: Optional[float]
     poddate: str
-    # Failure — None = no failure recorded; string = failure reason from PP
     failtype: Optional[str]
-    # Client reference on the waybill
     client_reference: str
-    # Customer account holding the booking — resolves the client Organization.
     accnum: str = ""
     custname: str = ""
-    # PP "last manifest number"; 0/absent = not manifested → normalised to None.
     manifest: Optional[int] = None
 
 
@@ -99,11 +87,6 @@ class PPWaybillResponse:
         return self.details.failtype is not None
 
 
-# ---------------------------------------------------------------------------
-# Manifests — an ASSUMED data contract (FP-281, spec §8). PP holds manifests, but
-# ecomService v28 exposes only getSingleWaybill. Every datetime here is UTC.
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class PPManifestNote:
@@ -115,12 +98,12 @@ class PPManifestNote:
 @dataclass
 class PPManifestHeader:
     manifest_number: int
-    issuer_account: str             # PP accnum of the client (e.g. RTT)
+    issuer_account: str
     issuer_name: str
-    origin_hub: str                 # e.g. "JNB"
-    destination_hub: str            # e.g. "DUR"
+    origin_hub: str
+    destination_hub: str
     created_at: datetime
-    closed_at: Optional[datetime]   # None until the client closes the manifest
+    closed_at: Optional[datetime]
     planned_departure_at: Optional[datetime]
     expected_arrival_at: Optional[datetime]
     client_reference: Optional[str]
@@ -130,4 +113,4 @@ class PPManifestHeader:
 @dataclass
 class PPManifestResponse:
     header: PPManifestHeader
-    waybills: list[PPWaybillResponse]   # identical shape to getSingleWaybill
+    waybills: list[PPWaybillResponse]

@@ -63,8 +63,6 @@ async def seed_data(db_session: AsyncSession):
     db_session.add(user)
     await db_session.flush()
 
-    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
-    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
         is_shared=True,
         id=uuid.uuid4(), name="Cape Town Depot",
@@ -120,12 +118,7 @@ def _single_leg_payload(seed: dict, order_number: str = "ORD-SINGLE-001") -> dic
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
-        # Required: the single-leg (stops-omitted) path synthesises stops with no
-        # slot_time of their own, so planned_departure_at is the only schedule
-        # source create_trip's phase gate (_reject_if_not_due) can ever resolve —
-        # see TripCreateRequest.validate_request.
         "planned_departure_at": datetime.now(UTC).isoformat(),
-        # Arrival is required at creation (FP-139).
         "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
@@ -142,10 +135,7 @@ def _multi_stop_payload(seed: dict, order_number: str = "ORD-MULTI-001") -> dict
             {"precinct_id": str(seed["midpoint_id"]), "sequence": 1},
             {"precinct_id": str(seed["destination_id"]), "sequence": 2},
         ],
-        # See _single_leg_payload above — required by TripCreateRequest
-        # .validate_request now that a schedule must be resolvable at creation.
         "planned_departure_at": datetime.now(UTC).isoformat(),
-        # Arrival is required at creation (FP-139).
         "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
@@ -156,8 +146,6 @@ def _auth_headers(seed: dict) -> dict:
         make_token(sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id))
     )
 
-
-# ─── Single-leg back-compat (stops omitted) ────────────────────────────────
 
 async def test_single_leg_create_synthesises_two_stops(client: AsyncClient, seed_data, db_session):
     resp = await client.post(
@@ -191,8 +179,6 @@ async def test_single_leg_create_persists_two_tripstop_rows(client: AsyncClient,
     assert rows[0].precinct_id == seed_data["origin_id"]
     assert rows[1].precinct_id == seed_data["destination_id"]
 
-
-# ─── Explicit multi-stop route ─────────────────────────────────────────────
 
 async def test_multi_stop_create_persists_stops_in_order(client: AsyncClient, seed_data, db_session):
     resp = await client.post(
@@ -228,8 +214,6 @@ async def test_multi_stop_create_without_client_organization_id_succeeds(client:
     assert resp.status_code == 201
 
 
-# ─── Trip-detail read includes stops ───────────────────────────────────────
-
 async def test_get_trip_detail_returns_stops(client: AsyncClient, seed_data, db_session):
     create_resp = await client.post(
         "/api/v1/trips", json=_single_leg_payload(seed_data),
@@ -245,8 +229,6 @@ async def test_get_trip_detail_returns_stops(client: AsyncClient, seed_data, db_
     assert body["stops"][0]["sequence"] == 0
     assert body["stops"][1]["sequence"] == 1
 
-
-# ─── Full committed phase plan at creation ─────────────────────────────────
 
 def _mock_hedera():
     """Patch HederaService so POST /trips never makes a real Hedera call.
@@ -329,9 +311,6 @@ async def test_multi_stop_create_writes_full_phase_plan(client: AsyncClient, see
         )
     ).scalars().all()
 
-    # The one consignment on this route (see the stamping test above) picks up
-    # at the first stop and drops off at the last — the same rule build_phase_plan
-    # is fed here, independently of trips.creation's internal wiring.
     plan_stops = [
         PlanStop(sequence=s.sequence, picks_up=(s is stops[0]), drops_off=(s is stops[-1]))
         for s in stops
@@ -349,21 +328,6 @@ async def test_multi_stop_create_writes_full_phase_plan(client: AsyncClient, see
         assert actual.trip_stop_id == expected_stop_id
 
 
-# ─── h0-never-completes regression ──────────────────────────────────────────
-#
-# _build_phase_events (called from create_trip) writes every phase row PENDING,
-# h0/trip_creation included. Nothing in create_trip used to promote h0 to
-# COMPLETED afterward, even though its Hedera anchor had already succeeded by
-# that point. _gate_and_load (phases/gate.py) blocks a phase until every
-# lower-sequence_number row is resolved (COMPLETED/EXCEPTION/OVERRIDDEN) — h0
-# is sequence 0, the lowest possible, so a never-resolved h0 permanently
-# blocked every phase after it on every trip. Every fixture that exercises
-# advance_* elsewhere in this suite hand-seeds h0 as COMPLETED directly,
-# bypassing create_trip entirely, which is exactly why this shipped
-# undetected. This test chains the two real code paths together and would
-# fail with 409 ("an earlier phase in the plan is still unresolved") without
-# the create_trip fix that completes h0 inline once its anchor succeeds.
-
 async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient, seed_data, db_session):
     """A real create_trip call followed by a real H1 (activation) completion
     call must succeed — not 409 — proving h0 is left COMPLETED, not PENDING."""
@@ -379,10 +343,6 @@ async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient
 
     driver_token = make_token(sub=str(seed_data["driver_id"]), role="driver")
 
-    # Resolve the activation row's real id from a live GET /phases call —
-    # never a hardcoded id or an assumed sequence-to-id mapping. The route
-    # itself is retargeted from the deleted /handshakes/h1/complete to the
-    # new phase-plan endpoint.
     phases_resp = await client.get(
         f"/api/v1/trips/{trip_id}/phases",
         headers=auth_header(driver_token),
@@ -421,8 +381,6 @@ async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient
     assert h0_row.anchor_status == AnchorStatus.ANCHORED
 
 
-# ─── Precinct visibility (SEC-PRECINCT-1) ──────────────────────────────────
-
 async def _precinct(
     db_session: AsyncSession, *, owner_org_id: uuid.UUID, name: str, is_shared: bool = False,
 ) -> Precinct:
@@ -456,7 +414,6 @@ async def test_create_trip_with_another_orgs_private_precinct_is_rejected(
     resp = await client.post("/api/v1/trips", json=payload, headers=_auth_headers(seed_data))
 
     assert resp.status_code == 404
-    # Word for word what an id that does not exist gets, so ownership is not revealed.
     assert resp.json()["detail"] == f"Precinct with id='{private.id}' not found or inactive."
     assert await _trip_count(db_session, seed_data) == 0
 

@@ -50,7 +50,6 @@ export interface StopRecord {
   lat: number
   lng: number
   geofence_radius_metres: number
-  // [lat, lng] corners. When set the outline was the fence and the radius is not used.
   geofence_polygon?: [number, number][] | null
   slot_time: string | null
 }
@@ -109,7 +108,6 @@ export interface DriverSubstitutionRecord {
   substitution_at: string
   anchor_receipt_id: string | null
   tier: EvidenceTier
-  // v3 (FP-83 custody facts). Absent on packs frozen before them.
   sequence_number?: number | null
   completion_mode?: string | null
   arranged_by_name?: string | null
@@ -169,7 +167,6 @@ export interface ConsignmentRecord {
   consignment_id: string
   parcel_perfect_reference: string
   client_name: string | null
-  // Pydantic serialises Decimal as a string to keep cents exact.
   declared_value: string | null
   parcel_count_expected: number | null
   unit_count_expected: number | null
@@ -212,7 +209,6 @@ export interface PhaseRecord {
   overridden_by_dispatcher: boolean
   override_note: string | null
   seal_number: string | null
-  /** intact / damaged / missing — Arrival rows only; absent on packs frozen before Arrival. */
   seal_condition?: string | null
   parcel_count_origin: number | null
   parcel_count_destination: number | null
@@ -235,12 +231,8 @@ export interface CheckpointRecord {
   tier: EvidenceTier
 }
 
-// Manifest v2 added per-photo receipts and per-action anchors on an exception.
-// These are the three anchorable actions on an exception.
 export type AnchorAction = 'raised' | 'reviewed' | 'cancelled'
 
-// One photo of an exception report, tied to the receipt that committed its hash. `tier` is
-// 'anchored' only when that receipt is intact and commits exactly this artifact and hash.
 export interface ExceptionPhoto {
   artifact_id: string
   position: number
@@ -252,7 +244,6 @@ export interface ExceptionPhoto {
   anchor_receipt_id: string | null
 }
 
-// Where one action on an exception stands. 'pending' and 'failed' are debts, never success.
 export interface ExceptionAnchorRecord {
   event_id: string
   action: AnchorAction
@@ -280,15 +271,10 @@ export interface ExceptionRecord {
   reviewer_name: string | null
   contact_method: string | null
   review_note: string | null
-  // v1 readers: the photo(s). In v2 every photo is repeated in `photos` with its receipt.
   evidence: EvidenceFile[]
-  // The REPORT's tier: anchored only by a matching raise receipt (a review or cancellation
-  // receipt anchors that action alone).
   tier: EvidenceTier
-  // Absent on packs frozen under manifest v1.
   photos?: ExceptionPhoto[]
   anchors?: ExceptionAnchorRecord[]
-  // GPS is never part of a receipt, so a position is always FreightProof's own record.
   position_tier?: 'recorded'
 }
 
@@ -336,7 +322,6 @@ export interface Observation {
 export interface IncidentDeclarationRecord {
   declaration_id: string
   exception_id: string | null
-  // v4: the investigation this declaration belongs to.
   incident_id?: string | null
   saps_station: string | null
   saps_cas_number: string | null
@@ -360,8 +345,6 @@ export interface IncidentSummary {
   last_known_position: PositionFix | null
   first_reviewed_at: string | null
   minutes_to_first_review: number | null
-  // v4. 'investigation' = a dispatcher-recorded hijacking with no earlier critical exception;
-  // absent or 'exception' = anchored on the first critical exception.
   basis?: 'exception' | 'investigation'
 }
 
@@ -450,9 +433,7 @@ export interface AuditPackManifest {
   location_coverage: LocationCoverage
   anchored_records: AnchoredRecord[]
   incident: IncidentSummary | null
-  // Absent on packs issued before declarations existed.
   declarations?: IncidentDeclarationRecord[]
-  // Absent on packs frozen before FP-83 (late_evidence) and v4 (investigations).
   late_evidence?: LateEvidenceRecord[]
   investigations?: InvestigationRecord[]
   observations: Observation[]
@@ -505,9 +486,6 @@ export interface LiveVerification {
   records_added_since_issue: number
 }
 
-// ── API error bodies ───────────────────────────────────────────────────────────────
-
-// FastAPI's 422: one item per invalid field.
 export interface ValidationItem {
   loc?: (string | number)[]
   msg: string
@@ -515,13 +493,10 @@ export interface ValidationItem {
 }
 
 export interface ErrorBody {
-  // A string for our own HTTPException/JSONResponse bodies, a list for a 422.
   detail?: string | ValidationItem[]
   verification_required?: boolean
   email_hint?: string
 }
-
-// ── Mailed viewer password ──────────────────────────────────────────────────────────
 
 export interface ViewerGrant {
   grant: string

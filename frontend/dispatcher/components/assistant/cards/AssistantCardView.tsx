@@ -11,7 +11,6 @@ interface AssistantCardViewProps {
   card: AssistantCard
   onNavigate: NavigateTo
   onChoose: (record: RecordRef) => void
-  /** A question is being answered: choice buttons wait for it. */
   busy: boolean
 }
 

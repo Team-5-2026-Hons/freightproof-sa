@@ -19,7 +19,6 @@ from app.orchestration.analytics_chat.period_hints import (
 )
 from app.orchestration.analytics_chat.periods import PeriodPreset, resolve_preset
 
-# Tuesday 20 Oct 2026, the day the parser was written.
 _TODAY = date(2026, 10, 20)
 
 
@@ -46,12 +45,10 @@ def test_named_presets_match_the_pages_presets(question: str, preset: PeriodPres
     found_preset, start, end = _one(question)
 
     assert found_preset is preset
-    # And the dates are exactly what the page's preset gives (periods.py, a copy of period.ts).
     assert (start, end) == resolve_preset(preset, today=_TODAY)
 
 
 def test_a_non_preset_length_uses_the_page_rule_as_custom_dates() -> None:
-    # Like the presets: ends today, includes this week (Mon 19 Oct), so 8 weeks start Mon 31 Aug.
     assert _one("Problems in the last 8 weeks") == (PeriodPreset.CUSTOM, date(2026, 8, 31), _TODAY)
 
 
@@ -92,7 +89,7 @@ def test_this_year_after_quarters_is_their_year_not_a_third_period() -> None:
 
 
 def test_new_years_day_reads_december_as_last_year_and_this_week_across_the_year() -> None:
-    new_year = date(2027, 1, 1)  # a Friday
+    new_year = date(2027, 1, 1)
 
     assert _one("Trips in December", new_year) == (PeriodPreset.CUSTOM, date(2026, 12, 1), date(2026, 12, 31))
     assert _one("Trips this week", new_year) == (PeriodPreset.CUSTOM, date(2026, 12, 28), new_year)
@@ -110,11 +107,11 @@ def test_a_sunday_still_counts_the_week_from_monday() -> None:
     [
         "Which lane costs the most to run?",
         "How are things going?",
-        "Will delays get worse next month?",  # the future is never a period to look up
-        "How many trips last year?",  # 12 months, or calendar 2025? Asked back (below), never read
-        "Delays may get worse",  # "may" the word, not the month
+        "Will delays get worse next month?",
+        "How many trips last year?",
+        "Delays may get worse",
         "Which driver has the most problems?",
-        "The march to the depot was slow",  # "march" the word, not the month
+        "The march to the depot was slow",
     ],
 )
 def test_unclear_or_absent_periods_are_left_to_the_model(question: str) -> None:
@@ -146,15 +143,13 @@ def test_no_hint_when_nothing_is_named() -> None:
     assert hint_for("Which lane costs the most to run?", _TODAY) is None
 
 
-# ── "Last N days", and "past month" asked back (Tom, 20 Oct) ──────────────────
-
 
 
 @pytest.mark.parametrize(
     ("question", "start"),
     [
         ("Problems in the last 30 days", date(2026, 9, 21)),
-        ("and in the lasty 30 days from today", None),  # a typo is not read: left to the model
+        ("and in the lasty 30 days from today", None),
         ("Trips over the past 7 days", date(2026, 10, 14)),
         ("Trips in the last 1 day", _TODAY),
     ],
@@ -194,8 +189,6 @@ def test_past_months_plural_and_past_n_months_are_not_the_ambiguous_phrase() -> 
     assert (period.start, period.end) == (date(2026, 9, 1), _TODAY)
 
 
-# ── More phrases with two meanings: asked back (Tom, 20 Oct; spec B42) ───────
-
 
 @pytest.mark.parametrize(
     ("question", "ask"),
@@ -218,10 +211,10 @@ def test_phrases_with_two_meanings_are_asked_back_with_an_exact_question(questio
 @pytest.mark.parametrize(
     "question",
     [
-        "Trips in September last year",  # the month says which: September 2025
+        "Trips in September last year",
         "Problems in Q3 last year",
         "Problems in the last calendar year",
-        "Delays in the past 2 weeks",  # a number makes it a clear length
+        "Delays in the past 2 weeks",
         "The past weeks were busy",
         "Trips in the last 12 months",
     ],
@@ -231,14 +224,13 @@ def test_clear_relatives_of_the_two_meaning_phrases_are_not_asked_back(question:
 
 
 def test_every_question_back_ends_with_a_question_mark_so_it_shows_as_one() -> None:
-    # The service shows a short reply ending in "?" as a question back with "No figures used".
     for ask in (past_month_question(_TODAY), past_week_question(_TODAY), last_year_question(_TODAY), FINANCIAL_YEAR_QUESTION):
         assert ask.endswith("?")
         assert len(ask) <= 200
 
 
 def test_the_questions_back_name_the_right_dates_across_a_new_year() -> None:
-    new_year = date(2027, 1, 1)  # a Friday: last week is Mon 21 – Sun 27 Dec 2026
+    new_year = date(2027, 1, 1)
 
     assert last_year_question(new_year) == "For which period: the last 12 months, or 2026 (the previous calendar year)?"
     assert past_week_question(new_year) == (
@@ -254,14 +246,12 @@ def test_the_questions_back_name_the_right_dates_across_a_new_year() -> None:
         ("the last 12 months", date(2025, 11, 1), _TODAY),
         ("the last 7 days", date(2026, 10, 14), _TODAY),
         ("last week", date(2026, 10, 12), date(2026, 10, 18)),
-        ("March 2026 to February 2027", date(2026, 3, 1), _TODAY),  # cut off at today
+        ("March 2026 to February 2027", date(2026, 3, 1), _TODAY),
     ],
 )
 def test_the_replies_to_the_questions_back_are_read(reply: str, start: date, end: date) -> None:
     assert [(p.start, p.end) for p in named_periods(reply, _TODAY)] == [(start, end)]
 
-
-# ── Clear phrases read into dates (spec B42) ─────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -277,7 +267,7 @@ def test_the_replies_to_the_questions_back_are_read(reply: str, start: date, end
         ("Trips since 1 September", date(2026, 9, 1), _TODAY),
         ("Trips since the 1st of September", date(2026, 9, 1), _TODAY),
         ("Trips since August", date(2026, 8, 1), _TODAY),
-        ("Trips since 1 November", date(2025, 11, 1), _TODAY),  # this year's 1 Nov hasn't come yet
+        ("Trips since 1 November", date(2025, 11, 1), _TODAY),
         ("Trips since 2025", date(2025, 1, 1), _TODAY),
         ("Trips since the start of 2026", date(2026, 1, 1), _TODAY),
         ("Trips from 1 September onwards", date(2026, 9, 1), _TODAY),
@@ -286,13 +276,13 @@ def test_the_replies_to_the_questions_back_are_read(reply: str, start: date, end
         ("Trips 1-15 October", date(2026, 10, 1), date(2026, 10, 15)),
         ("Trips between the 1st of September and today", date(2026, 9, 1), _TODAY),
         ("Trips from 2025-09-01 to 2025-09-30", date(2025, 9, 1), date(2025, 9, 30)),
-        ("Trips from December to February", date(2025, 12, 1), date(2026, 2, 28)),  # runs over the new year
+        ("Trips from December to February", date(2025, 12, 1), date(2026, 2, 28)),
         ("Trips from Monday 12 October to Sunday 18 October", date(2026, 10, 12), date(2026, 10, 18)),
         ("Trips from 2024 to 2025", date(2024, 1, 1), date(2025, 12, 31)),
         ("Trips on 1 September", date(2026, 9, 1), date(2026, 9, 1)),
         ("Trips on 2026-09-01", date(2026, 9, 1), date(2026, 9, 1)),
-        ("Trips on 25 October", date(2025, 10, 25), date(2025, 10, 25)),  # the most recent one that has passed
-        ("Trips on 1 may", date(2026, 5, 1), date(2026, 5, 1)),  # next to a day, "may" is the month
+        ("Trips on 25 October", date(2025, 10, 25), date(2025, 10, 25)),
+        ("Trips on 1 may", date(2026, 5, 1), date(2026, 5, 1)),
     ],
 )
 def test_clear_phrases_are_read_as_their_dates(question: str, start: date, end: date) -> None:
@@ -304,7 +294,6 @@ def test_a_range_is_one_period_not_also_its_two_months() -> None:
 
 
 def test_a_range_that_is_no_period_is_not_read_as_its_months_either() -> None:
-    # 31 September doesn't exist, and December 2026 hasn't started: the model judges these as written.
     assert named_periods("Trips since 31 September", _TODAY) == []
     assert named_periods("Trips from December 2026 to February 2027", _TODAY) == []
 
@@ -330,8 +319,6 @@ def test_quarters_across_a_new_year() -> None:
     assert _one("Problems this quarter", new_year) == (PeriodPreset.CUSTOM, new_year, new_year)
 
 
-# ── Questions about the page itself need no period (B45) ─────────────────────
-
 _TOMS_FOLLOW_UP = (
     "last year, but i am asking what the figures comprise of. so how do we come up with operating cost, where does "
     "thart number come from and same with the other 2 numbers"
@@ -341,7 +328,7 @@ _TOMS_FOLLOW_UP = (
 @pytest.mark.parametrize(
     "question",
     [
-        'what do the "Cost at a glance" figures tell us',  # Tom, 22 Oct
+        'what do the "Cost at a glance" figures tell us',
         _TOMS_FOLLOW_UP,
         "How is operating cost calculated?",
         "What's the purpose of this graph?",
@@ -382,7 +369,6 @@ def test_figure_questions_are_not_read_as_explanations(question: str) -> None:
 
 
 def test_an_explanation_is_never_turned_into_a_period_question() -> None:
-    # 22 Oct: "last year" in Tom's follow-up forced "For which period…?" though he asked how the figures are made.
     hint = hint_for(_TOMS_FOLLOW_UP, _TODAY)
 
     assert hint is not None

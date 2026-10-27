@@ -157,8 +157,6 @@ async def _verification_row(db_session, token: str) -> ReceiverIdentityVerificat
     ).scalar_one()
 
 
-# ── Consent ──────────────────────────────────────────────────────────────────
-
 
 async def test_consent_creates_a_pending_verification(client, handover_trip, driver_auth):
     token = await _issue(client, handover_trip, driver_auth)
@@ -169,7 +167,6 @@ async def test_consent_creates_a_pending_verification(client, handover_trip, dri
     body = res.json()
     assert body["status"] == "pending"
     assert body["tier"] == "document_and_face"
-    # The token is still live afterwards — consent must not redeem it.
     assert (await client.get(f"/api/v1/handover/{token}")).status_code == 200
 
 
@@ -280,8 +277,6 @@ async def test_agreeing_without_a_document_records_consent_at_typed_only(
     assert row.consent_given_at is not None, "agreeing with no document is still consent"
     assert row.unverified_reason == ReceiverVerificationUnverifiedReason.NO_DOCUMENT
 
-
-# ── Verify ───────────────────────────────────────────────────────────────────
 
 
 async def test_verify_returns_a_session_url_in_mock_mode(
@@ -400,8 +395,6 @@ async def test_verify_without_prior_consent_is_the_generic_404(client, handover_
     assert res.json()["detail"] == _GENERIC_NOT_FOUND
 
 
-# ── Resolve ──────────────────────────────────────────────────────────────────
-
 
 async def test_resolve_moves_the_row_to_a_terminal_status(
     client, handover_trip, driver_auth, db_session,
@@ -516,8 +509,6 @@ async def test_resolve_rejects_oversized_identity_fields(
     assert res.status_code == 422
 
 
-# ── The shared oracle ────────────────────────────────────────────────────────
-
 
 async def test_an_unknown_token_is_the_identical_404_on_every_route(client):
     unknown = "a" * 43
@@ -530,8 +521,6 @@ async def test_an_unknown_token_is_the_identical_404_on_every_route(client):
         assert res.status_code == 404
         assert res.json()["detail"] == _GENERIC_NOT_FOUND
 
-
-# ── Scan response verification block ────────────────────────────────────────
 
 
 async def test_scan_before_consent_carries_a_null_verification_block(
@@ -558,13 +547,6 @@ async def test_scan_after_consent_carries_the_pending_verification_block(
     assert verification["status"] == "pending"
     assert verification["tier"] == "document_and_face"
 
-
-# ── End-to-end walks ──────────────────────────────────────────────────────────
-#
-# The tests above prove each route in isolation. These three prove the thing that actually
-# matters: a delivery gets confirmed. One walk for the happy path, and two for the ways the
-# world goes wrong — because the whole design rests on the promise that a failed identity
-# check never costs anyone a delivery that physically happened.
 
 _E2E_PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64).decode()
 _E2E_CONFIRM = {
@@ -602,7 +584,6 @@ async def test_full_walk_verified_receiver_confirms_the_delivery(
     confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json=_E2E_CONFIRM)
     assert confirmed.status_code == 201, confirmed.text
 
-    # The verification must now point at the confirmation the receiver actually signed.
     row = await _verification_row(db_session, token)
     assert row.handover_confirmation_id is not None, "verification was never linked to the POD"
 
@@ -646,11 +627,6 @@ async def test_full_walk_survives_the_vendor_being_unavailable(
     confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json=_E2E_CONFIRM)
     assert confirmed.status_code == 201, "a vendor outage must never block a real delivery"
 
-
-# ── Route characterisation (stage 3a) ────────────────────────────────────────
-#
-# Added before endpoints/handover.py was thinned. They patch the shared test session, not a
-# name in the route module, so they hold on both sides of the move.
 
 
 async def test_consent_when_the_commit_fails_is_a_500_after_a_rollback(
@@ -742,7 +718,7 @@ async def test_a_database_error_filing_the_verification_exception_leaves_the_res
 
     assert res.status_code == 200, res.text
     assert res.json()["identity_match"] is False
-    assert res.json()["status"] == ReceiverVerificationStatus.FAILED.value  # the verdict itself stands
+    assert res.json()["status"] == ReceiverVerificationStatus.FAILED.value
     filed = (
         await db_session.execute(
             select(TripException.id).where(TripException.trip_id == handover_trip["trip"].id)

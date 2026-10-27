@@ -20,9 +20,6 @@ interface PodPhotoProps {
 export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: PodPhotoProps) {
   const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
 
-  // Upload starts the moment the photo exists, not when the driver swipes — the walk
-  // between the two is dead time otherwise. The data URL is stored either way, so a
-  // failed early upload just means lib/api/phases.ts uploads it at submit as before.
   function handleCapture(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ podPhotoDataUrl: dataUrl, podPhotoArtifactId: null, capturedAt })

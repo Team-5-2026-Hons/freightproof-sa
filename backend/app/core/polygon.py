@@ -61,7 +61,7 @@ def contains(polygon: Sequence[LatLng], point: LatLng) -> bool:
     caller pairs this with distance_to_boundary_metres and a tolerance band.
     """
     ring = _project_ring(polygon, point)
-    x, y = 0.0, 0.0  # the point is the projection origin
+    x, y = 0.0, 0.0
     inside = False
     for (x1, y1), (x2, y2) in _edges(ring):
         if (y1 > y) != (y2 > y):
@@ -120,7 +120,6 @@ def is_simple(polygon: Sequence[LatLng]) -> bool:
     n = len(edges)
     for i in range(n):
         for j in range(i + 1, n):
-            # Neighbouring edges share a corner by definition; that is not a crossing.
             if j == i + 1 or (i == 0 and j == n - 1):
                 continue
             if _segments_cross(*edges[i], *edges[j]):

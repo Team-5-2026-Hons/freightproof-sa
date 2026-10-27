@@ -20,12 +20,7 @@ export interface RecordedFix {
   source: FixSource
   label: string
   coords: Coords
-  // ISO timestamp when known; null otherwise. Never zero, never a stand-in like
-  // completed_at: null is "we don't have a time for this fix", not "now".
   capturedAt: string | null
-  // Human sentence explaining what IS known when capturedAt is null, e.g. the
-  // tracker fix has no timestamp of its own, only a guarantee about its relationship
-  // to the driver's capture.
   captureNote: string | null
 }
 
@@ -38,14 +33,9 @@ export type GeofenceVerdict =
 
 export interface BoundaryReference {
   coords: Coords
-  // For a circle, the fence. For an outline, the radius of the circle about `coords` that
-  // encloses it — used only to frame maps, never to judge anything.
   radiusMetres: number
-  // The property outline, when the fence was one. Drawn instead of the circle.
   polygon?: LatLngPair[] | null
   precinctName: string
-  // A persisted assessment owns its historical geometry. Older events did not record
-  // it, so their circle is today's boundary and must remain visibly reference-only.
   provenance: 'recorded_snapshot' | 'current_reference_only'
   policyVersion?: string
   toleranceMetres?: number
@@ -54,16 +44,9 @@ export interface BoundaryReference {
 export interface LocationEvidence {
   driverFix: RecordedFix | null
   trackerFix: RecordedFix | null
-  // Haversine gap between the two fixes; null unless BOTH are usable. Never a zero
-  // fallback: zero is a real (coincident-fix) measurement, distinct from "no
-  // comparison possible".
   separationMetres: number | null
-  /** Only an assessment can state proximity. Legacy coordinates are a measurement,
-   * not a retroactive pass/fail under today's policy. */
   proximity?: ProximityVerdict | null
   proximityReasons?: readonly string[]
-  /** Lets presentation distinguish an incomplete stored snapshot from a legacy event
-   * that never recorded historical geometry in the first place. */
   assessmentRecorded?: boolean
   verdict: GeofenceVerdict
   boundary: BoundaryReference | null
@@ -88,7 +71,6 @@ export const PROXIMITY_LABELS: Record<ProximityVerdict, string> = {
   unverified: 'Unable to compare',
 }
 
-// Why a proximity check could not compare the two fixes, in the words a dispatcher would use.
 export const PROXIMITY_REASON_LABELS: Record<ProximityReason, string> = {
   missing_phone: 'the driver’s phone location was not available',
   missing_tracker: 'the truck tracker location was not available',
@@ -100,18 +82,12 @@ export const PROXIMITY_REASON_LABELS: Record<ProximityReason, string> = {
   future_fix: 'a location reading was dated in the future',
 }
 
-// The backend only ever persists a tracker fix that already passed its skew gate
-// against driver_captured_at, and it does not store the tracker's own capture time.
-// Inventing one here (or reusing completed_at, which dates the whole phase rather
-// than either fix) would fabricate evidence that was never actually recorded.
 export const TRACKER_CAPTURE_NOTE = 'Captured within the corroboration window of the driver capture'
 
 export const BOUNDARY_REFERENCE_LABEL = 'Current precinct boundary (reference only)'
 
 export const COMPARISON_UNAVAILABLE = 'Comparison unavailable'
 
-// Statuses where a phase has not yet been evaluated, as opposed to one that ran its
-// course without a verdict being stored.
 const UNEVALUATED_STATUSES: readonly PhaseDescriptor['status'][] = ['pending', 'in_progress']
 
 /** Both numbers must be finite and within real-world lat/lng range. `toCoords` handles
@@ -131,8 +107,6 @@ function validCoords(lat: number | null, lng: number | null): Coords | null {
 }
 
 function driverFixFor(phase: PhaseDescriptor | null, assessment: ActionLocationAssessment | null): RecordedFix | null {
-  // A partial stored snapshot stays partial. Falling back to a phase column here would
-  // splice two capture contexts together and create evidence the evaluator never saw.
   const coords = assessment
     ? validCoords(assessment.driver_lat, assessment.driver_lng)
     : phase ? validCoords(phase.driver_phone_lat, phase.driver_phone_lng) : null
@@ -177,8 +151,6 @@ function usableOutline(polygon: LatLngPair[] | null | undefined): LatLngPair[] |
 }
 
 function boundaryFor(precinct: Precinct | undefined, assessment: ActionLocationAssessment | null): BoundaryReference | null {
-  // A snapshot either carries its own geometry or it does not. Falling back to the
-  // current precinct here would recast today's boundary as historical evidence.
   if (assessment === null) {
     if (precinct === undefined) return null
     const outline = usableOutline(precinct.geofence_polygon)
@@ -187,7 +159,6 @@ function boundaryFor(precinct: Precinct | undefined, assessment: ActionLocationA
       radiusMetres: outline
         ? enclosingRadiusMetres(outline, [precinct.latitude, precinct.longitude])
         : precinct.geofence_radius_metres,
-      // Present only for an outline, so a circle boundary reads exactly as it always has.
       ...(outline !== null ? { polygon: outline } : {}),
       precinctName: precinct.name,
       provenance: 'current_reference_only',
@@ -265,18 +236,6 @@ export function hasLocationEvidence(evidence: LocationEvidence): boolean {
   return hasAnyFix(evidence) || evidence.proximity !== null || evidence.verdict === 'within_tolerance' || evidence.verdict === 'outside_tolerance'
 }
 
-// ── Boundary framing helpers ─────────────────────────────────────────────────────
-// Shared by LocationComparisonMap (its default 'fixes' frame) and
-// LocationComparisonSchematic (the tile-failure fallback) so both surfaces make the SAME
-// call about whether the boundary belongs in frame. Living here rather than in the map
-// component is what lets the schematic reuse them without importing the map that, in
-// turn, imports the schematic.
-
-// A boundary farther than this from every recorded fix would force the default frame to
-// zoom out past the point where the fixes themselves are readable (the case from the
-// brief: a fix 1,400 km from its precinct opening the map on a view of the whole
-// country). Past this distance the boundary is left out of the default frame; the map's
-// Fixes/Precinct control lets the dispatcher still switch to it on request.
 export const BOUNDARY_NEARBY_METRES = 5_000
 
 /** Fixes with finite coordinates, in evidence order: the one definition of "a fix worth

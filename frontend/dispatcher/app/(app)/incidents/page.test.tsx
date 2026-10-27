@@ -6,17 +6,14 @@ import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { useIncidents } from '@/lib/hooks/useIncidents'
 import type { IncidentListFilters, IncidentSummary } from '@/lib/types/incident'
 
-// client.ts imports the Supabase client at module scope, which throws without real env vars.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// TopBar mounts ForensicControls, which reads the signed-in user; nothing asserted here depends on who.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'me' } }) }))
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: vi.fn() }) }))
 const replace = vi.fn()
-// The query the page is opened with, as the router would hand it back from the URL.
 const urlQuery = vi.hoisted(() => ({ current: '' }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace, back: vi.fn() }),

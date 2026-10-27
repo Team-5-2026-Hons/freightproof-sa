@@ -12,7 +12,6 @@ from sqlalchemy.sql import func
 from app.db.models import Base
 from app.db.models.enums import IdvsStatus
 
-# Read by orchestration when naming the field a unique violation actually clashed on.
 UQ_DRIVERS_ORG_ID_NUMBER = "uq_drivers_org_id_number"
 
 
@@ -41,8 +40,6 @@ class Driver(Base):
 
     __tablename__ = "drivers"
     __table_args__ = (
-        # One SA ID number, one driver record per organisation — the identity this
-        # record is anchored to. Phone numbers are already guarded upstream by Supabase Auth.
         UniqueConstraint("organization_id", "id_number", name=UQ_DRIVERS_ORG_ID_NUMBER),
     )
 

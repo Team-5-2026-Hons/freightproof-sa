@@ -1,6 +1,5 @@
 import type { DispatcherUser } from '@/lib/types/user'
 
-// Shown when there is no name to take initials from (session still loading).
 const FALLBACK_INITIALS = 'D'
 
 /** Humanises the DispatcherUser role for display; the base "Dispatcher" label covers the

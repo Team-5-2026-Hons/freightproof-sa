@@ -22,11 +22,8 @@ import { ROUTES } from '@/lib/constants/routes'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { describeGeofence } from '@/lib/map/polygon'
 
-// 5 dp ≈ 1 m. Coordinates are identifiers here, not measurements — they are read to be
-// compared against a maps app, so they render at a fixed precision.
 const COORDINATE_PRECISION = 5
 
-// The history keeps this page's own name for it. Every precinct gets both views.
 const LOWER_PANEL_TABS = [
   { id: 'history', label: 'Change History' },
   { id: 'analytics', label: 'Analytics' },
@@ -35,23 +32,17 @@ const LOWER_PANEL_TABS = [
 type LowerPanelTabId = (typeof LOWER_PANEL_TABS)[number]['id']
 
 const LOWER_PANEL_ID = 'precinct-lower-panel'
-// The map starts at its old fixed height; the dispatcher can drag it taller to see more.
 const MAP_HEIGHT = { initial: 320, min: 240, max: 800 } as const
 
 export default function PrecinctDetailPage(): React.JSX.Element {
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const search = useSearchParams()
-  // A precinct is reached from its list or from a trip stop that names it. Back means
-  // "where I came from", which only the caller can say.
   const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.precincts)
   const { precinct, isLoading, error, refetch } = usePrecinctDetail(params.id)
   const { user } = useAuth()
   const [lowerTab, setLowerTab] = useState<LowerPanelTabId>('history')
 
-  // Present in every state (loading/error/success), same as the vehicle detail page —
-  // a header that only appears once data resolves reads as broken chrome, and without
-  // it there is no way back to the list except the browser's own back button.
   const backButton = <BackButton onClick={() => router.push(backTo)} />
 
   if (isLoading) {
@@ -64,9 +55,6 @@ export default function PrecinctDetailPage(): React.JSX.Element {
   }
 
   if (error !== null || precinct === null) {
-    // The hook collapses every failure to a message string, so a 404 (this precinct is
-    // not yours to see) is indistinguishable here from a network failure. The copy
-    // deliberately does not claim which it was.
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Precinct unavailable" left={backButton} />
@@ -89,9 +77,6 @@ export default function PrecinctDetailPage(): React.JSX.Element {
     )
   }
 
-  // A precinct listed via is_shared is owned by another org: the API answers 404 on a
-  // write. Hiding Edit is not the security control — the server is — but offering a
-  // button that can only fail is worse than not offering it.
   const isOwner =
     String(precinct.principal_organization_id) === String(user?.organization_id)
 
@@ -114,7 +99,6 @@ export default function PrecinctDetailPage(): React.JSX.Element {
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
         <div className="flex-1 min-w-0 flex flex-col lg:overflow-y-auto">
           <div className="p-6 pb-0">
-            {/* No onPositionChange: a detail view reads the geofence, it does not move it. */}
             <ResizableHeight
               initialHeight={MAP_HEIGHT.initial}
               minHeight={MAP_HEIGHT.min}
@@ -144,20 +128,14 @@ export default function PrecinctDetailPage(): React.JSX.Element {
             <div id={LOWER_PANEL_ID} role="tabpanel" aria-labelledby={`tab-${lowerTab}`} tabIndex={0}>
               {lowerTab === 'history' ? (
                 <>
-                  {/* The point of the ledger: a rename appears here with no anchor badge, a
-                      geofence change with one. DESIGN_SYSTEM 10.3 — the absence is the information. */}
                   <EventTimeline events={precinct.events} receipts={precinct.receipts} />
                   {precinct.receipts.length === 0 && precinct.events.length > 0 && (
-                    // Receipts are withheld from non-admins and for precincts visible only via
-                    // is_shared, so an empty list is not evidence that nothing was anchored.
                     <p className="text-[11px] text-on-surf-v mt-3">
                       Anchoring records are shown to administrators of the owning organisation.
                     </p>
                   )}
                 </>
               ) : (
-                // This column is off-white, so the summary sits on a white card for its grey
-                // tiles to read, as in the 4A mockup.
                 <div className="bg-surf-lowest rounded-lg shadow-level-2 p-5">
                   <PrecinctAnalyticsSummary precinctId={precinct.id} />
                 </div>
@@ -172,8 +150,6 @@ export default function PrecinctDetailPage(): React.JSX.Element {
               Precinct
             </span>
             <InfoRow label="Address" value={precinct.address ?? '—'} />
-            {/* mono is InfoRow's tabular-nums treatment — required for identifiers by
-                DESIGN_SYSTEM 5.2 / 10.4. */}
             <InfoRow label="Latitude" value={precinct.latitude.toFixed(COORDINATE_PRECISION)} mono />
             <InfoRow label="Longitude" value={precinct.longitude.toFixed(COORDINATE_PRECISION)} mono />
             <InfoRow label="Geofence" value={describeGeofence(precinct)} mono />

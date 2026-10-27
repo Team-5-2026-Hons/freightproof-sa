@@ -22,7 +22,6 @@ export function DriverTransferTimelineEvent({ event, onOpen, sameRecordedTime = 
     </div>
     <button type="button" onClick={() => onOpen(event.substitution_id)} aria-haspopup="dialog"
       aria-label={`Driver transferred: ${event.outgoing.full_name} → ${event.incoming.full_name}`}
-      // The label replaces the card's text for assistive tech, so how it was completed and sealed is its description.
       aria-describedby={outcomeId}
       className="mb-3 min-w-0 flex-1 rounded-lg border border-outline-v/40 bg-surf-lowest px-4 py-3 text-left hover:bg-surf focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
       <span className="flex items-start justify-between gap-3">

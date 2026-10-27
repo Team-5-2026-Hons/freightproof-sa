@@ -86,7 +86,6 @@ def test_update_hashes_a_missing_side_of_the_device_id_as_empty_string() -> None
         {"pulsit_device_id": {"from": None, "to": "PLT-PIN-NEW"}},
     )
 
-    # sha256("") — written out, not computed.
     assert fields["pulsit_device_id_sha256"]["from"] == (
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     )
@@ -103,8 +102,6 @@ def test_update_keeps_only_critical_fields_so_an_unclassified_field_is_never_anc
 
     assert fields == {"registration": {"from": "CA 1", "to": "CA 2"}}
 
-
-# ── anchor_fleet_event ──────────────────────────────────────────────────────────
 
 async def test_anchor_fleet_event_anchors_the_built_payload_and_links_the_receipt() -> None:
     import uuid

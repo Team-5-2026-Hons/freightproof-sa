@@ -51,8 +51,6 @@ import type { ExceptionId, TripException } from '../types/exception'
 import type { Trip, TripStop } from '../types/trip'
 import type { VehicleId } from '../types/vehicle'
 
-// ── Generated local test ids ────────────────────────────────────────────────────
-
 const fx = (n: number): string => `f8300000-0000-4000-8000-${String(n).padStart(12, '0')}`
 
 const ORG_ID = fx(1)
@@ -78,8 +76,6 @@ const T = {
   observed: '2026-10-20T07:00:00+02:00',
 } as const
 
-// ── People, vehicles, exchange ──────────────────────────────────────────────────
-
 const outgoing: DriverContact = { id: OUTGOING_ID, full_name: 'Fixture Driver Outgoing', phone_number: '+27000000010' }
 const incoming: DriverContact = { id: INCOMING_ID, full_name: 'Fixture Driver Incoming', phone_number: '+27000000011' }
 const third: DriverContact = { id: THIRD_ID, full_name: 'Fixture Driver Third', phone_number: '+27000000012' }
@@ -101,8 +97,6 @@ const identity = (driverId: string, status: IdentitySnapshot['status']): Identit
   observed_at: T.observed,
 })
 
-// The dispatcher's full fleet records (the contract's DriverContact deliberately carries none
-// of this). The incoming one has a non-null licence expiry, which the licence rule requires.
 const fleetDriver = (id: string, name: string, phone: string, over: Partial<Driver> = {}): Driver => ({
   id: id as unknown as DriverId,
   organization_id: ORG_ID,
@@ -120,8 +114,6 @@ const fleetDriver = (id: string, name: string, phone: string, over: Partial<Driv
 })
 const outgoingFleetRecord = fleetDriver(OUTGOING_ID, outgoing.full_name, outgoing.phone_number)
 const incomingFleetRecord = fleetDriver(INCOMING_ID, incoming.full_name, incoming.phone_number)
-
-// ── Seal checks and confirmation bodies ─────────────────────────────────────────
 
 const PHOTO_HORSE = fx(400)
 const PHOTO_TRAILER = fx(401)
@@ -161,8 +153,6 @@ const confirmBody = (over: Partial<ConfirmSubstitutionRequest> = {}): ConfirmSub
   discrepancy_note: null,
   ...over,
 })
-
-// ── Request reads ───────────────────────────────────────────────────────────────
 
 const confirmation = (id: string, role: 'outgoing' | 'incoming'): ConfirmationSummary =>
   role === 'outgoing'
@@ -220,7 +210,6 @@ const normalCompleted = request({
   completion: { trigger: 'driver_confirmation', completed_by_driver_id: INCOMING_ID, completed_by_user_id: null },
 })
 
-// The outgoing driver could not confirm; an ordinary dispatcher attested the gap with a reason.
 const dispatcherAttestedCompleted = request({
   version: 3,
   state: 'completed',
@@ -232,7 +221,6 @@ const dispatcherAttestedCompleted = request({
   completion: { trigger: 'dispatcher_action', completed_by_driver_id: null, completed_by_user_id: DISPATCHER_ID },
 })
 
-// Fleet verification unavailable (PENDING): only an admin may attest. The status stays PENDING.
 const identityUnavailableCompleted = request({
   version: 3,
   state: 'completed',
@@ -255,16 +243,12 @@ const replacement = request({
 })
 const replacedOld = request({ version: 2, state: 'cancelled', replacement_request_id: replacement.id })
 
-// FAILED identity: the arrangement is saved with the truthful status but can never complete,
-// even for an admin. A dispatcher may only cancel or replace.
 const identityFailed = request({
   id: fx(103),
   identity: identity(INCOMING_ID, 'failed'),
   permitted_actions: ['cancel', 'replace'],
 })
 
-// Both captures saved, but a blocker prevents transfer. HTTP 200 success bodies, keyed by
-// blocker, kept apart from the error fixtures below.
 const blockedBody = (blocker: SubstitutionCompletionBlocker): SubstitutionRequestRead =>
   request({
     id: fx(110 + ['incoming_driver_inactive', 'licence_invalid', 'driver_unavailable', 'identity_not_verified'].indexOf(blocker)),
@@ -285,8 +269,6 @@ export const blockedConfirmationFixtures: Record<
   driver_unavailable: { http_status: 200, body: blockedBody('driver_unavailable') },
   identity_not_verified: { http_status: 200, body: blockedBody('identity_not_verified') },
 }
-
-// ── Context read with a relevant finding ────────────────────────────────────────
 
 const detail = (base: ConfirmationSummary, seals: SealCheck[], note: string | null): SubstitutionConfirmationDetail => ({
   ...base,
@@ -360,8 +342,6 @@ const contextWithFindings: DriverSubstitutionContextRead = {
   artifacts: [sealPhoto],
 }
 
-// ── Participation history (a former driver) ─────────────────────────────────────
-
 const formerAccess: DriverAccess = { participation: 'former', custody_sequence: 0, can_advance: false, can_submit_late_evidence: true }
 const currentAccessAfterTransfer: DriverAccess = { participation: 'current', custody_sequence: 1, can_advance: true, can_submit_late_evidence: true }
 const originalDriverAccess: DriverAccess = { participation: 'current', custody_sequence: 0, can_advance: true, can_submit_late_evidence: false }
@@ -375,8 +355,6 @@ const formerHistory: DriverParticipationHistoryRead = {
   artifacts: [sealPhoto],
   declarations: [detail(outgoingConfirmation, [intactSeal(HORSE_ID, PHOTO_HORSE, 'AB-1234'), notApplicableSeal], null)],
 }
-
-// ── Late evidence ───────────────────────────────────────────────────────────────
 
 const lateAwaiting: LateEvidenceRead = {
   id: fx(900),
@@ -430,8 +408,6 @@ const lateRequests: Record<LateEvidenceKind, LateEvidenceRequest> = {
   }),
 }
 
-// ── Notices, clarifications, custody integrity ──────────────────────────────────
-
 export const noticeFixtures: Record<'arrangedUnread' | 'cancelledUnread' | 'completedRead', SubstitutionNoticeRead> = {
   arrangedUnread: { id: fx(950), request_id: outgoingPending.id, trip_id: TRIP_ID, kind: 'arranged', created_at: T.arranged, read_at: null },
   cancelledUnread: { id: fx(951), request_id: cancelled.id, trip_id: TRIP_ID, kind: 'cancelled', created_at: T.arranged, read_at: null },
@@ -474,8 +450,6 @@ const custodyIntegrityFailed: CustodyIntegrityRead = {
   findings: ['Amendment 2 does not reference the hash of amendment 1.'],
 }
 
-// ── Trip-level custody fields (dispatcher detail) ───────────────────────────────
-
 export type TripCustodyFields = Required<
   Pick<
     Trip,
@@ -501,8 +475,6 @@ const noSubstitution: TripCustodyFields = {
   driver_access: null,
 }
 
-// After A→B the derived current driver is B while the original stays A. A second handover
-// (B→C) is pending, and the flag is off: new arrangements stop, existing work does not.
 const pendingSecondHandover = request({
   id: fx(104),
   outgoing: incoming,
@@ -520,8 +492,6 @@ const flagOffDetail: TripCustodyFields = {
   driver_substitutions_enabled: false,
   driver_access: null,
 }
-
-// ── Errors ──────────────────────────────────────────────────────────────────────
 
 type ErrorFixture = { http_status: number; body: SubstitutionErrorResponse }
 
@@ -557,8 +527,6 @@ export const substitutionErrorFixtures: Record<SubstitutionErrorCode, ErrorFixtu
   SUBSTITUTIONS_DISABLED: errorFixture('SUBSTITUTIONS_DISABLED', 'New driver handovers are temporarily unavailable.'),
 }
 
-// ── Endpoint / status / code matrix (as data) ───────────────────────────────────
-
 export type SubstitutionMatrixAction =
   | 'arrange_or_replace'
   | 'driver_confirmation'
@@ -573,7 +541,6 @@ export interface SubstitutionEndpointOutcome {
   action: SubstitutionMatrixAction
   outcome: string
   http_status: number
-  // null for a success; otherwise the contract code carried in `detail.code`.
   code: SubstitutionErrorCode | null
 }
 
@@ -606,8 +573,6 @@ export const SUBSTITUTION_ENDPOINT_MATRIX: readonly SubstitutionEndpointOutcome[
   { endpoint: LIVE, action: 'live_trip_write', outcome: 'proven actor-bound exact accepted replay after transfer', http_status: 409, code: 'EVIDENCE_ALREADY_RECORDED' },
   { endpoint: 'arrange | artifact | late evidence | correction', action: 'exact_replay', outcome: 'exact accepted replay: original success status, no second side effect', http_status: 201, code: null },
 ]
-
-// ── Request-body fixtures ───────────────────────────────────────────────────────
 
 const arrangeBody: ArrangeSubstitutionRequest = {
   client_request_id: fx(520),
@@ -653,8 +618,6 @@ export const substitutionRequestBodyFixtures = {
   acknowledge: acknowledgeBody,
   lateEvidence: lateRequests,
 } as const
-
-// ── The pack, one entry per state the contract names ────────────────────────────
 
 export const substitutionFixturePack = {
   noSubstitution,

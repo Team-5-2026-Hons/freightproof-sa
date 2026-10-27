@@ -10,7 +10,6 @@ import { cn } from '@/lib/utils'
 
 interface ActiveTripCardProps {
   summary: DriverTripSummary
-  /** The session trip, when it is this one — it alone carries the phase plan. */
   trip: Trip | null
   onOpen: () => void
 }

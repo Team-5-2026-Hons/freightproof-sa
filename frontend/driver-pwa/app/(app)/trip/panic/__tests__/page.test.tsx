@@ -6,31 +6,18 @@ import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 
-// One fix, shaped exactly as useLocation.capture() resolves it (capturedAt included),
-// so the assertions below can check the whole location payload, not just the pair.
 const FIX = { latitude: -26.09, longitude: 28.13, accuracy: 5, capturedAt: '2026-09-16T10:00:00.000Z' }
 
-// Marks every phase up to and including `through` (by sequence_number) as completed —
-// same local helper lib/phase/__tests__/derive.test.ts uses.
 function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
   return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
 
-// `trip` is provided to PanicPage via useTrip() (session-derived) — there's no URL
-// param to verify against, so these tests only cover the loading/no-trip states and
-// the handlePanic sequencing.
 const mockUseTrip = vi.fn()
 const mockRouterBack = vi.fn()
 const mockRouterReplace = vi.fn()
 
-// `capture` is reassigned per-test (success vs. GPS-failure payloads) for the
-// handlePanic sequencing tests below — declared here so the module mock can
-// reference a mutable function.
 const mockCapture = vi.fn()
 
-// Fix 2 (panic over-promise): asserted directly in the "queued" sequencing tests below
-// so a failed logException can be told apart from an enqueued one without hitting real
-// localStorage.
 const mockEnqueueException = vi.fn()
 
 /** The sent/saved screen's URL the panic page navigated to, as parameters. */
@@ -101,8 +88,6 @@ describe('PanicPage no-active-trip guard', () => {
     expect(mockRouterBack).not.toHaveBeenCalled()
   })
 
-  // A blank screen on the PANIC page reads as a dead app at the worst possible
-  // moment — the loading state must render a visible spinner, not `return null`.
   it('renders a spinner (not a blank screen) while the trip is loading', () => {
     mockUseTrip.mockReturnValue({ trip: null, isLoading: true, logException: vi.fn() })
 
@@ -113,8 +98,6 @@ describe('PanicPage no-active-trip guard', () => {
     expect(screen.queryByText(/unable to verify trip/i)).not.toBeInTheDocument()
   })
 
-  // Cold load / deep link means the panic page may have no back-history — the main
-  // Cancel button must replace to the in-transit hub, never pop an empty stack.
   it('main Cancel button uses router.replace to in-transit, not router.back', () => {
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException: vi.fn() })
 
@@ -137,27 +120,17 @@ describe('PanicPage handlePanic sequencing', () => {
     vi.useRealTimers()
   })
 
-  // SwipeToConfirm's onConfirm only fires after its own SETTLE_DURATION_MS handoff
-  // delay, and only once armed twice — so we drive its keyboard path (Enter, Enter)
-  // rather than a real pointer drag: this test suite only cares about handlePanic's
-  // downstream sequencing (GPS capture, logException, queueing), not the drag gesture
-  // itself, which has its own dedicated coverage in SwipeToConfirm.test.tsx.
   function confirmPanicSwipe() {
     const slider = screen.getByRole('slider', { name: /send panic/i })
 
-    fireEvent.keyDown(slider, { key: 'Enter' }) // arm
-    fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
+    fireEvent.keyDown(slider, { key: 'Enter' })
+    fireEvent.keyDown(slider, { key: 'Enter' })
 
     act(() => {
-      // SwipeToConfirm's SETTLE_DURATION_MS (180ms) handoff delay before onConfirm
-      // actually fires.
       vi.advanceTimersByTime(180)
     })
   }
 
-  // Runs the handler to completion: capture() is raced against REPORT_CAPTURE_BUDGET_MS
-  // (lib/utils/bounded-capture.ts), so advancing exactly that far releases a stalled
-  // capture AND flushes the promise continuations a fast one leaves behind.
   async function settlePanic(): Promise<void> {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS)
@@ -172,9 +145,6 @@ describe('PanicPage handlePanic sequencing', () => {
     render(<PanicPage />)
     confirmPanicSwipe()
 
-    // capture() and logException() are awaited/called inside an async
-    // handler invoked from a fake-timer callback — flush microtasks so
-    // those promise continuations resolve before asserting.
     await settlePanic()
 
     expect(mockCapture).toHaveBeenCalled()
@@ -215,22 +185,17 @@ describe('PanicPage handlePanic sequencing', () => {
     render(<PanicPage />)
     confirmPanicSwipe()
 
-    // Just short of the budget: still waiting on the phone, nothing sent yet.
     await act(async () => { await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS - 1) })
     expect(logException).not.toHaveBeenCalled()
 
     await act(async () => { await vi.advanceTimersByTimeAsync(1) })
 
-    // Budget elapsed: the alert goes WITHOUT a fix rather than waiting any longer.
     expect(logException).toHaveBeenCalledWith(
       'panic_button', expect.objectContaining({ description: 'Driver activated panic button.', gpsLat: null, gpsLng: null }),
     )
     expectSentReceipt()
   })
 
-  // Fix 2 (panic over-promise): when the backend call fails, the alert is queued
-  // on-device instead of silently lost — and PanicSubmittedPageClient must be told so
-  // it doesn't claim the dispatcher was notified when nothing has actually sent.
   it('queues the alert and navigates with the queued flag when logException fails', async () => {
     const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
@@ -241,9 +206,6 @@ describe('PanicPage handlePanic sequencing', () => {
 
     await settlePanic()
 
-    // The queued body must carry the captured fix too — a retry that sends without
-    // location would break the page's "location is included" promise precisely in the
-    // offline case panic queuing exists for.
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
@@ -285,8 +247,6 @@ describe('PanicPage handlePanic sequencing', () => {
 
     await settlePanic()
 
-    // No gps_lat/gps_lng keys at all — the backend 422s a partial fix, which would
-    // make the offline queue drop the panic entry as a terminal failure.
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
@@ -295,14 +255,7 @@ describe('PanicPage handlePanic sequencing', () => {
   })
 
   it('queued body carries the phase the driver was on, captured before the queue wait', async () => {
-    // The regression this whole change exists for. This entry can sit in the queue until
-    // signal returns — possibly after the driver has arrived and the trip has advanced —
-    // so the phase has to be resolved NOW, at the press, not at flush time. Without it
-    // the alert lands untagged and the dispatcher infers placement on every render,
-    // which is what made a 15:17 panic appear to walk forward through the timeline.
     const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
-    // Everything through departure resolved: the ledger sits on the PENDING in_transit
-    // row for the whole drive, which is exactly where a panic on the road belongs.
     const phases = walk(SINGLE_LEG_PHASE_PLAN, 3)
     const inTransit = phases.find((p) => p.phase_type === 'in_transit')!
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123', phases }, isLoading: false, logException })
@@ -322,9 +275,6 @@ describe('PanicPage handlePanic sequencing', () => {
   })
 
   it('still queues the alert when the trip carries no phase plan at all', async () => {
-    // Defensive: this runs inside the catch block of an already-failed send. A throw
-    // here would lose the panic AND strand the driver on this screen. Untagged is a
-    // small loss; unsent is the whole failure.
     const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
     mockCapture.mockResolvedValue(null)
@@ -347,7 +297,6 @@ describe('PanicPage — the overhauled screen (7.1, 7.1b)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted: false })
-    // jsdom implements none of the Pointer Capture API; SwipeToConfirm calls all three.
     HTMLElement.prototype.setPointerCapture = vi.fn()
     HTMLElement.prototype.releasePointerCapture = vi.fn()
     HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
@@ -385,7 +334,6 @@ describe('PanicPage — the overhauled screen (7.1, 7.1b)', () => {
 
     fireEvent.pointerDown(slider, { clientX: 0, pointerId: 1 })
 
-    // See-through and inert: the screen stays readable and every control still works.
     const pulse = document.querySelector('[data-panic-pulse]')
     expect(pulse).not.toBeNull()
     expect(pulse).toHaveClass('pointer-events-none')

@@ -44,7 +44,6 @@ _AUDIENCE = "authenticated"
 _DISPATCHER_ROLES = {DispatcherRole.DISPATCHER, DispatcherRole.ADMIN_DISPATCHER}
 _DRIVER_ROLE = "driver"
 
-# Fixed stub identity used in DEMO_MODE — must match the org created by DB seeds.
 _DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 _DEMO_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 _DEMO_NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -80,10 +79,7 @@ _DEMO_DRIVER = DriverRead(
 
 _jwks_cache: dict | None = None
 _jwks_fetched_at: float = 0.0
-_JWKS_TTL_SECONDS: float = 3600.0  # 1-hour TTL; force-refresh on unknown kid for rotation.
-# The kid is read before the signature is checked, so anyone can send an unknown one. The
-# fetch blocks the event loop, so a forced refresh happens at most once per window rather
-# than once per forged token; a real rotation waits at most this long to be picked up.
+_JWKS_TTL_SECONDS: float = 3600.0
 _JWKS_MIN_REFRESH_SECONDS: float = 60.0
 
 
@@ -108,8 +104,6 @@ def _get_signing_key(kid: str) -> dict:
     for key in _get_jwks().get("keys", []):
         if key.get("kid") == kid:
             return key
-    # Not found — key may have rotated since last TTL refresh. Refresh once, unless the
-    # cache is already fresher than the cooldown.
     global _jwks_cache, _jwks_fetched_at
     if time.monotonic() - _jwks_fetched_at >= _JWKS_MIN_REFRESH_SECONDS:
         _jwks_cache = _fetch_jwks()
@@ -245,9 +239,6 @@ async def get_current_dispatcher(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Last, after the account checks, so an idle-expired session is told the truthful
-    # reason rather than a generic one. Also stamps this request as activity, which is
-    # what keeps an ACTIVE session alive — see app/auth/sessions.py.
     await enforce_user_idle_timeout(db, user_id=user.id, payload=payload)
 
     user_read = UserRead.model_validate(user)
@@ -314,19 +305,12 @@ async def get_current_driver(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Both session rules run last, after the account checks, so a refused handset is told
-    # the truthful reason rather than a generic one — see app/auth/sessions.py.
-    #
-    # Order matters and is not stylistic: enforce_single_device stamps last_seen_at
-    # forward, so the idle check has to read that column BEFORE it is refreshed by this
-    # very request. Reversed, the timeout would never fire for anybody.
     await enforce_driver_idle_timeout(db, driver_id=driver.id, payload=payload)
     await enforce_single_device(db, driver_id=driver.id, payload=payload)
 
     return DriverRead.model_validate(driver)
 
 
-# Guard: DEMO_MODE must never be enabled in production — it bypasses all authentication.
 if settings.DEMO_MODE and settings.ENVIRONMENT not in {"development", "test"}:
     raise RuntimeError(
         f"DEMO_MODE=True is not permitted when ENVIRONMENT='{settings.ENVIRONMENT}'. "

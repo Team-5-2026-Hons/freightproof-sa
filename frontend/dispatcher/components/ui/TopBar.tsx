@@ -4,15 +4,10 @@ import type { ReactNode } from 'react'
 
 interface TopBarProps {
   title: string
-  /** Optional complete title/subtitle treatment for context-specific headers. */
   identity?: ReactNode
-  /** Badge rendered inline next to the title — e.g. an admin-only indicator. */
   badge?: ReactNode
-  /** Secondary line below title — shown in sec colour, tabular-nums. */
   sub?: string
-  /** Left slot — rendered before the title. Use for back navigation only. */
   left?: ReactNode
-  /** Right slot — buttons, chips, etc. Rendered in a flex row with 8px gap. */
   children?: ReactNode
 }
 

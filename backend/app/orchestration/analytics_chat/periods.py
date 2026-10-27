@@ -31,8 +31,6 @@ class PeriodPreset(str, enum.Enum):
     CUSTOM = "custom"
 
 
-# period.ts PRESET_WEEKS / PRESET_MONTHS / PRESET_YEARS: a preset ends with the current
-# bucket, so "Last 12 weeks" is this week plus the 11 before it.
 _PRESET_WEEKS = {
     PeriodPreset.LAST_4_WEEKS: 4,
     PeriodPreset.LAST_12_WEEKS: 12,

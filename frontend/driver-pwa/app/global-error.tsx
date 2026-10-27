@@ -10,15 +10,12 @@
 import { useEffect } from 'react'
 
 interface GlobalErrorProps {
-  // Required Next.js signature: the thrown error (with an optional production digest)
-  // plus a reset callback that attempts to re-render the crashed tree.
   error: Error & { digest?: string }
   reset: () => void
 }
 
 export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
-    // Drivers won't report stack traces — log for remote WebView inspection.
     console.error('Global error boundary caught', error)
   }, [error])
 
@@ -34,8 +31,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             </p>
           </div>
           <div className="flex w-full flex-col gap-3">
-            {/* Hand-styled to match Button variant="primary"/"secondary" size="lg" —
-                importing the real Button would defeat the dependency-free rule above. */}
             <button
               type="button"
               onClick={reset}
@@ -43,11 +38,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             >
               Try Again
             </button>
-            {/* Literal "/" instead of ROUTES.home: this file must not import app modules
-                (see header comment); a full page load of Home is the safest recovery.
-                Plain <a> over next/link is likewise deliberate — the router just
-                crashed; a hard document load is the one navigation that can't depend
-                on it. */}
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"

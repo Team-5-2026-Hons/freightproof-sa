@@ -14,8 +14,6 @@ export const COMPLETION_MODE_LABELS: Record<SubstitutionCompletionMode, string> 
   dispatcher_attested: 'Completed by dispatcher',
 }
 
-// "Sealed" is the dispatcher-facing word for a Hedera anchor; `not_required` is a record that
-// never needed one, which is different from one still waiting.
 export const ANCHOR_STATUS_LABELS: Record<AnchorStatus, string> = {
   anchored: 'Sealed on Hedera',
   pending: 'Sealing pending',
@@ -23,8 +21,6 @@ export const ANCHOR_STATUS_LABELS: Record<AnchorStatus, string> = {
   not_required: 'Not sealed',
 }
 
-// Legacy planned requests needed both drivers to confirm; only the immediate format is the incoming
-// driver's acceptance alone. The two read differently to someone checking who agreed to what.
 const BOTH_DRIVERS_CONFIRMED = 'Both drivers confirmed'
 const INCOMING_ONLY_FORMAT: RequestFormat = 'immediate_v2'
 

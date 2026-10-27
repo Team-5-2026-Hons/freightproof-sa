@@ -65,8 +65,6 @@ _CLOSED_DETAIL = {
 }
 
 
-# The header the portal sends a viewer grant in. A header, not a query parameter: a URL
-# is written to access logs, proxy logs and browser history.
 GRANT_HEADER = "X-Audit-Pack-Grant"
 
 _PASSWORD_FAILED_DETAIL = {
@@ -80,7 +78,6 @@ def _closed(exc: ShareLinkClosed) -> JSONResponse:
 
 
 def _unverified(exc: EmailVerificationRequired) -> JSONResponse:
-    # verification_required tells the portal to show the code screen rather than an error.
     return JSONResponse(
         status_code=http_status.HTTP_401_UNAUTHORIZED,
         content={
@@ -121,8 +118,6 @@ async def pack_seal_endpoint(pack_id: UUID, db: AsyncSession = Depends(get_db)) 
 @router.get(
     "/{token}",
     response_model=PublicAuditPackView,
-    # A pack frozen under manifest v1 must be served as v1: fields it never had (v2 additions)
-    # stay absent instead of appearing as defaults the issuer never wrote.
     response_model_exclude_unset=True,
     summary="Open an audit pack from its share link",
     dependencies=[Depends(rate_limit(AUDIT_PACK_PUBLIC))],
@@ -195,7 +190,6 @@ async def shared_incident_sheet_endpoint(
     except EmailVerificationRequired as exc:
         return _unverified(exc)
     except NoIncidentError:
-        # A normal response, not a raise, so the download log row commits (see module doc).
         return JSONResponse(status_code=http_status.HTTP_409_CONFLICT, content={"detail": "This pack records no critical incident."})
     return Response(
         content=pdf, media_type="application/pdf",
@@ -223,15 +217,12 @@ async def shared_artifact_endpoint(
     except EmailVerificationRequired as exc:
         return _unverified(exc)
     except StoredFileMismatchError as exc:
-        # An integrity failure, not an outage: "try again" would hide that the stored file
-        # changed after it was sealed. Same status as the PDF route's mismatch.
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail="The stored evidence file no longer matches the one sealed. Contact the issuing operator.",
         ) from exc
     except FileStorageUnavailableError as exc:
         raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail="Try again shortly.") from exc
-    # Evidence bytes must never be interpreted as a page by the browser.
     return Response(
         content=data, media_type=mime_type,
         headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"},
@@ -242,7 +233,6 @@ async def shared_artifact_endpoint(
     "/{token}/verify",
     response_model=LiveVerification,
     summary="Re-check every anchored record against today's database and Hedera",
-    # Each run reads the public mirror node once per anchored record.
     dependencies=[Depends(rate_limit(BLOCKCHAIN_VERIFY))],
 )
 async def verify_pack_endpoint(
@@ -278,7 +268,6 @@ async def verify_password_endpoint(
     except ShareLinkClosed as exc:
         return _closed(exc)
     if check.grant is None or check.grant_expires_at is None:
-        # Returned, not raised: the attempt count and the denied log row must commit.
         return JSONResponse(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             content={"detail": _PASSWORD_FAILED_DETAIL[check.outcome], "reason": check.outcome},

@@ -15,7 +15,6 @@ interface Props {
   onRetryArtifacts?: () => void
   phase: PhaseDescriptor
   trip: Trip
-  // The precinct this phase is anchored to, resolved by the page from phase.stop_sequence.
   precinct: Precinct | undefined
   artifactsById: Map<string, EvidenceArtifactWithUrl>
 }
@@ -37,8 +36,6 @@ export function ActivationDetail({ phase, trip, precinct }: Props) {
 
       <PhaseLocationSection phase={phase} precinct={precinct} />
 
-      {/* An override means a human bypassed a check. It is never a footnote — and it is
-          no longer only activation's concern, so the rendering is shared. */}
       <PhaseOverrideSection phase={phase} />
 
     </PhaseDetailCard>

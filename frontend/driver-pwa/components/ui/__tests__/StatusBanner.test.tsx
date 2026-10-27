@@ -19,7 +19,6 @@ describe('StatusBanner', () => {
   })
 
   it('test_attention_tone_is_amber_not_red', () => {
-    // Waiting / under review / offline are not errors and must never read as one.
     const { container } = render(<StatusBanner tone="attention" title="Waiting for dispatch" />)
 
     const banner = container.firstElementChild as HTMLElement
@@ -40,7 +39,6 @@ describe('StatusBanner', () => {
   })
 
   it('test_is_a_live_region_only_when_asked', () => {
-    // Most banners describe a settled state; announcing them on every render is noise.
     const { rerender } = render(<StatusBanner tone="neutral" title="Static" />)
 
     expect(screen.queryByRole('status')).toBeNull()

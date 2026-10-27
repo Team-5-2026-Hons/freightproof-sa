@@ -14,7 +14,6 @@ from scripts.dev_reset_lifecycle import (
     _SEVERED_BEFORE_DELETE,
 )
 
-# Deleted by their own statements after _DELETE_ORDER: trip-scoped receipts, then trips.
 _DELETED_SEPARATELY = ["blockchain_receipts", "trips"]
 
 
@@ -96,7 +95,6 @@ def test_reset_clears_attribution_before_deleting_phase_events():
     assert "SET phase_event_id = NULL" in _CLEAR_ATTRIBUTION
     assert "evidence_role = NULL" in _CLEAR_ATTRIBUTION
 
-    # Without the pre-delete UPDATE the order check would fail, so the exemption is earned.
     sequence = [*_DELETE_ORDER, *_DELETED_SEPARATELY]
     position = {table: index for index, table in enumerate(sequence)}
     assert position["evidence_artifacts"] > position["phase_events"]

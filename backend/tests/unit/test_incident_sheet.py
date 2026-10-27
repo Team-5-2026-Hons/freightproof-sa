@@ -58,17 +58,13 @@ def test_suggested_tapa_category_broken_seal_at_arrival_is_theft_from_vehicle():
 
 
 def test_suggested_tapa_category_covers_every_critical_theft_indicator():
-    # Arrange: the exception types the phase and geofence services raise as critical
-    # or safety findings; each should give the reporter a starting category.
     indicators = [
         "panic_button", "seal_mismatch", "seal_compromised", "parcel_count_mismatch",
         "trailer_separated_in_transit", "trailer_location_mismatch", "moved_before_departure",
     ]
 
-    # Act
     missing = [t for t in indicators if suggested_tapa_category(t) is None]
 
-    # Assert
     assert missing == []
 
 
@@ -77,10 +73,8 @@ def test_suggested_tapa_category_unknown_type_is_none():
 
 
 def test_incident_sheet_html_has_what_a_detective_asks_for():
-    # Act
     html = render_incident_sheet_html(_incident_manifest(), verify_url="https://portal/v/pack-1")
 
-    # Assert
     for expected in ("ABC123GP", "TRL456GP", "YV2RT40A5LB123456", "PUL-ABC123GP", "-28.27260, 29.12940",
                      "123/09/2026", "Harrismith SAPS", "Hijacking / robbery (suspected)", "https://portal/v/pack-1",
                      "*********9087"):
@@ -93,10 +87,8 @@ def test_incident_sheet_refuses_trip_without_critical_incident():
 
 
 def test_incident_sheet_pdf_is_at_most_two_pages():
-    # Act
     pdf = render_incident_sheet_pdf(_incident_manifest(), verify_url=None)
 
-    # Assert
     assert pdf.startswith(b"%PDF-")
     assert len(PdfReader(io.BytesIO(pdf)).pages) <= 2
 
@@ -147,24 +139,19 @@ def test_incident_sheet_summary_row_carries_the_first_critical_reports_real_tier
 
 
 def test_incident_sheet_html_names_the_order_number_when_recorded():
-    # Act
     html = render_incident_sheet_html(_incident_manifest(), verify_url="https://portal/v/pack-1")
 
-    # Assert
     assert f"order {_incident_manifest().trip.order_number}" in html
 
 
 def test_incident_sheet_without_order_number_omits_the_order_fragment():
-    # Arrange: a manifest-imported trip has no order number; the sheet must not print "order None".
     manifest = _incident_manifest()
     trip = TripSummary.model_validate({**manifest.trip.model_dump(), "order_number": None})
     manifest = manifest.model_copy(update={"trip": trip})
 
-    # Act
     html = render_incident_sheet_html(manifest, verify_url="https://portal/v/pack-1")
     pdf = render_incident_sheet_pdf(manifest, verify_url="https://portal/v/pack-1")
 
-    # Assert
     assert "order None" not in html
     assert " · order " not in html
     assert pdf.startswith(b"%PDF-")

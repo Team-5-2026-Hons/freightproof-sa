@@ -40,14 +40,9 @@ async def _anchor(
     Isolated as a private coroutine so unit tests can drive it directly without a
     running Celery worker — same shape as tasks/parcel_perfect.py's _sync_all_active.
     """
-    # A fresh engine per invocation, not the module-level one from db/session.py:
-    # Celery workers may run in a forked subprocess where a pre-fork connection pool is
-    # unsafe. Mirrors parcel_perfect.py's reasoning.
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Imported here, not at module scope: phases.anchor_dispatch imports this module to
-    # dispatch this task, and the pair stay lazy until check B7 is used to promote them.
     from app.orchestration.phases.anchor_execution import anchor_phase_event
 
     try:

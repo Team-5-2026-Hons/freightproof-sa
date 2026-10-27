@@ -7,7 +7,6 @@ import pytest
 from app.orchestration.assistant.hints import hints_for
 
 SAST = timezone(timedelta(hours=2))
-# Wednesday 21 Oct 2026.
 _NOW = datetime(2026, 10, 21, 14, 32, tzinfo=SAST)
 
 

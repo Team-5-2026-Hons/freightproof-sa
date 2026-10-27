@@ -2,9 +2,6 @@ import type { ReactNode } from 'react'
 import { Ic, type IconName } from '@/components/ui/Ic'
 import { cn } from '@shared/lib/utils/cn'
 
-// The underline field: the Material 3 filled look SearchSelect already uses. There is a
-// base and one border variant per state, because cn() is a plain join (no tailwind-merge),
-// so stacked border colours would leave the winner to stylesheet order.
 const FIELD_BASE =
   'w-full bg-surf-low border-0 border-b-2 rounded-t-sm px-3 py-[10px] text-[14px] text-on-surf ' +
   'outline-none focus:bg-sec-c transition-all duration-150'
@@ -32,7 +29,6 @@ export function FieldLabel(
   { htmlFor, id, required = false, children }: { htmlFor?: string; id?: string; required?: boolean; children: ReactNode },
 ): React.JSX.Element {
   const className = 'mb-1 block text-[12px] font-[600] text-on-surf-v'
-  // The asterisk is visual. aria-hidden keeps it out of the accessible name.
   const mark = required ? <span aria-hidden="true"> *</span> : null
   return htmlFor
     ? <label htmlFor={htmlFor} className={className}>{children}{mark}</label>

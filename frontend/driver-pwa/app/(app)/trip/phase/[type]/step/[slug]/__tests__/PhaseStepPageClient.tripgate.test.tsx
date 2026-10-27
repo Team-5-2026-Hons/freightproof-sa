@@ -43,14 +43,10 @@ const mockRouterReplace = vi.fn()
 const mockNotify = vi.fn()
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
-// The success path adopts the trip the submit already returned instead of refetching it.
 const mockAdoptTrip = vi.fn()
 const mockEnqueuePhase = vi.fn()
-// Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
-// Raised by the final phase of a plan (see TripCompleteOverlay); stubbed so the
-// hand-off under test runs the same code path the app does.
 const mockNoteTripCompleted = vi.fn()
 
 interface MockTripState {
@@ -64,8 +60,6 @@ interface MockTripState {
   noteTripCompleted: typeof mockNoteTripCompleted
 }
 
-// Reassigned mid-test (then rerender()ed) to simulate TripContext's shared state moving
-// under an already-mounted page.
 let tripState: MockTripState
 
 function setTripState(trip: Trip | null, isLoading: boolean): void {
@@ -87,9 +81,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => tripState }))
-// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
-// Mocked like every other hook here so these tests stay about submission behaviour, and
-// so the fix is a known value the payload assertions can check for.
 const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
@@ -101,16 +92,6 @@ vi.mock('@/lib/hooks/useOfflineQueue', () => ({
 }))
 vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSubmitPhase(...args) }))
 
-// usePhaseDraft/useSealReference/useVisualCountCarry are deliberately REAL here — the
-// whole bug lives in their localStorage lazy initializers, so mocking them would test
-// nothing. Step components are stubbed via the registry (components/phase/ is out of
-// scope for this task and stubbing the lookup point avoids depending on 16 real
-// components' own internals).
-// Arrival, not activation: activation's draft is down to capturedAt now that its GPS
-// is captured silently at submit, so it no longer holds evidence worth proving survives
-// a cold start. Arrival's seal number is exactly that kind of evidence — typed by the
-// driver, expensive to re-capture, and lost forever if a mid-flight reload wipes the
-// draft. (The seal check moved here from unloading; see evidence-draft.ts.)
 function SealVerifyStub({
   draft, onUpdate,
 }: {
@@ -225,15 +206,6 @@ afterEach(() => {
 
 describe('trip-loading gate — drafts survive a mount that begins before the trip loads (Fix 1)', () => {
   it('loads a previously persisted draft under the real (tripId, phase_event_id) key, and the next update merges instead of wiping it', async () => {
-    // The driver typed the arrival seal on an earlier session; then the app cold-starts
-    // straight onto the step URL (reload / relaunch / notification deep link).
-    //
-    // Deliberately written with gatePhotoArtifactId, a field that lived on
-    // UnloadingEvidence before the seal check moved to its own arrival phase. This is
-    // raw JSON, not a typed literal, precisely so it can carry a dead key: it stands in
-    // for a draft with known capture provenance and an older evidence shape — the real
-    // situation for any driver who was mid-trip when the app updated. Reading it must
-    // merge cleanly and ignore the dead key, not throw or wipe the seal already typed.
     writeDraft(
       TRIP_ID, ARRIVAL_PE, { actorId: 'driver-1', custodySequence: 0 },
       {
@@ -246,13 +218,8 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
 
     const { rerender } = render(<PhaseStepPageClient />)
 
-    // While TripContext is still loading, the step — and therefore usePhaseDraft's lazy
-    // initializer — must not have mounted at all. Before the fix it would have mounted
-    // here with tripId = '' and initialized empty state under the wrong key.
     expect(screen.queryByText(/seal:/)).not.toBeInTheDocument()
 
-    // The trip arrives on the SAME mount. The step appears with the persisted draft —
-    // not an empty ACTIVATION_INITIAL.
     const trip = makeTrip([makePhase({
       phase_event_id: ARRIVAL_PE, phase_type: 'arrival', sequence_number: 4, status: 'in_progress',
     })])
@@ -260,15 +227,13 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     rerender(<PhaseStepPageClient />)
     expect(await screen.findByText('seal:AB-1234')).toBeInTheDocument()
 
-    // The next onUpdate must MERGE into the stored draft. The buggy version would have
-    // written {...emptyPrev, ...patch} to the real key here, erasing the typed seal.
     fireEvent.click(screen.getByText('patch-condition'))
 
     const stored = JSON.parse(localStorage.getItem(arrivalDraftKey()) ?? '{}') as { draft: {
       sealNumberAtArrival: string | null; sealCondition: string | null
     } }
-    expect(stored.draft.sealNumberAtArrival).toBe('AB-1234') // previously captured evidence survived
-    expect(stored.draft.sealCondition).toBe('intact') // and the new patch landed alongside it
+    expect(stored.draft.sealNumberAtArrival).toBe('AB-1234')
+    expect(stored.draft.sealCondition).toBe('intact')
   })
 })
 
@@ -283,15 +248,9 @@ describe('submit keeps the step UI on screen (Fix 2)', () => {
 
     const { rerender } = render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-confirmation'))
-    // Location comparison is best-effort in this browser test; acknowledge the
-    // unavailable check before exercising the confirmation submission flow.
     fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
 
-    // Once confirmation submits the trip is CLOSED — /trips/me/active legitimately has
-    // nothing left to return, so the shared trip goes null while this page is still
-    // mounted (the mocked router stands in for the in-flight push). The step must still
-    // render rather than the "Trip not found." dead-end.
     setTripState(null, false)
     rerender(<PhaseStepPageClient />)
     expect(screen.queryByText('Trip not found.')).not.toBeInTheDocument()

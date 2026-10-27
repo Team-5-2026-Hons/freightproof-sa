@@ -72,8 +72,6 @@ def stops(seed: dict[str, Any]) -> list[Precinct]:
     return [seed["origin"], seed["dest"]]
 
 
-# ── Auth ─────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_tiles_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_TILES)
@@ -110,8 +108,6 @@ async def test_fleet_tiles_with_driver_token_returns_403(
     assert response.status_code == 403
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_tiles_for_an_org_without_trips_returns_zeros(
     client: AsyncClient, operator: Operator,
@@ -122,12 +118,9 @@ async def test_fleet_tiles_for_an_org_without_trips_returns_zeros(
     body = response.json()
     assert body["live_trips"] == 0
     assert body["critical_waiting"] == {"count": 0, "oldest_created_at": None}
-    # Removed tiles are gone from the response, not just hidden on the page.
     assert "parcels_complete" not in body
     assert "receipts_owed" not in body
-    # The seeded driver and horse have no expiry date on file.
     assert body["licence_expiry"] == {"drivers": _bands(no_date=1), "vehicle_discs": _bands(no_date=1)}
-    # An active horse that has never had a trip is unused.
     assert [row["vehicle_id"] for row in body["unused_vehicles"]["vehicles"]] == [str(operator.horse.id)]
     assert body["all_time_start"] == today_sast().isoformat()
 
@@ -197,7 +190,6 @@ async def test_fleet_tiles_licence_expiry_bands_are_separate_and_active_only(
 
     assert response.status_code == 200
     expiry = response.json()["licence_expiry"]
-    # The seeded driver and horse add one "no date" each.
     assert expiry["drivers"] == _bands(
         expired=1, within_30_days=2, within_90_days=2, within_180_days=2, no_date=2,
     )
@@ -238,7 +230,6 @@ async def test_fleet_tiles_unused_vehicles_had_no_recent_or_live_trip(
     assert response.status_code == 200
     unused = response.json()["unused_vehicles"]
     assert unused["window_days"] == TILE_WINDOW_DAYS
-    # Ordered horses first, then trailers.
     assert unused["vehicles"] == [
         {"vehicle_id": str(old_horse.id), "registration": old_horse.registration, "vehicle_type": "horse"},
         {"vehicle_id": str(idle_trailer.id), "registration": idle_trailer.registration, "vehicle_type": "trailer"},

@@ -23,7 +23,6 @@ _MIGRATION_PATH = (
     / "migrations" / "versions" / "2026_09_23_ciaran_lock_down_data_api.py"
 )
 _PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE")
-# A table created after the migration, to prove new tables now start closed.
 _PROBE_TABLE = "lockdown_probe"
 
 
@@ -73,7 +72,6 @@ async def supabase_defaults(db_session: AsyncSession) -> AsyncSession:
             f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') "
             f"THEN CREATE ROLE {role} NOLOGIN; END IF; END $$"
         ))
-    # create_all() never makes alembic_version; a real migrated database always has it.
     await db_session.execute(text(
         "CREATE TABLE IF NOT EXISTS public.alembic_version (version_num varchar(32) PRIMARY KEY)"
     ))
@@ -125,8 +123,6 @@ async def test_downgrade_restores_the_previous_state(supabase_defaults: AsyncSes
     assert ("anon", "SELECT") in await _api_privileges(db, table)
     assert ("anon", "SELECT") in await _api_privileges(db, _PROBE_TABLE)
 
-
-# ── FP-290: evidence-anchor tables (2026_10_14_ciaran_evidence_anchors) ─────────
 
 _EVIDENCE_ANCHORS_MIGRATION = _load_migration(
     Path(__file__).resolve().parents[2]

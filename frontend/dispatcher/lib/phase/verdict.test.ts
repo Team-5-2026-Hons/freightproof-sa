@@ -6,12 +6,10 @@ import type { TripStatus } from '@shared/lib/types/trip'
 import type { CheckKey, CheckResult, PhaseCheck } from './checks'
 import { CONFIRM_VERBS, phaseVerdict, type PhaseOutcome, type PhaseVerdict, type PhaseVerdictInput } from './verdict'
 
-// Single-leg plan: 0 trip_creation, 1 activation, 2 loading, 3 departure, 4 in_transit,
-// 5 arrival, 6 unloading, 7 confirmation.
 const SEQ = { creation: 0, activation: 1, loading: 2, departure: 3, transit: 4, arrival: 5, unloading: 6, confirmation: 7 } as const
 
-const DEPARTED_AT = '2026-10-13T07:00:00Z' // 09:00 SAST
-const NOW_MS = Date.parse('2026-10-13T10:12:00Z') // 12:12 SAST
+const DEPARTED_AT = '2026-10-13T07:00:00Z'
+const NOW_MS = Date.parse('2026-10-13T10:12:00Z')
 
 function phase(seq: number, patch: Partial<PhaseDescriptor> = {}): PhaseDescriptor {
   return { ...SINGLE_LEG_PHASE_PLAN.find(p => p.sequence_number === seq)!, ...patch }
@@ -132,7 +130,6 @@ describe('outcome precedence', () => {
 
     expect(v?.outcome).toBe('clean')
     expect(v?.headline).toBe('Checks passed')
-    // Short on purpose: the passing checks themselves are listed in the Checked zone.
     expect(v?.reasons).toEqual(['2 of 2'])
   })
 

@@ -24,7 +24,6 @@ vi.mock('@/lib/hooks/useToast', () => ({
 
 const push = vi.fn()
 const replace = vi.fn()
-// The query the page is opened with, as the router would hand it back from the URL.
 const urlQuery = vi.hoisted(() => ({ current: '' }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace, back: vi.fn() }),
@@ -38,7 +37,6 @@ vi.mock('@/lib/hooks/useTrips', () => ({ useTrips: vi.fn() }))
 const mockedUseTrips = vi.mocked(useTrips)
 const mockedUsePrecincts = vi.mocked(usePrecincts)
 
-// The list only reads the name; the rest of a full Driver is irrelevant to these tests.
 const driverNamed = (name: string): TripSummary['driver'] => ({ full_name: name }) as TripSummary['driver']
 
 function makeTrip(id: string, overrides: Partial<TripSummary> = {}): TripSummary {
@@ -62,7 +60,6 @@ function makeTrip(id: string, overrides: Partial<TripSummary> = {}): TripSummary
   } as unknown as TripSummary
 }
 
-// Flagged: unreviewed exceptions, so it qualifies for the dashboard's Needs action panel.
 const flagged = (id: string, overrides: Partial<TripSummary> = {}): TripSummary =>
   makeTrip(id, { needs_review_count: 1, attention: { critical: 0, warning: 1, info: 0, claimed: 0 }, ...overrides })
 
@@ -70,7 +67,6 @@ function tripsState(overrides: Partial<UseTripsResult> = {}): UseTripsResult {
   return { trips: [], isLoading: false, error: null, refetch: vi.fn(), ...overrides }
 }
 
-// Row order as the dispatcher sees it: the trip references in the order the rows appear.
 const rowRefs = (): string[] =>
   screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link').getAttribute('aria-label')?.split(' · ')[1] ?? '')
 
@@ -106,9 +102,7 @@ describe('Active Trips list', () => {
     for (const name of ['Created', 'Trip ID', 'Driver / horse', 'Route', 'Exceptions', 'Status']) {
       expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
     }
-    // The row carries the list it came from as returnTo, so the trip page's Back button can return to it.
     expect(screen.getByRole('link', { name: 'Sipho Dlamini · FP-t1' })).toHaveAttribute('href', '/trips/t1?returnTo=%2Ftrips')
-    // 08:00Z is 10:00 SAST.
     expect(screen.getByText('01 Oct 2026')).toBeInTheDocument()
     expect(screen.getByText('10:00 SAST')).toBeInTheDocument()
   })

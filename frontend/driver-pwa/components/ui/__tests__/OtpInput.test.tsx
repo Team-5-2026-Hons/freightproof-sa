@@ -55,10 +55,6 @@ describe('OtpInput', () => {
     expect(onChange).toHaveBeenCalledWith('654321')
   })
 
-  // Regression: each box used to carry maxLength={1}. iOS AutoFill inserts a code as a
-  // user edit, so WebKit truncated it to one character and only box 1 ever filled.
-  // jsdom cannot catch that behaviourally — fireEvent.change sets .value programmatically,
-  // which the HTML spec exempts from maxlength — so assert the attribute itself.
   it('never caps a box below the full code length, so iOS autofill is not truncated', () => {
     render(<OtpInput length={6} value="" onChange={vi.fn()} />)
 

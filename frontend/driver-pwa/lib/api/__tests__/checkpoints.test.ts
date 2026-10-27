@@ -80,8 +80,6 @@ describe('submitCheckpoint (Fix 4: demo-mode gate)', () => {
   })
 
   it('test_uploads_only_the_cargo_photo_and_sends_no_selfie_field', async () => {
-    // Overhaul 6.2: the selfie was removed from the screen. The backend has always taken
-    // selfie_artifact_id as optional (schemas/transit.py), so it is omitted, not nulled.
     vi.doMock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
     const mockPost = vi.fn().mockResolvedValue({ id: 'cp-2' })
     vi.doMock('@/lib/api/client', () => ({
@@ -104,8 +102,6 @@ describe('submitCheckpoint (Fix 4: demo-mode gate)', () => {
   })
 
   it('test_replays_an_old_queued_checkpoint_that_still_carries_a_selfie', async () => {
-    // A checkpoint queued offline by a build from before 6.2 is stored with its selfie.
-    // The offline queue replays it through this same function; the selfie must still go.
     vi.doMock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
     const mockPost = vi.fn().mockResolvedValue({ id: 'cp-3' })
     vi.doMock('@/lib/api/client', () => ({

@@ -30,15 +30,10 @@ const COPY = FLEET_COPY.onTime
 const PERCENT = 100
 const PERCENT_DOMAIN: [number, number] = [0, PERCENT]
 const [DEPARTURE_COLOR, ARRIVAL_COLOR] = SERIES_COLORS
-// Chart 2.5: finished early (blue) left of the middle axis, ran over (orange) right of it. The
-// early bands run towards the axis (furthest first), over bands away from it (nearest first),
-// so distance from the axis reads as distance off plan.
 const [EARLY_COLOR, OVER_COLOR] = SERIES_COLORS
 const EARLY_BANDS: readonly PlanBand[] = ['early_over_180', 'early_60_180', 'early_15_60', 'early_0_15']
 const OVER_BANDS: readonly PlanBand[] = ['over_0_15', 'over_15_60', 'over_60_180', 'over_over_180']
 
-// Early and On time are not lateness, so they stay neutral grey; the four late bands take the
-// validated lateness ramp, light to dark, in order.
 const BAND_COLORS: Record<LatenessBand, string> = {
   early: NEUTRAL_COLOR,
   on_time: NEUTRAL_COLOR,
@@ -300,7 +295,6 @@ interface OnTimeTabProps {
  *  width, where its two halves have room. One request for everything. */
 export function OnTimeTab({ query, allTimeStart, today }: OnTimeTabProps) {
   const onTime = useFleetOnTime(query, allTimeStart)
-  // Label buckets by the grain the answer was built with, never one chosen after it was asked.
   const grain = onTime.data?.period.grain ?? query.grain
 
   return (

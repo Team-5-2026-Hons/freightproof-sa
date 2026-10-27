@@ -25,9 +25,6 @@ import {
 import { makePhasePlan, type PlanStopInput } from '@shared/lib/mocks/phase-trips'
 import { activePhase } from '@/lib/phase/derive'
 
-// ── Public surface ───────────────────────────────────────────────────────────────
-
-/** Served from frontend/dispatcher/public/dev-fixtures. Generated drawings, not photographs. */
 export const FIXTURE_IMAGES = {
   sealPortrait: '/dev-fixtures/seal-portrait.jpg',
   linehaulLandscape: '/dev-fixtures/linehaul-landscape.jpg',
@@ -36,7 +33,6 @@ export const FIXTURE_IMAGES = {
 } as const
 type FixtureImage = keyof typeof FIXTURE_IMAGES
 
-/** Stable ids and the order the page lists them in. */
 export const SCENARIO_IDS = [
   'normal-single-leg',
   'handshake-findings-every-phase',
@@ -66,10 +62,8 @@ export type ScenarioId = typeof SCENARIO_IDS[number]
 export interface TimelineScenario {
   id: ScenarioId
   title: string
-  /** One sentence on what the scenario exists to prove, shown under its heading. */
   demonstrates: string
   trip: Trip
-  /** Every artifact the page would have loaded for this trip (the timeline reads them by id). */
   artifacts: EvidenceArtifactWithUrl[]
   precincts: Precinct[]
 }
@@ -79,12 +73,8 @@ export function artifactsByIdOf(scenario: TimelineScenario): Map<string, Evidenc
   return new Map(scenario.artifacts.map(artifact => [artifact.id as string, artifact]))
 }
 
-/** The anchor the smoke test builds against; the page passes the real "now". */
 export const FIXTURE_ANCHOR_MS = Date.parse('2026-10-13T09:00:00Z')
-/** The brief asks for a 400-character description; the fixture and its test both cite this. */
 export const FIXTURE_LONG_DESCRIPTION_LENGTH = 400
-
-// ── Constants ────────────────────────────────────────────────────────────────────
 
 const MS_PER_MINUTE = 60_000
 const MS_PER_SECOND = 1_000
@@ -113,7 +103,6 @@ const FNV_PRIME = 0x01000193
 const HEX_RADIX = 16
 const HEX_WORD_WIDTH = 8
 
-// Policy numbers an assessment records beside its verdict; the preview only needs them present.
 const ASSESSMENT_POLICY_VERSION = 'preview-1'
 const ASSESSMENT_MAX_SEPARATION_M = 150
 const ASSESSMENT_MAX_AGE_S = 120
@@ -144,7 +133,6 @@ const RECEIPT_TYPE: Record<PhaseType, BlockchainReceiptType> = {
   confirmation: 'delivery',
 }
 
-/** What a phase of each type submits when it completes, and which drawing stands in for it. */
 const CAPTURES: Partial<Record<PhaseType, ReadonlyArray<{ role: EvidenceRole; image: FixtureImage }>>> = {
   loading: [{ role: 'linehaul_photo', image: 'linehaulLandscape' }],
   departure: [{ role: 'seal_photo', image: 'sealPortrait' }],
@@ -154,8 +142,6 @@ const CAPTURES: Partial<Record<PhaseType, ReadonlyArray<{ role: EvidenceRole; im
     { role: 'pod_signature', image: 'receiverSignature' },
   ],
 }
-
-// ── Precincts ────────────────────────────────────────────────────────────────────
 
 function longNamePrecinct(suffix: string, name: string, address: string, latitude: number, longitude: number): Precinct {
   return {
@@ -171,7 +157,6 @@ function longNamePrecinct(suffix: string, name: string, address: string, latitud
   }
 }
 
-// precinctLabel() keeps the text before the em dash, so the long part goes before it.
 const LONG_ORIGIN = longNamePrecinct(
   'a1',
   'Gauteng North Regional Distribution and Cross-Dock Centre, Phase 2 Annex (Bays 14 to 22) — Midrand',
@@ -189,8 +174,6 @@ const LONG_DESTINATION = longNamePrecinct(
 
 export const FIXTURE_PRECINCTS: readonly Precinct[] = [...mockPrecincts, LONG_ORIGIN, LONG_DESTINATION]
 
-// ── Draft: the mutable shape a scenario is assembled in ──────────────────────────
-
 interface Cargo { from: number; to: number; parcels: number }
 interface Clock { anchorMs: number; tailMs: number; stepMs: number; through: number }
 
@@ -207,7 +190,6 @@ interface DraftOptions {
   route: readonly Precinct[]
   cargo: readonly Cargo[]
   status: TripStatus
-  /** The highest sequence_number the ledger has resolved; -1 for a plan nothing has started. */
   through: number
   anchorMs: number
   tailMin?: number
@@ -215,7 +197,6 @@ interface DraftOptions {
 }
 
 const SINGLE_CARGO: readonly Cargo[] = [{ from: 0, to: 1, parcels: 24 }]
-// Consignment A runs 1 to 3, B 1 to 2, C 2 to 3: stop 2 both drops off and picks up.
 const CROSS_DOCK_CARGO: readonly Cargo[] = [{ from: 0, to: 2, parcels: 10 }, { from: 0, to: 1, parcels: 8 }, { from: 1, to: 2, parcels: 6 }]
 const CHAIN_CARGO: readonly Cargo[] = [{ from: 0, to: 1, parcels: 18 }, { from: 1, to: 2, parcels: 12 }, { from: 2, to: 3, parcels: 9 }]
 
@@ -365,17 +346,13 @@ function precinctOf(draft: Draft, phase: PhaseDescriptor): Precinct | undefined 
   return FIXTURE_PRECINCTS.find(precinct => precinct.id === stop?.precinct_id)
 }
 
-// ── Artifacts ────────────────────────────────────────────────────────────────────
-
 interface ArtifactSpec {
   key: string
   image: FixtureImage
-  /** Both halves of the attribution pair, or neither (an exception photo, an older app). */
   phase: PhaseDescriptor | null
   role: EvidenceRole | null
   takenMs: number
   receivedMs?: number
-  /** The receiver's own confirmation: nothing the driver's phone captured. */
   byReceiver?: boolean
 }
 
@@ -409,11 +386,8 @@ function addArtifact(draft: Draft, spec: ArtifactSpec): EvidenceArtifactWithUrl 
   return artifact
 }
 
-// ── Exceptions ───────────────────────────────────────────────────────────────────
-
 interface ExceptionSpec {
   key: string
-  /** Null is a trip-level record. */
   phase: PhaseDescriptor | null
   type: ExceptionType
   severity: ExceptionSeverity
@@ -446,7 +420,6 @@ function raise(draft: Draft, spec: ExceptionSpec): TripException {
     gps_lng: spec.gps?.lng ?? null,
     vehicle_id: null,
     review_status: review,
-    // A dispatcher's own note is saved already reviewed by its author, with its own marker.
     review_outcome: reviewed ? (spec.source === 'dispatcher' ? 'dispatcher_authored' : spec.outcome ?? 'no_action_required') : null,
     reviewed_by_user_id: reviewed ? REVIEWER_ID : null,
     reviewed_at: reviewed ? iso(spec.atMs + minutes(REVIEW_DELAY_MIN)) : null,
@@ -465,24 +438,16 @@ function raise(draft: Draft, spec: ExceptionSpec): TripException {
   return exception
 }
 
-// ── Walking the plan ─────────────────────────────────────────────────────────────
-
 /** How one submitted capture is recorded. */
 type CaptureMode =
-  /** Attributed to the phase and cited by its column. */
   | 'normal'
-  /** Nothing was submitted and nothing was uploaded. */
   | 'absent'
-  /** The column cites an id the artifact list does not carry (metadata did not load). */
   | 'metadata_missing'
-  /** Cited, but the artifact carries no attribution (an older driver app). */
   | 'unattributed'
-  /** Taken while offline and uploaded about an hour later. */
   | 'offline'
 
 interface WalkOptions {
   capture?: (phase: PhaseDescriptor, role: EvidenceRole) => CaptureMode
-  /** `dark`: the tracker returned nothing, so no precinct verdict and no assessment exist. */
   tracker?: 'verified' | 'dark'
 }
 
@@ -630,8 +595,6 @@ function finish(draft: Draft, title: string, demonstrates: string): TimelineScen
   return { id: draft.id, title, demonstrates, trip, artifacts: draft.artifacts, precincts: [...FIXTURE_PRECINCTS] }
 }
 
-// ── Scenarios ────────────────────────────────────────────────────────────────────
-
 type Builder = (anchorMs: number) => TimelineScenario
 
 const LONG_DESCRIPTION = 'Driver reports the trailer was stopped for 38 minutes at a layby off the N3 near Van Reenen with the engine running and no reason given. '
@@ -647,8 +610,6 @@ const BUILDERS: Record<ScenarioId, Builder> = {
       const atMs = Date.parse(phase.completed_at!) + MS_PER_SECOND
       const precinct = precinctOf(draft, phase)
       const assessment = phase.action_location_assessment
-      // A synthetic finding must agree with its stored comparison, rather than a happy-path
-      // snapshot showing "Driver with truck" next to the separation finding being reviewed.
       setPhase(draft, phase, { status: 'exception', ...(assessment && precinct ? {
         pulsit_geofence_confirmed: false,
         driver_phone_lat: precinct.latitude + REVIEW_DRIVER_OFFSET_DEG,
@@ -737,7 +698,6 @@ const BUILDERS: Record<ScenarioId, Builder> = {
     walk(draft, { capture: (phase, role) => phase.phase_type === 'arrival' && role === 'seal_photo' ? 'offline' : 'normal' })
     const arrival = phaseAt(draft, 5)
     setPhase(draft, arrival, { driver_captured_at: iso(phaseMs(draft.clock, 5) - minutes(OFFLINE_CONFIRM_LEAD_MIN)) })
-    // The unloading scan is still running, so the live row and its "may still change" note show.
     draft.trip.consignments = draft.trip.consignments.map(item => ({ ...item, scanned_in_count: Math.floor((item.parcel_count_expected ?? 0) * 0.6) }))
     return finish(draft, 'Offline arrival', 'The driver confirmed and photographed at the gate with no signal; the server heard about it later. Every time names its clock: "device clock" for the phone, "server clock" for the record.')
   },
@@ -775,7 +735,6 @@ const BUILDERS: Record<ScenarioId, Builder> = {
     draft.trip.closed_at = iso(cancelledAtMs)
     const departure = phaseAt(draft, 3)
     addArtifact(draft, { key: 'seal-before', image: 'sealPortrait', phase: departure, role: 'seal_photo', takenMs: anchorMs - minutes(45) })
-    // Uploaded after the cancellation: the record says so instead of treating it as ordinary.
     addArtifact(draft, { key: 'waybill-after', image: 'linehaulLandscape', phase: departure, role: 'waybill_photo', takenMs: anchorMs - minutes(25), receivedMs: anchorMs - minutes(5) })
     return finish(draft, 'Cancelled mid-phase, with uploads', 'A trip cancelled during Departure: the uploads are kept and labelled "Not submitted — trip cancelled", one of them marked as received after the cancellation.')
   },

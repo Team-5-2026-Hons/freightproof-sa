@@ -13,18 +13,12 @@ from sqlalchemy.pool import QueuePool
 from app.core.config import settings
 from app.db.session import engine
 
-# The pooler's project-wide ceiling (see the comment on DB_POOL_SIZE in config.py).
 SUPABASE_SESSION_MODE_CLIENT_LIMIT = 15
 
-# How many backend instances can realistically be pointed at the same dev project at
-# once: one per developer on the team.
 MAX_CONCURRENT_BACKEND_INSTANCES = 4
 
 
 def test_engine_pool_size_matches_configured_setting() -> None:
-    # engine.pool is typed as the abstract Pool base (no .size()); asserting the
-    # concrete class narrows it for mypy and doubles as a check that create_async_engine
-    # still hands out a QueuePool rather than something like NullPool.
     assert isinstance(engine.pool, QueuePool)
     assert engine.pool.size() == settings.DB_POOL_SIZE
 

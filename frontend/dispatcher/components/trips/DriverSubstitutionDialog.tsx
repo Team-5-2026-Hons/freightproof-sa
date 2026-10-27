@@ -12,7 +12,6 @@ import { TextArea } from '@/components/ui/TextArea'
 import { ApiError } from '@/lib/api/client'
 import { arrangeSubstitution, newClientRequestId, replaceSubstitution, substitutionErrorCode } from '@/lib/api/driverSubstitutions'
 
-// What the dispatcher can do about each refusal; the server's own message rides alongside.
 const CODE_HINT: Partial<Record<SubstitutionErrorCode, string>> = {
   SUBSTITUTIONS_DISABLED: 'New handovers are switched off right now. Your details are kept; existing handovers still work.',
   DRIVER_UNAVAILABLE: 'That driver is committed to another trip then. Choose another eligible driver.',
@@ -34,9 +33,7 @@ interface Props {
   tripId: string
   outgoingDriverName?: string
   open: boolean
-  /** Eligible candidates: the trip's own current driver is filtered out by the caller. */
   drivers: Driver[]
-  /** Present to REPLACE this pending arrangement (a fresh request; nothing is edited in place). */
   replacing?: SubstitutionRequestRead | null
   onClose: () => void
   onSaved: (request: SubstitutionRequestRead) => void
@@ -55,7 +52,6 @@ export function DriverSubstitutionDialog({ tripId, outgoingDriverName, open, dri
   const [draft, setDraft] = useState<Draft>(() => initialDraft(replacing))
   const [submitting, setSubmitting] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
-  // One key per intentional submission: a retry of the same click reuses it (an exact replay).
   const [clientRequestId, setClientRequestId] = useState(newClientRequestId)
 
   if (!open) return null
@@ -65,7 +61,6 @@ export function DriverSubstitutionDialog({ tripId, outgoingDriverName, open, dri
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft(current => ({ ...current, [key]: value }))
-    // Changing the content makes it a different intentional action, with its own key.
     setClientRequestId(newClientRequestId())
     setProblem(null)
   }

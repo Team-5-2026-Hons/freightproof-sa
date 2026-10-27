@@ -9,16 +9,12 @@ import type { DispatcherUser } from '@/lib/types/user'
 export interface SettingsSection {
   id: SettingsSectionId
   label: string
-  /** One line under the heading saying what lives here. */
   description: string
   icon: LucideIcon
-  /** Hidden from the list, and unreachable by URL, for anyone but an admin dispatcher. */
   adminOnly?: boolean
   Component: ComponentType
 }
 
-// Adding a settings group is one entry here plus one component. Order is display order, and
-// Account stays first: it is the fallback for an unknown or forbidden ?section=.
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: SETTINGS_SECTION_IDS.account,

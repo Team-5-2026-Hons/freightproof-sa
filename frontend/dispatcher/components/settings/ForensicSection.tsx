@@ -7,8 +7,6 @@ import { useForensicMode } from '@/lib/context/ForensicModeContext'
 export function ForensicSection() {
   const { canViewForensics, forensicOn, toggle } = useForensicMode()
 
-  // Self-hides for non-admins as a second line of defence: the registry already keeps this
-  // section out of their list, but a switch they cannot use must never render.
   if (!canViewForensics) return null
 
   return (

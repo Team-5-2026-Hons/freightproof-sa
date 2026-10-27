@@ -1,8 +1,5 @@
 import type { Config } from 'tailwindcss'
 
-// The FreightProof design-system tokens (frontend/DESIGN_SYSTEM.md §2) this page uses:
-// paper surfaces, ink primary, and the domain palettes — chain for anything anchored to
-// Hedera, status roles for findings. Colour is information here, never decoration.
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
@@ -18,8 +15,6 @@ const config: Config = {
         muted: '#46464f',
         outline: { DEFAULT: '#777680', v: '#c7c6ca' },
       },
-      // One name per size the page already used, so renaming never moves a pixel. Strings rather than
-      // [size, lineHeight] tuples: the arbitrary `text-[Npx]` values these replace set no line height either.
       fontSize: {
         micro: '10px', caption: '11px', meta: '12px', small: '13px', body: '14px',
         lead: '15px', subhead: '16px', head: '17px', title: '22px', display: '28px',

@@ -70,7 +70,6 @@ async def attested_instants(
             PhaseEvent.completed_at < window.end,
         )
     )
-    # The window filter already excludes NULL; this narrows the type.
     return [instant for instant in result.scalars().all() if instant is not None]
 
 

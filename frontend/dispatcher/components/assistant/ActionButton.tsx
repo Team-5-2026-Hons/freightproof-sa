@@ -11,7 +11,6 @@ import { usePendingHref, type NavigateTo } from './navigation'
 
 interface ActionButtonProps {
   action: AssistantAction
-  /** The pop-up waits for the page it opens, then gets out of the way (spec D6, B38). */
   onNavigate: NavigateTo
 }
 
@@ -26,7 +25,6 @@ export function ActionButton({ action, onNavigate }: ActionButtonProps) {
       type="button"
       size="sm"
       variant={action.kind === 'open_trip_form' ? 'primary' : 'secondary'}
-      // While any page is opening, a second click would only start a second navigation.
       disabled={pending !== null}
       aria-busy={opening || undefined}
       onClick={() => {

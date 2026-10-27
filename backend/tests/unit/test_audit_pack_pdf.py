@@ -76,32 +76,25 @@ def test_immediate_transfer_pdf_names_actual_actor_and_observation_without_outgo
 
 
 def test_render_audit_pack_pdf_produces_multi_page_pdf_with_trip_reference():
-    # Arrange
     manifest = make_manifest(phases=[make_phase(0, "trip_creation"), make_phase(1, "departure")])
 
-    # Act
     pdf = render_audit_pack_pdf(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert pdf.startswith(b"%PDF-")
     assert len(PdfReader(io.BytesIO(pdf)).pages) > 1
     assert "FP-0042" in _text(pdf)
 
 
 def test_render_audit_pack_html_preview_is_marked_not_issued():
-    # Act
     html = render_audit_pack_html(make_manifest(phases=[]), issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert "PREVIEW" in html
     assert "not an issued pack" in html.lower()
 
 
 def test_render_audit_pack_html_issued_pack_names_recipient_and_purpose():
-    # Act
     html = render_audit_pack_html(make_manifest(phases=[]), issue=_issue(), mirror_base_url=MIRROR)
 
-    # Assert
     assert "FP-0042-AP1" in html
     assert "Jane Adjuster" in html
     assert "Santam Claims" in html
@@ -110,72 +103,56 @@ def test_render_audit_pack_html_issued_pack_names_recipient_and_purpose():
 
 
 def test_render_audit_pack_html_escapes_recorded_text():
-    # Arrange
     exception = make_exception("dispatcher_note", "info", description="<script>alert(1)</script>")
 
-    # Act
     html = render_audit_pack_html(make_manifest(phases=[], exceptions=[exception]), issue=None,
                                   mirror_base_url=MIRROR)
 
-    # Assert
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;" in html
 
 
 def test_render_audit_pack_html_labels_every_tier():
-    # Arrange
     phases = [make_phase(0, "trip_creation", tier="anchored"), make_phase(1, "loading", tier="recorded")]
 
-    # Act
     html = render_audit_pack_html(make_manifest(phases=phases), issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     for label in ("Anchored", "Corroborated", "Recorded", "Declared"):
         assert label in html
 
 
 def test_render_audit_pack_html_integrity_appendix_gives_manual_verification_steps():
-    # Arrange
     manifest = make_manifest(phases=[]).model_copy(update={"anchored_records": [_record()]})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert "SEAL-001" in html
     assert f"{MIRROR}/api/v1/topics/0.0.2002/messages/118" in html
     assert "SHA-256" in html
 
 
 def test_render_audit_pack_html_incident_section_only_with_critical_exception():
-    # Arrange
     quiet = make_manifest(phases=[], exceptions=[make_exception("dispatcher_note", "info")])
     incident = make_manifest(phases=[], exceptions=[make_exception("panic_button", "critical")])
 
-    # Act
     quiet_html = render_audit_pack_html(quiet, issue=None, mirror_base_url=MIRROR)
     incident_html = render_audit_pack_html(incident, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert 'id="incident"' not in quiet_html
     assert 'id="incident"' in incident_html
 
 
 def test_render_audit_pack_html_prints_redactions_and_certificate():
-    # Arrange
     manifest = make_manifest(phases=[]).model_copy(update={"redactions": ["Driver phone number withheld."]})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=_issue(), mirror_base_url=MIRROR)
 
-    # Assert
     assert "Driver phone number withheld." in html
     assert "section 15(4)" in html
     assert "template" in html.lower()
 
 
 def test_render_audit_pack_html_shows_declared_police_facts_as_declared():
-    # Arrange
     from app.schemas.audit_pack import IncidentDeclarationRecord
 
     declaration = IncidentDeclarationRecord(
@@ -187,10 +164,8 @@ def test_render_audit_pack_html_shows_declared_police_facts_as_declared():
     manifest = make_manifest(phases=[], exceptions=[make_exception("panic_button", "critical")])
     manifest = manifest.model_copy(update={"declarations": [declaration]})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     incident = html[html.index('id="incident"'):html.index('id="plan"')]
     assert "123/09/2026" in incident
     assert "Harrismith SAPS" in incident
@@ -200,33 +175,25 @@ def test_render_audit_pack_html_shows_declared_police_facts_as_declared():
 
 
 def test_render_audit_pack_html_arrival_shows_seal_condition():
-    # Arrange
     manifest = make_manifest(phases=[
         make_phase(1, "departure", seal_number="SEAL-001"),
         make_phase(3, "arrival", seal_number="SEAL-001", seal_condition="damaged"),
     ])
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert "P3 · Arrival" in html
     assert "Seal condition" in html
     assert "<strong>Damaged</strong>" in html
 
 
 def test_render_audit_pack_html_pre_arrival_phase_has_no_condition_row():
-    # Arrange
     manifest = make_manifest(phases=[make_phase(3, "unloading", seal_number="SEAL-001")])
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert "Seal condition" not in html
 
-
-# ── FP-290 Task 5: exception photos and per-action anchors ──────────────────────
 
 
 def _photo(position: int, *, sha: str, tier: str = "anchored", receipt: uuid.UUID | None = None) -> ExceptionPhoto:
@@ -258,7 +225,7 @@ def test_audit_pack_html_lists_every_photo_hash_tied_to_its_receipt():
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
     assert "a1" * 32 in html and "b2" * 32 in html
-    assert html.count(str(receipt)) >= 3  # the raise row and both photos name the receipt
+    assert html.count(str(receipt)) >= 3
 
 
 def test_audit_pack_html_shows_a_pending_raise_plainly_as_recorded_not_anchored():
@@ -341,14 +308,10 @@ def test_audit_pack_pdf_renders_a_two_photo_anchored_exception():
     assert "Photo 2" in _text(pdf)
 
 
-# ── Layout: cover, numbered sections and the journey strip ──────────────────
-
 
 def test_audit_pack_html_cover_lists_the_numbered_sections_with_page_links():
-    # Act
     html = render_audit_pack_html(make_manifest(phases=[]), issue=_issue(), mirror_base_url=MIRROR)
 
-    # Assert
     for anchor in ("ch-summary", "ch-journey", "ch-exceptions", "ch-details", "ch-verification",
                    "ch-data-protection", "ch-certificate"):
         assert f'href="#{anchor}"' in html
@@ -357,7 +320,6 @@ def test_audit_pack_html_cover_lists_the_numbered_sections_with_page_links():
 
 
 def test_audit_pack_html_journey_strip_marks_the_incident_after_the_last_completed_phase():
-    # Arrange: P1 completes at 09:00 UTC; the critical exception is raised at 12:00 UTC.
     from app.schemas.audit_pack import IncidentSummary
 
     phases = [make_phase(0, "trip_creation"), make_phase(1, "departure"),
@@ -368,38 +330,29 @@ def test_audit_pack_html_journey_strip_marks_the_incident_after_the_last_complet
     )
     manifest = make_manifest(phases=phases).model_copy(update={"incident": incident})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert 'class="journey"' in html
     assert "after P1 was completed" in html
     assert 'stroke-dasharray' in html
 
 
 def test_audit_pack_html_journey_strip_has_no_break_without_an_incident():
-    # Act
     html = render_audit_pack_html(make_manifest(phases=[make_phase(0, "trip_creation")]), issue=None,
                                   mirror_base_url=MIRROR)
 
-    # Assert
     assert 'class="journey"' in html
     assert "Red break" not in html
     assert "stroke-dasharray" not in html
 
 
-# ── Plain-language verification and operator-declared incidents ─────────────
-
 
 def test_audit_pack_html_names_each_receipt_in_plain_words_before_the_technical_appendix():
-    # Arrange
     record = _record().model_copy(update={"receipt_type": "journey_lock", "subject_type": "trip"})
     manifest = make_manifest(phases=[]).model_copy(update={"anchored_records": [record]})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     plain = html[html.index('id="unchanged"'):html.index('id="integrity"')]
     assert "Trip plan locked when the trip was created" in plain
     assert "Unchanged" in plain
@@ -408,19 +361,15 @@ def test_audit_pack_html_names_each_receipt_in_plain_words_before_the_technical_
 
 
 def test_audit_pack_html_falls_back_to_the_system_name_for_an_unknown_receipt_type():
-    # Arrange
     record = _record().model_copy(update={"receipt_type": "future_thing", "subject_type": "trip"})
     manifest = make_manifest(phases=[]).model_copy(update={"anchored_records": [record]})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert "Future thing · Trip" in html
 
 
 def test_audit_pack_html_summarises_an_operator_declared_incident_without_a_critical_exception():
-    # Arrange: a hijacking the dispatcher logged from a phone call — no critical exception behind it.
     from app.schemas.audit_pack import IncidentSummary
 
     incident = IncidentSummary(
@@ -430,10 +379,8 @@ def test_audit_pack_html_summarises_an_operator_declared_incident_without_a_crit
     )
     manifest = make_manifest(phases=[]).model_copy(update={"incident": incident})
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     summary = html[html.index('id="incident"'):html.index('id="ch-journey"')]
     assert "Reported event (declared by the operator)" in summary
     assert "tier-declared" in summary
@@ -442,29 +389,22 @@ def test_audit_pack_html_summarises_an_operator_declared_incident_without_a_crit
 
 
 def _without_order_number(manifest: AuditPackManifest) -> AuditPackManifest:
-    # Validated, not model_copy: the schema itself must accept a trip with no order number.
     trip = TripSummary.model_validate({**manifest.trip.model_dump(), "order_number": None})
     return manifest.model_copy(update={"trip": trip})
 
 
 def test_audit_pack_html_without_order_number_says_not_recorded():
-    # Arrange: a trip imported from a Parcel Perfect manifest carries no order number.
     manifest = _without_order_number(make_manifest(phases=[make_phase(0, "activation")]))
 
-    # Act
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert "<th>Order number</th><td>Not recorded</td>" in html
     assert ">None<" not in html
 
 
 def test_audit_pack_pdf_renders_without_order_number():
-    # Arrange
     manifest = _without_order_number(make_manifest(phases=[make_phase(0, "activation")]))
 
-    # Act
     pdf = render_audit_pack_pdf(manifest, issue=None, mirror_base_url=MIRROR)
 
-    # Assert
     assert pdf.startswith(b"%PDF-")

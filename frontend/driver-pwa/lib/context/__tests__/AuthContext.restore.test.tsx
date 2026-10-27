@@ -37,10 +37,8 @@ function renderGuardProbe(provider: { port?: OtpAuthPort; profiles?: DriverProfi
 
   function Probe() {
     const { isLoading, user } = useAuth()
-    // Recorded during render, so even a single transient frame is captured.
     views.push(viewFor(isLoading, user))
     useEffect(() => {
-      // The layout's own redirect condition, verbatim.
       if (!isLoading && !user) redirectToLogin()
     }, [isLoading, user])
     return null
@@ -71,8 +69,6 @@ describe('session restore never shows the login view while it is pending', () =>
     expect(redirectToLogin).not.toHaveBeenCalled()
   })
 
-  // Control: proves the probe can see the login view at all, so the test above is not
-  // passing merely because nothing is ever recorded.
   it('demo mode, no session: loading, then login', async () => {
     const { views, redirectToLogin } = renderGuardProbe()
 
@@ -95,7 +91,6 @@ describe('session restore never shows the login view while it is pending', () =>
     }
 
     const { views, redirectToLogin } = renderGuardProbe({ port, profiles })
-    // Session has resolved; the profile has not. Let every pending microtask run.
     await act(async () => { await Promise.resolve() })
 
     expect(views.at(-1)).toBe('loading')

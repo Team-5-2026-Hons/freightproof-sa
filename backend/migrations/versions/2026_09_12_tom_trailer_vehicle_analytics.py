@@ -42,8 +42,6 @@ down_revision = "tom_add_exception_vehicle"
 branch_labels = None
 depends_on = None
 
-# ── Copied from tom_analytics_read_models (frozen there; see module docstring) ──
-
 _OPERATIONS_TIME_ZONE = "Africa/Johannesburg"
 
 _ATTESTED_STATUSES = "('completed', 'exception')"
@@ -75,22 +73,12 @@ closed_trips AS (
     WHERE t.status = 'closed'
 )"""
 
-# A gap between two phases is only a real measurement when BOTH ends were attested.
 _GAP_IS_ATTESTED = (
     f"status IN {_ATTESTED_STATUSES} AND prev_status IN {_ATTESTED_STATUSES} "
     "AND completed_at IS NOT NULL AND prev_completed_at IS NOT NULL"
 )
 _GAP_HOURS = "EXTRACT(EPOCH FROM (completed_at - prev_completed_at))::double precision / 3600.0"
 
-# ── New shared fragments ─────────────────────────────────────────────────────
-
-# FP-153's trip_phases, keyed by trip instead of by horse: driving hours are now worked
-# out per trip first and then credited to every vehicle on it (rule 2), which needs
-# trip_id. The window is FP-153's, unchanged. LAG runs over EVERY phase row of the trip,
-# trip_creation included, partitioned by trip and ordered by sequence_number, so the
-# "previous phase" is always the true previous plan step. The join to closed_trips keeps
-# or drops a trip whole. Every row filter (in_transit, departure, attested) is applied
-# AFTER the window, in the CTE that reads this one.
 _TRIP_PHASES_CTE = """
 trip_phases AS (
     SELECT
@@ -106,7 +94,6 @@ trip_phases AS (
     WINDOW plan_order AS (PARTITION BY pe.trip_id ORDER BY pe.sequence_number)
 )"""
 
-# Rule 1: one row for the trip's horse, plus one row per trailer on it.
 _VEHICLE_TRIPS_CTE = """
 vehicle_trips AS (
     SELECT
@@ -129,18 +116,10 @@ vehicle_trips AS (
     JOIN trip_trailers tt ON tt.trip_id = ct.trip_id
 )"""
 
-# Rule 3, written once so both views attribute a breakdown identically. `e` is
-# exceptions, `vt` is vehicle_trips. Each breakdown matches at most one vehicle row of its
-# trip: its own vehicle, or the horse when no vehicle was recorded. A vehicle_id that
-# isn't on its own trip matches none and is counted nowhere. The server only ever stores
-# the trip's own horse or trailers (exception_service.pick_breakdown_vehicle), so that
-# can't happen through the app.
 _BREAKDOWN_BELONGS_TO_VEHICLE = (
     "e.exception_type = 'mechanical' "
     "AND (e.vehicle_id = vt.vehicle_id OR (e.vehicle_id IS NULL AND vt.is_horse))"
 )
-
-# ── Vehicle (monthly), horses and trailers ───────────────────────────────────
 
 _VEHICLE_ANALYTICS = f"""
 CREATE MATERIALIZED VIEW vehicle_analytics AS
@@ -226,11 +205,6 @@ LEFT JOIN driving_totals dt
  AND dt.month_start = tt.month_start
 """
 
-# ── Vehicle incident streaks (whole history), horses and trailers ────────────
-# An incident is a closed trip carrying at least one mechanical exception that belongs to
-# THIS vehicle (rule 3). Two reports on the same trip are one incident. Streaks are
-# counted in clean trips, never days: an idle vehicle proves nothing about reliability.
-
 _VEHICLE_INCIDENT_STREAKS = f"""
 CREATE MATERIALIZED VIEW vehicle_incident_streaks AS
 WITH {_CLOSED_TRIPS_CTE},
@@ -300,10 +274,6 @@ SELECT
 FROM segment_lengths
 GROUP BY operator_organization_id, vehicle_id
 """
-
-# ── Frozen copy of FP-153's horse-only views, for the downgrade ──────────────
-# Verbatim from tom_analytics_read_models, including its own trip_phases CTE (keyed by
-# horse). Downgrading must put back exactly what that migration created.
 
 _HORSE_ONLY_TRIP_PHASES_CTE = """
 trip_phases AS (
@@ -465,10 +435,6 @@ FROM segment_lengths
 GROUP BY operator_organization_id, horse_id
 """
 
-# ── Indexes, Data API lockdown, statement lists ──────────────────────────────
-
-# Dropping a view drops its unique index, and REFRESH ... CONCURRENTLY refuses to run
-# without one, so both are recreated on exactly the same grain, in both directions.
 _VIEW_GRAINS: dict[str, tuple[str, ...]] = {
     "vehicle_analytics": ("operator_organization_id", "vehicle_id", "month_start"),
     "vehicle_incident_streaks": ("operator_organization_id", "vehicle_id"),
@@ -483,10 +449,6 @@ _DROP_VIEWS: tuple[str, ...] = tuple(
     f"DROP MATERIALIZED VIEW IF EXISTS {view}" for view in reversed(tuple(_VIEW_GRAINS))
 )
 
-# Recreated views lose FP-153's REVOKE, and Supabase's default privileges grant new
-# public objects to anon/authenticated. RLS can't be enabled on a materialized view, so
-# without this every operator's vehicle analytics would be readable cross-tenant through
-# the Data API. Guarded on the roles existing, so it is a no-op on plain Postgres.
 _REVOKE_DATA_API_ACCESS = f"""
 DO $$
 DECLARE

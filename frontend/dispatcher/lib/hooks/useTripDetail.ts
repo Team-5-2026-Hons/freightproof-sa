@@ -15,9 +15,6 @@ export interface UseTripDetailResult {
   errorStatus: number | null
   lastUpdated: number | null
   refetch: () => void
-  // Refetches without flipping isLoading — used after a dispatcher mutation (cancel,
-  // phase override) so the page's own content stays on screen instead of being
-  // replaced by the full-page spinner mid-action.
   refetchSilent: () => void
 }
 
@@ -30,8 +27,6 @@ export function useTripDetail(tripId: string): UseTripDetailResult {
   const { refetchSilent, isValidating } = resource
   useEffect(() => {
     if (!receiptOwed || isValidating) return
-    // The completion SSE arrives before its asynchronous HCS receipt. Poll only
-    // metadata while a receipt is owed, never photos or deep verification.
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') refetchSilent()
     }, ANCHOR_REFRESH_INTERVAL_MS)

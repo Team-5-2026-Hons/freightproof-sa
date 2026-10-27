@@ -141,8 +141,6 @@ async def test_simultaneous_replays_of_the_same_report_produce_exactly_one_excep
                 supporting_artifact_id=None,
                 client_report_id=report_id,
             )
-            # Proves the session is still perfectly usable after a lost savepoint race
-            # — a poisoned outer transaction would fail this commit.
             await session.commit()
             return result.id
 

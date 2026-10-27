@@ -20,14 +20,8 @@ from app.integrations.parcel_perfect import (
     get_pp_client,
 )
 
-# ---------------------------------------------------------------------------
-# Shared test constants
-# ---------------------------------------------------------------------------
-
 _PP_BASE = "http://pp.test/api"
 
-# Canonical getSingleWaybill payload matching the v28 spec shape used in tests.
-# Includes the full field set added in the extended dataclasses (poddate, service, etc.)
 _WAYBILL_PAYLOAD = {
     "errorcode": 0,
     "errormessage": "",
@@ -67,7 +61,6 @@ _WAYBILL_PAYLOAD = {
     ],
 }
 
-# Reusable pre-serialised auth responses (avoids repeated json.dumps in each test).
 _MOCK_SALT_RESP = json.dumps({
     "errorcode": 0,
     "errormessage": "",
@@ -80,10 +73,6 @@ _MOCK_TOKEN_RESP = json.dumps({
     "results": [{"token_id": "tok-abc123"}],
 })
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -113,17 +102,12 @@ def pp_settings(monkeypatch):
     monkeypatch.setattr("app.core.config.settings.PP_API_TOKEN", "")
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_get_single_waybill_happy_path(pp_settings):
     """getSingleWaybill performs auth (getSalt + getSecureToken) then returns
     a fully-parsed PPWaybillResponse matching the v28 spec fixture."""
-    # Three sequential GET calls in order: getSalt, getSecureToken, getSingleWaybill.
     respx.get(url__startswith=_PP_BASE).mock(
         side_effect=[
             httpx.Response(200, text=_MOCK_SALT_RESP),
@@ -178,7 +162,6 @@ async def test_token_cached_on_second_call(pp_settings):
     await client.get_single_waybill("TESTWAY001")
     await client.get_single_waybill("TESTWAY001")
 
-    # Token must be cached at module level after the first call.
     assert pp_client_module._cached_token == "tok-abc123"
 
 
@@ -220,9 +203,6 @@ async def test_mock_client_returns_fixture():
     client = MockParcelPerfectClient()
     result = await client.get_single_waybill("MOCKWAY001")
 
-    # Verify against the module-level constant so the test stays in sync if the
-    # fixture changes. Equality, not identity: the mock returns a defensive
-    # deep copy so caller mutations can't corrupt the shared fixture.
     assert result == MOCK_WAYBILL_RESPONSE
     assert result is not MOCK_WAYBILL_RESPONSE
     assert result.details.waybill == "MOCKWAY001"

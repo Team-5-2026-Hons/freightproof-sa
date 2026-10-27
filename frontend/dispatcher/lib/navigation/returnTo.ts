@@ -7,7 +7,6 @@
 
 export const RETURN_TO_PARAM = 'returnTo'
 
-// Any fixed origin works; `.invalid` is RFC 2606-reserved so it never resolves for real.
 const PROBE_ORIGIN = 'https://freightproof.invalid'
 
 /**
@@ -22,11 +21,8 @@ export function safeReturnTo(value: string | null | undefined, fallback: string)
     const resolved = new URL(value, PROBE_ORIGIN)
     if (resolved.origin !== PROBE_ORIGIN) return fallback
 
-    // Use the parser's normalised path, not the raw input, so it matches what was validated.
     const path = `${resolved.pathname}${resolved.search}${resolved.hash}`
 
-    // Re-check the normalised output: traversal (e.g. "/a/..//evil.com") can produce a
-    // protocol-relative path that passed the input check but leaves the origin.
     if (new URL(path, PROBE_ORIGIN).origin !== PROBE_ORIGIN) return fallback
     return path
   } catch {

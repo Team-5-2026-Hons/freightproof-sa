@@ -78,11 +78,8 @@ from app.schemas.audit_pack import (
 
 logger = logging.getLogger(__name__)
 
-# Shown in place of a stop that serves only other clients in a consignment-scoped pack:
-# the route shape stays visible (custody runs through it), whose depot it is does not.
 REDACTED_STOP_NAME = "Other stop on route"
 
-# Anchored payload key → PhaseEvent attribute it committed (phase_service v2 payloads).
 _ANCHORED_PHASE_FIELDS: Mapping[str, str] = {
     "seal_number": "seal_number",
     "seal_condition": "seal_condition",
@@ -91,8 +88,6 @@ _ANCHORED_PHASE_FIELDS: Mapping[str, str] = {
 }
 _COUNT_FIELDS = frozenset({"parcel_count_destination", "driver_visual_count", "parcel_count_origin"})
 
-# Evidence role → (PhaseEvent FK attribute, anchored payload key or None when that role
-# is never committed by any receipt, so it can only ever be "recorded").
 _PHASE_EVIDENCE: Mapping[EvidenceRole, tuple[str, str | None]] = {
     "seal_photo": ("seal_photo_artifact_id", "seal_photo_sha256"),
     "waybill_photo": ("waybill_photo_artifact_id", "waybill_photo_sha256"),
@@ -167,7 +162,6 @@ class _PhaseContext:
     receipts_by_id: Mapping[uuid.UUID, BlockchainReceipt]
     artifacts: Mapping[uuid.UUID, EvidenceArtifact]
     snapshots_by_phase: Mapping[uuid.UUID, Sequence[TrailerGpsSnapshot]]
-    # Stops shared with other clients' cargo in a consignment-scoped pack: counts withheld.
     shared_stop_ids: AbstractSet[uuid.UUID | None]
 
 
@@ -176,8 +170,6 @@ def _phase_record(event: PhaseEvent, ctx: _PhaseContext) -> PhaseRecord:
     receipt = ctx.receipts_by_id.get(event.blockchain_receipt_id) if event.blockchain_receipt_id else None
     withhold_counts = event.trip_stop_id in ctx.shared_stop_ids
     assessment = _assessment(event.action_location_assessment, owner_id=event.id)
-    # Only a receipt the ledger itself says landed counts — AnchorStatus warns never to
-    # render a pending or failed anchor as success.
     anchored = receipt is not None and event.anchor_status == AnchorStatus.ANCHORED
     payload: Mapping[str, Any] = receipt.payload_json if anchored and receipt is not None else {}
 
@@ -291,8 +283,6 @@ def _record_changes(
     return sorted(changes, key=lambda c: c.changed_at)
 
 
-# ── Loading: every row a manifest reads, in a fixed number of queries ─────────────
-
 
 @dataclass(frozen=True)
 class _TripGraph:
@@ -307,8 +297,6 @@ class _TripGraph:
     snapshots: list[TrailerGpsSnapshot]
     checkpoints: list[Checkpoint]
     exceptions: list[TripException]
-    # Photos and anchor events of the in-scope exceptions only; receipts of out-of-scope
-    # events are dropped from `receipts` at load time.
     exception_photos: dict[uuid.UUID, list[EvidenceArtifact]]
     evidence_events: list[EvidenceAnchorEvent]
     substitutions: list[DriverSubstitution]
@@ -381,8 +369,6 @@ async def _load_exceptions(db: AsyncSession, trip_id: uuid.UUID, scope_id: uuid.
         e for e in (await db.execute(
             select(TripException).where(TripException.trip_id == trip_id).order_by(TripException.created_at)
         )).scalars()
-        # Trip-level exceptions (no consignment) stay in every scope: a hijack affects all
-        # cargo on the truck. Only rows pinned to ANOTHER client's consignment are cut.
         if scope_id is None or e.consignment_id is None or e.consignment_id == scope_id
     ]
 
@@ -414,7 +400,6 @@ async def _load_crew(
     """Driver substitutions, every driver who held the trip, the horse and its trailers."""
     substitutions = list((await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.trip_id == trip.id)
-        # FP-83: the chain's order is its sequence number; a timestamp can tie or contradict it.
         .order_by(DriverSubstitution.sequence_number)
     )).scalars())
     driver_ids = _crew_driver_ids(trip, substitutions)
@@ -540,8 +525,6 @@ async def _load_trip_graph(
         (p.completed_at for p in phases if p.completed_at is not None and p.phase_type != PhaseType.TRIP_CREATION),
         default=None,
     )
-    # A trip that never closed (the hijack case) is judged up to the moment of issue —
-    # "no position since" is exactly what an adjuster needs to see.
     window_end = trip.closed_at or generated_at
 
     vehicle_events, driver_events = await _load_record_changes(
@@ -551,8 +534,6 @@ async def _load_trip_graph(
     exception_photos = await load_photos_by_exception(db, exceptions)
     evidence_events = await _load_evidence_events(db, exceptions)
     in_scope_event_ids = {e.id for e in evidence_events}
-    # Receipts of evidence events anchor exception actions; one whose exception was cut by
-    # scope must not reach the pack (its payload names that exception and its photos).
     receipts = [
         r for r in await _load_receipts(db, trip.id, _linked_receipt_ids(vehicle_events, driver_events, substitutions))
         if r.subject_type != SubjectType.EVIDENCE_EVENT or r.subject_id in in_scope_event_ids
@@ -571,15 +552,12 @@ async def _load_trip_graph(
     )
 
 
-# ── Assembly: pure functions from the loaded graph to manifest sections ──────────
-
 
 @dataclass(frozen=True)
 class _Scope:
     """What a consignment-scoped pack may show of the trip. An unscoped pack sees everything."""
 
     visible_stop_ids: set[uuid.UUID | None]
-    # Stops that also serve other clients' cargo: their parcel counts are withheld.
     shared_stop_ids: set[uuid.UUID | None]
     client_ids: list[uuid.UUID]
     redactions: list[str]
@@ -676,7 +654,6 @@ def _exception_record(
         reviewer_name=users[e.reviewed_by_user_id].full_name if e.reviewed_by_user_id in users else None,
         contact_method=enum_text(e.contact_method) if e.contact_method is not None else None,
         review_note=e.review_note,
-        # v1 readers look here; v2 repeats every photo with the receipt that backs it.
         evidence=[
             EvidenceFile(
                 artifact_id=p.artifact_id, role="exception_supporting", sha256=p.sha256,
@@ -855,7 +832,6 @@ async def build_audit_manifest(
     included_exception_ids = {e.exception_id for e in exception_records}
     declarations = [
         d for d in await load_declarations(db, trip_id=trip.id)
-        # A declaration pinned to an exception cut by scope goes with it.
         if d.exception_id is None or d.exception_id in included_exception_ids
     ]
 
@@ -885,8 +861,6 @@ async def build_audit_manifest(
         location_trail=trail,
         location_coverage=coverage,
         anchored_records=[_anchored_record(r) for r in graph.receipts],
-        # From every fix, trail included or not: the last known position is the one
-        # location fact a claim form and a SAPS docket cannot do without.
         incident=summarise_incident(exception_records, fixes=all_fixes, investigations=investigations),
         declarations=declarations,
         investigations=investigations,

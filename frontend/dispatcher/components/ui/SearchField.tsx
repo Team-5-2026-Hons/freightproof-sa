@@ -7,7 +7,6 @@ interface SearchFieldProps {
   value: string
   onChange: (value: string) => void
   placeholder: string
-  /** Screen-reader name; defaults to the placeholder, which already says what is searched. */
   ariaLabel?: string
   className?: string
 }
@@ -23,8 +22,6 @@ export function SearchField({ value, onChange, placeholder, ariaLabel, className
         placeholder={placeholder}
         value={value}
         onChange={event => onChange(event.target.value)}
-        // The native clear button is hidden: it only exists in some browsers, so it would make
-        // the control differ between them.
         className="w-full rounded-md border border-outline-v/30 bg-surf-low py-2 pl-8 pr-4 text-[13px] text-on-surf outline-none transition-colors placeholder:text-on-surf-v/60 focus:border-sec focus:bg-surf-lowest [&::-webkit-search-cancel-button]:appearance-none"
       />
     </div>

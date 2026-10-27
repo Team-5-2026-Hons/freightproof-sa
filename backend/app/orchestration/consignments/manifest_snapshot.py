@@ -12,7 +12,6 @@ from app.integrations.parcel_perfect.models import PPManifestResponse
 from app.orchestration.consignments.sync import serialise_waybill
 from app.schemas.pp_manifest import PPManifestSnapshotRead, PPManifestTotalsRead, PPManifestWaybillLine
 
-# Weights are shown to two decimals, like the PP portal.
 _WEIGHT_DECIMALS = 2
 
 

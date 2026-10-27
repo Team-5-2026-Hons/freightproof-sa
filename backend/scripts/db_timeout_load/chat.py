@@ -40,8 +40,6 @@ class ControlledProvider(FakeProvider):
     async def reply(
         self, *, system: str, context: str, messages: Sequence[ProviderMessage], tools: Sequence[ToolSpec],
     ) -> ModelReply:
-        # One request already sent means this is the second model call, which carries the
-        # analytics tool's result. The request's database session is still open here.
         if len(self.sent) == 1:
             result = messages[-1]
             if not isinstance(result, ToolResults) or not result.results or any(r.is_error for r in result.results):

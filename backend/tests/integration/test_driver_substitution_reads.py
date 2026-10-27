@@ -46,7 +46,6 @@ async def test_the_new_driver_gets_driver_access_with_the_sequence_to_send(clien
         assert body["driver_access"] == {
             "participation": "current", "custody_sequence": 1, "can_advance": True, "can_submit_late_evidence": False,
         }
-        # Another person's driver record and the dispatcher's context never reach a driver.
         assert body["original_driver"] is None and body["driver_substitutions"] == []
         assert body["custody_integrity"] is None and body["driver_substitutions_enabled"] is None
 
@@ -158,7 +157,6 @@ async def test_an_exception_row_names_the_driver_who_raised_it_after_a_handover(
 
     assert context.driver_for(report(w.b)) == names[w.b]
     assert context.driver_for(report(w.a)) == names[w.a]
-    # A system finding on a shared trip has no actor: no one is blamed for it.
     assert context.driver_for(report(None)) is None
 
 async def test_completed_projection_includes_requestless_legacy_once(db_session: AsyncSession):

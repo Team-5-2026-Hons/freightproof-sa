@@ -37,13 +37,8 @@ from app.orchestration.exceptions.review_policy import initial_review_status
 
 logger = logging.getLogger(__name__)
 
-# A discrepancy is a warning, not a critical: the exceptions.creation critical set
-# (_CRITICAL_TYPES) is seals and panic buttons — events that stop a trip. A count difference at the
-# door is recorded and reviewed, it does not halt anything (FreightProof records,
-# it does not operate).
 _DISCREPANCY_SEVERITY = ExceptionSeverity.WARNING
 
-# The warehouse scanned it, not a human in our system, so the source is the system.
 _DISCREPANCY_SOURCE = ExceptionSource.SYSTEM
 
 
@@ -114,10 +109,6 @@ async def load_consignments_at_stop(
     result = await db.execute(
         select(Consignment)
         .where(Consignment.trip_id == trip_id, stop_column == trip_stop_id)
-        # Same bytewise waybill order as trip persistence (Python string order).
-        # UUID order can invert a multi-waybill recreation and deadlock both.
-        # Shared with consignment sync: recreation cannot move a load while stamps
-        # are being recorded. PostgreSQL rechecks trip/stop predicates after waiting.
         .order_by(Consignment.parcel_perfect_reference.collate("C"))
         .with_for_update()
         .execution_options(populate_existing=True)
@@ -229,8 +220,6 @@ async def ingest_scans(
 
     await db.flush()
     if any(r.exception_ids for r in results):
-        # Enqueued here rather than inside _raise_discrepancy: this is the only frame
-        # holding the Trip, and one refetch covers every discrepancy in the batch.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -327,10 +316,8 @@ async def _raise_discrepancy(
         expected_count=expected_count, observed_count=observed_count,
     )
 
-    # Determine which phase this scan belongs to based on direction
     phase_type = 'loading' if direction == ScanDirection.OUT else 'unloading'
 
-    # Look up the phase_event_id for this scan at this stop
     phase_event = (await db.execute(
         select(PhaseEvent.id).where(
             PhaseEvent.trip_id == trip_id,
@@ -339,9 +326,6 @@ async def _raise_discrepancy(
         )
     )).scalar_one_or_none()
 
-    # Suppress an identical unresolved duplicate. A repeated poll against an
-    # unchanged feed is a normal occurrence, and each repeat manufacturing a new
-    # exception row would bury the real one under noise on the dispatcher's list.
     existing = (await db.execute(
         select(TripException.id).where(
             TripException.trip_id == trip_id,
@@ -362,7 +346,7 @@ async def _raise_discrepancy(
     exception = TripException(
         id=uuid.uuid4(),
         trip_id=trip_id,
-        phase_event_id=phase_event,  # ← Now properly attached
+        phase_event_id=phase_event,
         consignment_id=consignment.id,
         trip_stop_id=trip_stop_id,
         exception_type=ExceptionType.PARCEL_COUNT_MISMATCH,

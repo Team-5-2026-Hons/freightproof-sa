@@ -128,11 +128,11 @@ async def test_the_claimed_period_must_be_the_callers_own_and_no_longer_current(
     w = await handed_over(db_session)
 
     with pytest.raises(SubstitutionInvalidError):
-        await retain(db_session, w, w.a, late(1))  # A never held period 1
+        await retain(db_session, w, w.a, late(1))
     with pytest.raises(SubstitutionInvalidError):
-        await retain(db_session, w, w.b, late(1))  # B's period is current
+        await retain(db_session, w, w.b, late(1))
     with pytest.raises(ResourceNotFoundError):
-        await retain(db_session, w, w.c, late(0))  # C never held the trip
+        await retain(db_session, w, w.c, late(0))
 
     assert (await db_session.execute(select(LateDriverEvidence))).first() is None
 
@@ -158,13 +158,11 @@ async def test_only_the_callers_own_unused_late_uploads_for_that_period_can_be_a
     )
     await retain(db_session, w, w.a, late(artifacts=[a_photo.id]))
 
-    with pytest.raises(SubstitutionInvalidError):  # already attached
+    with pytest.raises(SubstitutionInvalidError):
         await retain(db_session, w, w.a, late(artifacts=[a_photo.id]))
-    with pytest.raises(SubstitutionInvalidError):  # another driver's upload
+    with pytest.raises(SubstitutionInvalidError):
         await retain(db_session, w, w.a, late(artifacts=[b_photo.id]))
 
-
-# ── dispatcher acknowledgement ───────────────────────────────────────────────
 
 
 def ack(key: uuid.UUID | None = None, note: str = "Reviewed with the driver") -> AcknowledgeLateEvidenceRequest:

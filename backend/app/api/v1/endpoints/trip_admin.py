@@ -39,9 +39,6 @@ router = APIRouter(prefix="/trips/{trip_id}", tags=["trip-admin"])
     "/cancel",
     response_model=TripDetailResponse,
     summary="Cancel a trip (dispatcher-only terminal exit)",
-    # Both dispatcher lifecycle exits write an exception row and re-anchor. Budgeted with
-    # the fleet mutations rather than the driver's evidence writes: these are deliberate,
-    # one-at-a-time actions taken by a person at a desk, never batched or replayed.
     dependencies=[Depends(rate_limit(FLEET_MUTATION))],
 )
 async def cancel_trip_endpoint(

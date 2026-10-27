@@ -10,13 +10,11 @@ import { cancelSubstitution, completeSubstitution, correctSubstitution } from '@
 import { useDrivers } from '@/lib/hooks/useDrivers'
 import { DriverSubstitutionPanel, PendingHandover } from './DriverSubstitutionPanel'
 
-// The API client builds a Supabase client at import time — mocked like the other panel tests.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// Keep the real error-code reader and key generator: they are the behaviour under test.
 vi.mock('@/lib/api/driverSubstitutions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/driverSubstitutions')>('@/lib/api/driverSubstitutions')
   return {
@@ -64,10 +62,8 @@ beforeEach(() => {
 
 describe('DriverSubstitutionPanel — drivers and arrange button', () => {
   it('names both drivers on the handover row instead of repeating current and original driver rows', () => {
-    // Arrange / Act
     renderPanel(tripWith(flagOffDetail))
 
-    // Assert
     expect(screen.getByText('Fixture Driver Outgoing → Fixture Driver Incoming')).toBeInTheDocument()
     expect(screen.queryByText('Current driver')).not.toBeInTheDocument()
     expect(screen.queryByText(/journey record, unchanged/)).not.toBeInTheDocument()
@@ -117,17 +113,13 @@ describe('DriverSubstitutionPanel — drivers and arrange button', () => {
 
 describe('DriverSubstitutionPanel — pending arrangement', () => {
   it('shows the exchange, planned-point copy, missing roles and the recorded identity status', () => {
-    // Arrange
     const request = pendingRequest({ identity: { ...oneConfirmation.identity, status: 'pending' } })
 
-    // Act
     renderPanel(tripWith({ pending_driver_substitution: request }))
 
-    // Assert
     expect(screen.getByText(/Planned exchange: Fixture Fuel Stop, Harrismith/)).toBeInTheDocument()
     expect(screen.getByText(/not the vehicle’s live position/)).toBeInTheDocument()
     expect(screen.getByText(/Confirmed by: outgoing · waiting for incoming/)).toBeInTheDocument()
-    // The recorded status is shown as-is, never relabelled as verified.
     expect(screen.getByText('Incoming driver identity: pending')).toBeInTheDocument()
   })
 
@@ -155,18 +147,15 @@ describe('DriverSubstitutionPanel — pending arrangement', () => {
 
 describe('DriverSubstitutionPanel — complete', () => {
   it('requires a reason when a confirmation is missing, then sends it with version and key', async () => {
-    // Arrange
     vi.mocked(completeSubstitution).mockResolvedValue(dispatcherAttestedCompleted)
     const request = pendingRequest()
     const { onChanged } = renderPanel(tripWith({ pending_driver_substitution: request }))
     await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
     expect(screen.getByRole('button', { name: 'Complete' })).toBeDisabled()
 
-    // Act
     fill('Why complete without both confirmations', '  Outgoing phone is dead.  ')
     await userEvent.click(screen.getByRole('button', { name: 'Complete' }))
 
-    // Assert
     await waitFor(() => expect(onChanged).toHaveBeenCalledOnce())
     expect(completeSubstitution).toHaveBeenCalledWith(TRIP_BASE.id, request.id, {
       client_request_id: expect.any(String),
@@ -178,32 +167,26 @@ describe('DriverSubstitutionPanel — complete', () => {
   })
 
   it('needs no missing-confirmation reason when both drivers confirmed', async () => {
-    // Arrange
     vi.mocked(completeSubstitution).mockResolvedValue(normalCompleted)
     const request = pendingRequest({ missing_confirmations: [], completion_blocked_by: 'driver_unavailable' })
     renderPanel(tripWith({ pending_driver_substitution: request }))
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
 
-    // Assert
     expect(screen.queryByLabelText('Why complete without both confirmations')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Complete' })).toBeEnabled()
   })
 
   it('sends the identity attestation reason and a SAST exchange time when given', async () => {
-    // Arrange
     vi.mocked(completeSubstitution).mockResolvedValue(normalCompleted)
     const request = pendingRequest({ missing_confirmations: [], permitted_actions: ['complete_attested', 'attest_identity'] })
     renderPanel(tripWith({ pending_driver_substitution: request }))
     await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
 
-    // Act
     fill('Attest unavailable identity verification (admin; leave empty to not attest)', 'Checked in person.')
     fill('Physical exchange time, if earlier (SAST)', '2026-10-20T10:30')
     await userEvent.click(screen.getByRole('button', { name: 'Complete' }))
 
-    // Assert
     await waitFor(() => expect(completeSubstitution).toHaveBeenCalledOnce())
     expect(vi.mocked(completeSubstitution).mock.calls[0][2]).toMatchObject({
       identity_unavailable_reason: 'Checked in person.',
@@ -213,14 +196,11 @@ describe('DriverSubstitutionPanel — complete', () => {
   })
 
   it('shows the identity attestation field only when attest_identity is permitted', async () => {
-    // Arrange
     const label = 'Attest unavailable identity verification (admin; leave empty to not attest)'
     renderPanel(tripWith({ pending_driver_substitution: pendingRequest() }))
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
 
-    // Assert
     expect(screen.queryByLabelText(label)).not.toBeInTheDocument()
   })
 
@@ -233,29 +213,23 @@ describe('DriverSubstitutionPanel — complete', () => {
   })
 
   it('explains a 403 IDENTITY_ATTESTATION_FORBIDDEN and does not refetch', async () => {
-    // Arrange
     vi.mocked(completeSubstitution).mockRejectedValue(apiError(403, 'IDENTITY_ATTESTATION_FORBIDDEN'))
     const { onChanged } = renderPanel(tripWith({ pending_driver_substitution: pendingRequest({ missing_confirmations: [] }) }))
     await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Complete' }))
 
-    // Assert
     expect(await screen.findByRole('alert')).toHaveTextContent('Only an admin dispatcher can attest unavailable identity.')
     expect(onChanged).not.toHaveBeenCalled()
   })
 
   it('refetches when another dispatcher already changed the request (old version returned)', async () => {
-    // Arrange
     vi.mocked(completeSubstitution).mockRejectedValue(apiError(409, 'SUBSTITUTION_VERSION_CHANGED'))
     const { onChanged } = renderPanel(tripWith({ pending_driver_substitution: pendingRequest({ missing_confirmations: [] }) }))
     await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Complete' }))
 
-    // Assert
     expect(await screen.findByRole('alert')).toHaveTextContent('Someone else changed this handover. It has been refreshed.')
     expect(onChanged).toHaveBeenCalledOnce()
   })
@@ -263,7 +237,6 @@ describe('DriverSubstitutionPanel — complete', () => {
 
 describe('DriverSubstitutionPanel — cancel', () => {
   it('requires a reason and then cancels with the version', async () => {
-    // Arrange
     vi.mocked(cancelSubstitution).mockResolvedValue(cancelled)
     const request = pendingRequest()
     const { onChanged } = renderPanel(tripWith({ pending_driver_substitution: request }))
@@ -271,11 +244,9 @@ describe('DriverSubstitutionPanel — cancel', () => {
     const confirm = screen.getByRole('button', { name: 'Cancel handover' })
     expect(confirm).toBeDisabled()
 
-    // Act
     fill('Why cancel', 'Trip rerouted.')
     await userEvent.click(screen.getByRole('button', { name: 'Cancel handover' }))
 
-    // Assert
     await waitFor(() => expect(onChanged).toHaveBeenCalledOnce())
     expect(cancelSubstitution).toHaveBeenCalledWith(TRIP_BASE.id, request.id, {
       client_request_id: expect.any(String), expected_version: request.version, reason: 'Trip rerouted.',
@@ -307,8 +278,6 @@ describe('DriverSubstitutionPanel — history', () => {
       { ...dispatcherAttestedCompleted, id: 'f8300000-0000-4000-8000-000000000199', identity: { ...dispatcherAttestedCompleted.identity, status: 'pending' } },
     ] }))
 
-    // The button's name is its aria-label, which hides the row's text from assistive tech, so the
-    // outcome and the warning have to arrive as its description.
     const row = screen.getByRole('button', { name: /View evidence/ })
     expect(row).toHaveAccessibleDescription(/Completed by dispatcher/)
     expect(row).toHaveAccessibleDescription(/Identity not verified/)
@@ -319,7 +288,6 @@ describe('DriverSubstitutionPanel — history', () => {
     const middle = { ...normalCompleted, id: 'middle', effective_at: '2026-10-20T10:00:00Z', outgoing: { ...normalCompleted.outgoing, full_name: 'Middle Out' }, incoming: { ...normalCompleted.incoming, full_name: 'Middle In' } }
     const late = { ...cancelled, id: 'late', created_at: '2026-10-20T12:00:00Z', effective_at: null, outgoing: { ...cancelled.outgoing, full_name: 'Late Out' }, incoming: { ...cancelled.incoming, full_name: 'Late In' } }
 
-    // Given out of order, and with the completed one between two cancelled ones.
     renderPanel(tripWith({ driver_substitutions: [late, middle, early] }))
 
     const rows = within(screen.getByRole('list', { name: 'Handover history' })).getAllByRole('listitem').map(row => row.textContent ?? '')

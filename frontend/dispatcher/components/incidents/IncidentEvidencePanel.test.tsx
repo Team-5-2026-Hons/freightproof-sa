@@ -60,77 +60,60 @@ beforeEach(() => window.localStorage.clear())
 
 describe('IncidentEvidencePanel — order', () => {
   it('puts what needs attention first, then exceptions, then the raw facts', () => {
-    // Arrange / Act
     renderPanel()
 
-    // Assert
     const headings = screen.getAllByRole('heading').map(h => h.textContent)
     expect(headings).toEqual(['Needs attention', 'Exceptions on this trip', ...SECTION_TITLES])
   })
 
   it('shows the attention items and leaves informational observations out', () => {
-    // Arrange / Act
     renderPanel()
 
-    // Assert
     expect(screen.getByText('2 of 8 phases resolved; 6 pending.')).toBeInTheDocument()
     expect(screen.queryByText('Informational only.')).not.toBeInTheDocument()
   })
 
   it('omits the attention block when nothing needs attention', () => {
-    // Arrange / Act
     renderPanel(evidence({ observations: [] }))
 
-    // Assert
     expect(screen.queryByRole('heading', { name: 'Needs attention' })).not.toBeInTheDocument()
   })
 })
 
 describe('IncidentEvidencePanel — exceptions', () => {
   it('keeps exceptions visible with their row actions, not folded away', async () => {
-    // Arrange
     const { onLinkException } = renderPanel()
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Group here' }))
 
-    // Assert
     expect(screen.getByText('Phone outside the precinct')).toBeVisible()
     expect(screen.getByText('Grouped here')).toBeInTheDocument()
     expect(onLinkException).toHaveBeenCalledWith('e1')
   })
 
   it('offers no grouping on a closed incident', () => {
-    // Arrange / Act
     renderPanel(evidence(), { closed: true })
 
-    // Assert
     expect(screen.queryByRole('button', { name: 'Group here' })).not.toBeInTheDocument()
   })
 
   it('says so when the trip has no exceptions', () => {
-    // Arrange / Act
     renderPanel(evidence({ trip_exceptions: [] }))
 
-    // Assert
     expect(screen.getByText('No exceptions recorded.')).toBeInTheDocument()
   })
 })
 
 describe('IncidentEvidencePanel — raw facts', () => {
   it('starts every fact section collapsed', () => {
-    // Arrange / Act
     renderPanel()
 
-    // Assert
     for (const title of SECTION_TITLES) expect(section(title).open, title).toBe(false)
   })
 
   it('says what is inside each section in its summary line', () => {
-    // Arrange / Act
     renderPanel()
 
-    // Assert
     expect(within(section('Scans')).getByText(/2 consignments · 13 scanned in · 2 with no scan-in/)).toBeInTheDocument()
     expect(within(section('Seals')).getByText('1 reading · 2 photos')).toBeInTheDocument()
     expect(within(section('Counts')).getByText('1 phase counted')).toBeInTheDocument()
@@ -139,10 +122,8 @@ describe('IncidentEvidencePanel — raw facts', () => {
   })
 
   it('says "none" in the summary rather than hiding an empty section', () => {
-    // Arrange / Act
     renderPanel(evidence(EMPTY))
 
-    // Assert
     expect(within(section('Scans')).getByText('no consignments on this trip')).toBeInTheDocument()
     expect(within(section('Seals')).getByText('none recorded')).toBeInTheDocument()
     expect(within(section('Counts')).getByText('none recorded')).toBeInTheDocument()
@@ -151,53 +132,39 @@ describe('IncidentEvidencePanel — raw facts', () => {
   })
 
   it('opens a section on click', async () => {
-    // Arrange
     renderPanel()
 
-    // Act
     await userEvent.click(screen.getByRole('heading', { name: 'Seals' }))
 
-    // Assert
     expect(section('Seals').open).toBe(true)
   })
 
   it('keeps every piece of evidence reachable once the sections are open', async () => {
-    // Arrange
     renderPanel()
 
-    // Act
     for (const title of SECTION_TITLES) await userEvent.click(screen.getByRole('heading', { name: title }))
 
-    // Assert — scans table, with the no-scan-in column
     const scans = within(section('Scans'))
     expect(scans.getByRole('columnheader', { name: 'No scan-in recorded' })).toBeInTheDocument()
     expect(scans.getByRole('cell', { name: 'MFTWB8901' })).toBeInTheDocument()
     expect(scans.getByRole('cell', { name: 'MFTWB8902' })).toBeInTheDocument()
     expect(scans.getByText(/not a finding that a parcel was taken/)).toBeInTheDocument()
-    // seals
     expect(within(section('Seals')).getByText(/S-1001/)).toBeInTheDocument()
     expect(within(section('Seals')).getByText(/intact/)).toBeInTheDocument()
-    // the summary line and the reading itself both mention the photos
     expect(within(section('Seals')).getAllByText(/2 photos/)).toHaveLength(2)
-    // counts
     expect(within(section('Counts')).getByText(/origin 11/)).toBeInTheDocument()
     expect(within(section('Counts')).getByText(/driver counted 10/)).toBeInTheDocument()
-    // position, with the reference time it was read at
     expect(within(section('Last known position')).getByText(/-33\.99347, 18\.44827/)).toBeInTheDocument()
     expect(within(section('Last known position')).getByText(/Read at/)).toBeInTheDocument()
-    // every tracking gap
     expect(within(section('Tracking gaps')).getByText(/148 min/)).toBeInTheDocument()
     expect(within(section('Tracking gaps')).getByText(/53 min/)).toBeInTheDocument()
   })
 
   it('still shows the reference time for the position when there is no fix', async () => {
-    // Arrange
     renderPanel(evidence({ last_known_position: null }))
 
-    // Act
     await userEvent.click(screen.getByRole('heading', { name: 'Last known position' }))
 
-    // Assert
     expect(within(section('Last known position')).getByText('No position fix before the reported time.')).toBeInTheDocument()
     expect(within(section('Last known position')).getByText(/Read at/)).toBeInTheDocument()
   })

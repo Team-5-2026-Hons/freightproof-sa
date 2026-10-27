@@ -14,16 +14,13 @@ from app.orchestration.evidence.road_check import (
 )
 
 _MAX_SEPARATION = 500.0
-# ~1.1 km of latitude per 0.01 degree: far enough to exceed the 500 m threshold.
 _ORIGIN = (Decimal("-33.9249000"), Decimal("18.4241000"))
-_NEAR = (Decimal("-33.9250000"), Decimal("18.4241000"))    # ~11 m from origin
-_FAR = (Decimal("-33.9349000"), Decimal("18.4241000"))     # ~1.1 km from origin
+_NEAR = (Decimal("-33.9250000"), Decimal("18.4241000"))
+_FAR = (Decimal("-33.9349000"), Decimal("18.4241000"))
 
 
 def _reading(role: RigRole, position: tuple[Decimal, Decimal] | None, *,
              status: PulsitFixStatus = PulsitFixStatus.OK, registration: str = "CA 1") -> RigReading:
-    # A missing position with the default status reads as a dark tracker (NO_FIX); an
-    # explicit status such as UNKNOWN_DEVICE is kept as given.
     effective_status = PulsitFixStatus.NO_FIX if position is None and status is PulsitFixStatus.OK else status
     return RigReading(
         vehicle_id=uuid.uuid4(), registration=registration, role=role, status=effective_status,
@@ -148,5 +145,4 @@ def test_separation_rule_does_not_run_at_a_stop():
         max_separation_metres=_MAX_SEPARATION,
     )
 
-    # Trailer separation at a stop is TRAILER_LOCATION_MISMATCH's job (phases.findings).
     assert findings == []

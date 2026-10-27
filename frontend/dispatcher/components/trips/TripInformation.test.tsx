@@ -8,17 +8,12 @@ import { mockPrecincts } from '@shared/lib/mocks/precincts'
 import { precinctLabel } from '@/lib/phase/trip-detail'
 import type { Trip } from '@shared/lib/types/trip'
 
-// CancelTripDialog now lives outside this component, but the module import chain still
-// reaches the API client, which builds a Supabase client at import time — same reason
-// TripExceptionsPanel.test.tsx mocks this module.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
 const trip = mockTrips[0]!
-// mockTrips[0] is a closed trip (TRP-2026-0035), so its own trigger is correctly hidden —
-// the positive cancel-trigger test below needs a still-cancellable status.
 const activeTrip = { ...trip, status: 'active' as const }
 
 function renderInformation(overrides: Partial<{ trip: Trip; onOpenPrecinct: () => void }> = {}) {
@@ -37,9 +32,6 @@ function renderInformation(overrides: Partial<{ trip: Trip; onOpenPrecinct: () =
 
 describe('TripInformation stop previews', () => {
   it('hands the clicked stop\'s precinct to the caller rather than opening its own modal', async () => {
-    // The preview must not be TripInformation's own <dialog> — it can render inside
-    // DetailPanel's overlay <dialog> below the dock width, and a modal nested inside
-    // another open modal centers on the wrong box. The caller owns where it renders.
     const { onOpenPrecinct } = renderInformation()
     const stop = trip.stops[0]!
     const precinct = mockPrecincts.find(p => p.id === stop.precinct_id)!
@@ -60,8 +52,6 @@ describe('TripInformation route list', () => {
 
     expect(rows.length).toBeGreaterThan(1)
     expect(rows.every(row => row.classList.contains('border-b'))).toBe(true)
-    // `last:border-0` is a pseudo-class variant: it removes the rule on the final row only, which is
-    // checked live in the browser; here it must be present and the row really must be the last child.
     expect(rows.every(row => row.classList.contains('last:border-0'))).toBe(true)
     expect(rows.at(-1)!.nextElementSibling).toBeNull()
   })

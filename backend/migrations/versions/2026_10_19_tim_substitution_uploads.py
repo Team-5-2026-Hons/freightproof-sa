@@ -19,14 +19,12 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "tim_dsub_uploads"
 down_revision = "tim_dsub_capture_findings"
 branch_labels = None
 depends_on = None
 
 _TABLE = "driver_substitution_uploads"
-# The Supabase Data API roles, as in ciaran_lock_down_data_api; skipped where a role does not exist.
 _API_ROLES = "'anon', 'authenticated'"
 
 
@@ -59,8 +57,6 @@ def upgrade() -> None:
         sa.CheckConstraint("role IS NULL OR role IN ('outgoing', 'incoming')", name="ck_dsub_uploads_role"),
     )
     op.create_index("ix_dsub_uploads_request_id", _TABLE, ["request_id"])
-    # Same posture as every FP-83 table (ciaran_driver_substitutions): RLS on with no policies,
-    # and Supabase's default Data API grants revoked, so only the backend's own connection reads it.
     op.execute(f"ALTER TABLE public.{_TABLE} ENABLE ROW LEVEL SECURITY")
     op.execute(f"""
 DO $$

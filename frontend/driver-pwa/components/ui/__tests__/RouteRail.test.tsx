@@ -37,7 +37,6 @@ describe('RouteRail', () => {
   })
 
   it('test_says_reached_to_screen_readers_not_just_with_a_fill', () => {
-    // Nothing conveyed by colour alone (HIG accessibility.md).
     render(<RouteRail stops={STOPS} />)
 
     expect(screen.getByText('Reached:', { exact: false })).toHaveClass('sr-only')

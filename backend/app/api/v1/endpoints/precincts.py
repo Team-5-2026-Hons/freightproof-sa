@@ -101,8 +101,6 @@ async def update_precinct_endpoint(
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except InvalidGeofenceError as exc:
-        # 422, not 409: same class of failure as a schema error, just only detectable
-        # once the PATCH is merged with the stored row.
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except DuplicateResourceError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
@@ -131,12 +129,6 @@ async def get_precinct_detail_endpoint(
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
-    # Receipts are withheld from non-admins, matching get_vehicle_detail_endpoint.
-    #
-    # Only the ROLE is checked here. Ownership is already settled in get_precinct_detail,
-    # which returns no events and no receipts for a precinct the caller merely sees via
-    # is_shared — deliberately one rule in one place rather than an ownership test
-    # repeated here that could drift from the one the service applies.
     if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
         detail = detail.model_copy(update={"receipts": []})
     return detail

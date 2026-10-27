@@ -22,7 +22,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_evidence_anchors"
 down_revision = "tim_precinct_geofence_polygon"
 branch_labels = None
@@ -113,7 +112,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Dropping the tables discards their RLS flag and privileges too.
     op.drop_index("ix_evidence_anchor_events_exception_id", table_name="evidence_anchor_events")
     op.drop_index("ix_evidence_anchor_events_trip_id", table_name="evidence_anchor_events")
     op.drop_index("ix_evidence_anchor_events_status_updated", table_name="evidence_anchor_events")

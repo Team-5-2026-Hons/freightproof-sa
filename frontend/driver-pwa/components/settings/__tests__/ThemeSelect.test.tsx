@@ -7,7 +7,6 @@ import { DARK_CLASS, PREF_THEME } from '@/lib/theme'
 beforeEach(() => {
   window.localStorage.clear()
   document.documentElement.classList.remove(DARK_CLASS)
-  // jsdom has no matchMedia; the 'system' option resolves through it.
   vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
     matches: false,
     addEventListener: vi.fn(),
@@ -69,8 +68,6 @@ describe('ThemeSelect', () => {
     render(<ThemeSelect />)
 
     for (const label of ['System', 'Light', 'Dark']) {
-      // The visible tile is the input's sibling — the input itself is sr-only. Overhaul
-      // 10.2 draws it as a 112px preview (h-28), well over the 44px minimum.
       const segment = screen.getByRole('radio', { name: label }).nextElementSibling
 
       expect(segment).toHaveClass('h-28')

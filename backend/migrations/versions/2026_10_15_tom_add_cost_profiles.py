@@ -31,7 +31,6 @@ Create Date: 2026-10-15
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "tom_add_cost_profiles"
 down_revision = "tim_seal_source_linehaul_pdf"
 branch_labels = None
@@ -76,7 +75,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Dropping the table discards its RLS flag too, but disabling first keeps
-    # downgrade the exact mirror of upgrade.
     op.execute(f"ALTER TABLE public.{_TABLE} DISABLE ROW LEVEL SECURITY")
     op.drop_table(_TABLE)

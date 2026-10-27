@@ -8,8 +8,6 @@ import type { IncidentDetail, IncidentEvidence, IncidentListFilters, IncidentSum
 import { useAsyncData, type AsyncState } from './useAsyncData'
 import { useTripResource } from './useTripResource'
 
-// An incident changes on its own events; a stop also closes the trip, and a new exception or
-// review changes the evidence and the review counts an incident shows.
 const INCIDENT_KINDS: readonly RealtimeKind[] = ['incident_changed', 'trip_closed', 'exception_raised', 'exception_reviewed']
 
 /** The organisation's incidents, refreshed live when any trip's incident changes. */
@@ -20,10 +18,6 @@ export function useIncidents(filters: IncidentListFilters): AsyncState<IncidentS
   )
   const state = useAsyncData<IncidentSummary[]>(fetchList, [])
 
-  // useAsyncData only refetches when it is told to; a new fetcher is picked up through its ref but
-  // never triggers a request. This is the one list whose fetcher changes with filters, so refetch
-  // here. Comparing against the filters last fetched (not an "is first run" flag) keeps the mount
-  // fetch from doubling up, including under StrictMode's repeated effect run.
   const fetchedFor = useRef(fetchList)
   const { refetch } = state
   useEffect(() => {

@@ -163,7 +163,6 @@ describe('exception store', () => {
     const env = envelope({ photos: [photo()] })
     await saveExceptionEnvelope(env)
 
-    // Same factory again = a fresh connection to the same stored data, as after an app restart.
     __setIndexedDbForTests(fake)
     const loaded = await getExceptionEnvelope(env.clientReportId)
 

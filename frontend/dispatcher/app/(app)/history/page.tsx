@@ -23,20 +23,14 @@ import { sastToday }        from '@shared/lib/utils/datetime'
 import type { DateRange }   from '@/lib/types/date-range'
 import type { TripHistoryListItem } from '@shared/lib/types/trip'
 
-// Lower bound predates the platform, so the picker opens covering the full history by
-// default — narrowing it is an explicit dispatcher action, not a silent default.
 const HISTORY_RANGE_START = '2020-01-01'
 
-// Names the stored column widths; History's must not share Dashboard's.
 const HISTORY_TABLE_ID = 'history'
-// Terminal trips: the date that matters is when the trip closed, never updated_at.
 const CLOSED_DATE_COLUMN = { label: 'Closed', pick: (trip: TripHistoryListItem): string => trip.closed_at }
 const NO_ROUTE_FILTER = ''
 
 export default function HistoryPage() {
   const [search, setSearch]       = useState('')
-  // null = the untouched default (everything up to today). Today is read on each render rather
-  // than frozen at mount, so a page left open past SAST midnight still includes the new day.
   const [pickedRange, setPickedRange] = useState<DateRange | null>(null)
   const today = sastToday()
   const dateRange: DateRange = pickedRange ?? { from: HISTORY_RANGE_START, to: today }
@@ -53,7 +47,6 @@ export default function HistoryPage() {
     toDate: rangeTo,
   }), [searchTerm, precinctId, rangeFrom, rangeTo])
   const history = useTripHistory(historyFilters)
-  // Same as the active list: a history row carries enough to name the trip on arrival.
   useEffect(() => { putTripSeeds(history.items) }, [history.items])
   const { precincts, error: precinctsError } = usePrecincts()
 
@@ -63,8 +56,6 @@ export default function HistoryPage() {
     }
   }, [history.error, notify])
 
-  // The precinct filter silently narrows to nothing when this list fails to load,
-  // and route names fall back to an em-dash — neither is distinguishable from real data.
   useEffect(() => {
     if (precinctsError) {
       notify({
@@ -80,13 +71,11 @@ export default function HistoryPage() {
     || dateRange.from !== HISTORY_RANGE_START
     || dateRange.to !== today
 
-  // Built per render: route names depend on the loaded precincts.
   const columns = useMemo(
     () => buildTripColumns<TripHistoryListItem>({ precincts, date: CLOSED_DATE_COLUMN, showProgress: false }),
     [precincts],
   )
 
-  // Only the very first load shows placeholder rows; a refetch keeps the rows on screen.
   const initialLoad = history.isLoading && history.items.length === 0
   const loadFailed = !!history.error && history.items.length === 0
 
@@ -133,7 +122,6 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {/* Trip list card */}
       <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
         <SecHead title="Closed Trips" />
 
@@ -165,8 +153,6 @@ export default function HistoryPage() {
             )}
           </div>
         ) : (
-          // Server-paginated: header sorting is deliberately off, since sorting one page
-          // would present a partial ordering as if it were the whole history.
           <Table<TripHistoryListItem>
             tableId={HISTORY_TABLE_ID}
             caption="Closed trips"

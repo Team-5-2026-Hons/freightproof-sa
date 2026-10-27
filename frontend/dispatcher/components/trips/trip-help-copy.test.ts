@@ -3,8 +3,6 @@ import { TRIP_HELP, type TripHelpTopic } from './trip-help-copy'
 
 const TOPICS: readonly TripHelpTopic[] = ['header', 'timeline', 'info', 'cargo', 'exceptions']
 
-// Words that would claim something the record cannot support, or name a system the dispatcher
-// does not need to know about. A copy edit that introduces one should fail here, not in review.
 const FORBIDDEN = /parcel perfect|blockchain|hedera|stolen|theft|\blost\b/i
 
 describe('trip help copy', () => {

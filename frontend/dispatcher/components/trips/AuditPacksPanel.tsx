@@ -31,8 +31,6 @@ const STATUS_CHIP: Record<AuditPackStatus, { type: ChipType; label: string }> = 
 const EVENT_LABEL: Record<string, string> = {
   viewed: 'Opened', pdf_downloaded: 'Downloaded PDF', photo_viewed: 'Viewed a photo', verify_run: 'Ran live check',
   denied_expired: 'Tried an expired link', denied_revoked: 'Tried a revoked link',
-  // FP-291 mailed password. Unverified opens are expected once (the recipient's first visit);
-  // many, or wrong passwords, are what a forwarded link looks like.
   password_emailed: 'Password emailed', password_verified: 'Entered the mailed password',
   denied_bad_password: 'Entered a wrong password', denied_unverified: 'Opened without the password',
 }
@@ -61,7 +59,6 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onLoaded }: Pr
   const [busy, setBusy] = useState<string | null>(null)
   useEffect(() => {
     if (!isLoading) onLoaded?.()
-    // Once per load: the caller's callback changing identity is not a reason to fire it again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading])
   const [log, setLog] = useState<{ packId: string; events: AuditPackAccessEvent[] } | null>(null)
@@ -105,7 +102,6 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onLoaded }: Pr
           const chip = STATUS_CHIP[pack.status]
           return (
             <li key={pack.id} className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3">
-              {/* Same shape as the incident and handover rows, with the pack's actions in one row at the foot. */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[13px] font-semibold tabular-nums text-on-surf">{pack.pack_label}</span>
                 <Chip type={chip.type} label={chip.label} />
@@ -119,7 +115,6 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onLoaded }: Pr
                 <dt className="text-on-surf-v">{pack.revoked_at ? 'Revoked on' : 'Expires'}</dt><dd className="text-on-surf">{when(pack.revoked_at ?? pack.expires_at)}</dd>
                 <dt className="text-on-surf-v">Opened</dt><dd className="text-on-surf">{pack.view_count === 0 ? 'Not yet' : `${pack.view_count}× · last ${when(pack.last_viewed_at)}`}</dd>
               </dl>
-              {/* The transaction id is for the verifier page, not the dispatcher: here only whether the seal exists. */}
               <p className={`mt-1.5 flex items-center gap-1 text-xs ${pack.anchor_status === 'anchored' ? 'text-on-surf-v' : 'text-warn'}`}>
                 {pack.anchor_status === 'anchored' && <Ic n="check" s={12} className="text-ok" />}
                 {pack.anchor_status === 'anchored' ? 'Sealed on Hedera' : 'Not sealed on Hedera'}

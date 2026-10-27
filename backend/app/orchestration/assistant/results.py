@@ -48,18 +48,14 @@ class TripLine(Result):
     planned_arrival: str | None
     actual_departure: str | None
     actual_arrival: str | None
-    # "in transit, stop 2": the trip's current phase and stop.
     phase: str | None
-    # "6 of 11 steps done".
     progress: str
     exceptions_to_review: Counts
     overdue: bool
-    # When it was closed or cancelled: only on lists matched by that date (which_time "closed").
     closed: str | None = None
 
 
 class TripsResult(Result):
-    # What "active" means; only on the active group (other groups mean what they say).
     definition: str | None
     status_group: str
     window: str | None
@@ -68,7 +64,6 @@ class TripsResult(Result):
     on_the_road: int
     booked: int
     on_hold: int
-    # Live trips past their planned arrival, in this status group, whatever the window.
     overdue_total: int
     shown: int
     truncated: bool
@@ -98,8 +93,6 @@ class IncidentLine(Result):
     received: str
     exceptions_total: int
     parcels_total: int
-    # Coverage audit item 7: the staff member assigned (a name, D1), affected parcels nothing is known about yet,
-    # and the outcome's code (never `closure_reason` or `summary`: a person typed those).
     investigated_by: str | None = None
     parcels_unresolved: int = 0
     outcome: str | None = None
@@ -122,16 +115,13 @@ class RecordIntegrity(Result):
 class TripStatusResult(Result):
     trip: TripLine
     stops: list[str]
-    # Who started the trip, when it has since been handed over.
     original_driver: str | None
     open_exceptions: OpenExceptions
     open_incidents: list[IncidentLine]
-    # The trip page's Info panel, each worked out by code so the model never subtracts (coverage audit item 5).
     delivery_confirmed: str | None
     closed: str | None
     departure_delay: str | None
     arrival_delay: str | None
-    # Null when a consignment has no expected count (the page shows a dash then); 0 for an empty leg.
     parcels_booked: int | None
     parcels_scanned_out: int
     parcels_scanned_in: int
@@ -139,7 +129,6 @@ class TripStatusResult(Result):
 
 
 class ReviewQueue(Result):
-    # The Exceptions page's own count ("N needing review"): every exception waiting for review, on any trip.
     definition: str
     total: int
     critical: int
@@ -147,7 +136,6 @@ class ReviewQueue(Result):
     info: int
     claimed: int
     unclaimed: int
-    # Of `total`, those on closed or cancelled trips: why this can be more than the live trips below.
     on_finished_trips: int
 
 
@@ -174,7 +162,6 @@ class Booking(Result):
     origin: str
     destination: str
     busy_from: str
-    # "until the trip is closed" for a live trip past its planned end.
     busy_until: str
     was_due: str | None
 
@@ -184,7 +171,6 @@ class BookingsResult(Result):
     window: str
     nothing_booked: bool
     bookings: list[Booking]
-    # Our own fixed sentence (BOOKINGS_NOTE), never text a person typed.
     wording_rule: str
 
 
@@ -203,10 +189,7 @@ class VehicleStatusResult(Result):
     specs: VehicleSpecs
     licence_disc: str
     on_trip_now: list[Booking]
-    # Naming this vehicle (and, for a horse, its trips' breakdowns that name no vehicle).
     exceptions_to_review: OpenExceptions
-    # Other exceptions waiting on EVERY trip it was used on, past and present: about those trips, not the vehicle.
-    # Named and explained so the model can't read it as the current trip's count (Tom's browser test, 22 Oct, B38).
     exceptions_on_all_its_trips: OpenExceptions
     all_trips_scope: str
     recent_breakdowns: int
@@ -218,22 +201,17 @@ class VehicleStatusResult(Result):
 class ExpiryLine(Result):
     ref: str
     label: str
-    # "driver licence" or "vehicle disc".
     document: str
-    # The vehicle's type; null for a driver.
     detail: str | None
-    # Null only for one named record with no date recorded.
     expiry: str | None
     expired: bool | None
     days_left: int | None
 
 
 class ExpiryResult(Result):
-    # "expired or expiring within 30 days", or "one driver" / "one vehicle".
     scope: str
     driver_licences: list[ExpiryLine]
     vehicle_discs: list[ExpiryLine]
-    # Active records looked at, and how many of them have no expiry date recorded.
     drivers_checked: int
     vehicles_checked: int
     drivers_without_date: int
@@ -277,7 +255,6 @@ class RouteTimeResult(Result):
     typical_time: str | None
     slow_time: str | None
     history: str
-    # Set when the past times were faster than the road allows and are therefore not given.
     history_left_out: str | None
     arrival_rule: str
 
@@ -318,7 +295,6 @@ class HistoryLine(Result):
 
 class HistoryResult(Result):
     who: Who
-    # How the trips are counted, in the page's own words.
     counted_as: str
     window: str
     total: int
@@ -332,7 +308,6 @@ class HistoryResult(Result):
 
 
 class TripFormResult(Result):
-    # The button the app shows under the reply.
     button: str
     mode: str
     manifest_number: int | None
@@ -344,7 +319,6 @@ class TripFormResult(Result):
     destination: str | None
     departure: str | None
     arrival: str | None
-    # Fields the dispatcher still has to fill in on the form.
     still_blank: list[str]
     warnings: list[str]
     rule: str
@@ -364,14 +338,12 @@ class DepotLine(Result):
     ref: str
     name: str
     address: str | None
-    # "ours" or "shared with us".
     ownership: str
 
 
 class RosterGroup(Result):
     kind: str
     active_total: int
-    # Null for depots (they have no active flag).
     inactive_total: int | None
     names: list[CrewName]
     depots: list[DepotLine]
@@ -380,7 +352,6 @@ class RosterGroup(Result):
 
 class RosterResult(Result):
     groups: list[RosterGroup]
-    # Our own fixed sentence about what the pages list.
     lists_rule: str
 
 

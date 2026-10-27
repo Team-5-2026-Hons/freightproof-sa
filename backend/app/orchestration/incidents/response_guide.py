@@ -20,7 +20,6 @@ _FINISHED_TRIP = (TripStatus.CLOSED, TripStatus.CANCELLED)
 class GuideFacts:
     trip_stopped_at: datetime | None
     trip_status: TripStatus
-    # (action, when it happened — action_at as told, else when it was recorded)
     actions: Sequence[tuple[IncidentExternalAction, datetime]]
     declarations: Sequence[IncidentDeclarationRecord]
     pack_issued_at: datetime | None
@@ -62,7 +61,6 @@ def _saps(facts: GuideFacts) -> ResponseStep:
         )
     reported_at = _earliest(_acted(facts, IncidentExternalAction.SAPS_REPORTED), _declared(facts, "reported_to_saps_at"))
     if reported_at is not None:
-        # Reported, but the case number the claim form needs is not on record yet.
         return ResponseStep(key="saps_reported", state="in_progress", done_at=reported_at, detail="No CAS number recorded yet.")
     return _step("saps_reported", None)
 

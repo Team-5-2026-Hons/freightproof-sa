@@ -47,10 +47,8 @@ import httpx
 
 from app.core.config import settings
 
-# PP publishes no SLA; 20s is a generous cap for a single read on the demo host.
 _TIMEOUT_SECONDS = 20.0
 
-# Printed on the baseline poll so the operator can see lifecycle position at a glance.
 _LIFECYCLE_KEYS = (
     "details.collect",
     "details.manifest",
@@ -115,7 +113,6 @@ def _flatten(result: dict) -> dict[str, object]:
             for key, value in row.items():
                 flat[f"{section}[{index}].{key}"] = value
 
-    # PP's spec calls this array `wayref`; the live JSON returns `wayrefs`. Accept both.
     for index, row in enumerate(result.get("wayrefs") or result.get("wayref") or []):
         for key, value in row.items():
             flat[f"wayrefs[{index}].{key}"] = value
@@ -124,8 +121,6 @@ def _flatten(result: dict) -> dict[str, object]:
         for key, value in (result.get(section) or {}).items():
             flat[f"{section}.{key}"] = value
 
-    # Cardinality changes matter independently of per-row values: a parcel appearing or
-    # disappearing is a different event from a parcel's field being edited.
     flat["_counts.contents"] = len(result.get("contents") or [])
     flat["_counts.tracks"] = len(result.get("tracks") or [])
     flat["_counts.wayrefs"] = len(result.get("wayrefs") or result.get("wayref") or [])
@@ -141,7 +136,6 @@ async def _run(waybill: str, interval: int, minutes: int) -> int:
         print("ABORT: no PP credentials. Need PP_API_TOKEN, or PP_API_KEY + PP_API_PASSWORD.")
         return 2
     if url.startswith("http://"):
-        # POPIA: waybill payloads carry names, addresses and cell numbers.
         print("NOTE: PP_API_URL is http://. Upgrading to https:// for this run.")
         url = "https://" + url[len("http://"):]
 
@@ -204,8 +198,6 @@ async def _run(waybill: str, interval: int, minutes: int) -> int:
 
                 previous = current
             except Exception as exc:
-                # Never abort the run on one bad poll — a transient PP error must not
-                # cost the whole observation window, which may be hard to reschedule.
                 print(f"[{stamp}] poll {poll}: ERROR {exc!r}")
 
             await asyncio.sleep(interval)

@@ -17,7 +17,6 @@ export default function SettingsPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Swap in place like a tab change — Profile is a tab root, not a drill-in.
     markTransition('none')
     router.replace(ROUTES.profile)
   }, [router])

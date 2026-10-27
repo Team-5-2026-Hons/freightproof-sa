@@ -17,13 +17,8 @@ interface Props {
   /** Opens the record-police-details dialog. The dialog belongs to the panel, not here: below the
    *  dock width this renders inside DetailPanel's own overlay <dialog>. */
   onDeclare: () => void
-  /** Whether to offer the section on a trip with nothing recorded yet: when it has an incident or a
-   *  critical exception. With neither, and nothing already recorded, this renders nothing. */
   showSection: boolean
-  /** Whether the server can build the fact sheet: it needs a critical exception or a recorded
-   *  hijacking (summarise_incident), so the button is offered only then. */
   canBuildSheet: boolean
-  /** Bumped by the caller after a declaration is saved, so the list is read again in place. */
   refreshKey?: number
 }
 
@@ -38,7 +33,6 @@ export function TripPoliceDetails({ tripId, tripReference, onDeclare, showSectio
   const fetchDeclarations = useCallback(() => listIncidentDeclarations(tripId), [tripId])
   const declarations = useAsyncData<IncidentDeclaration[]>(fetchDeclarations, [])
   const { refetchSilent } = declarations
-  // Read again in place, without the skeleton: the list stays on screen and the page does not jump.
   useEffect(() => {
     if (refreshKey > 0) refetchSilent()
   }, [refreshKey, refetchSilent])

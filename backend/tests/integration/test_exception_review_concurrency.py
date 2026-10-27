@@ -201,9 +201,6 @@ async def test_simultaneous_reviews_record_exactly_one_dispatcher(test_engine, s
     assert sorted(status_code for _user_id, status_code in outcomes) == [200, 409]
     winner = next(user_id for user_id, status_code in outcomes if status_code == 200)
 
-    # And the row belongs to the one who was told so. Asserted separately because a lock
-    # that serialised the writes but still let the loser overwrite would satisfy the
-    # count above while destroying the evidence it is meant to protect.
     async with AsyncSession(test_engine, expire_on_commit=False) as session:
         stored = await session.get(TripException, seeded["exception_id"])
     expected_note, expected_outcome, expected_contact = attempts[winner]

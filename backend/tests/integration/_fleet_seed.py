@@ -43,20 +43,15 @@ from app.db.models.vehicles import Vehicle
 
 from tests.conftest import auth_header, make_token
 
-# SAST, the calendar every fleet figure is bucketed in. A fixed offset is exact: no DST.
 SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 
-# Minutes after a trip's start at which SINGLE_LEG attests its departure and its arrival.
 DEPARTURE_MINUTE = 100
 ARRIVAL_MINUTE = 400
-# The plan the seeded trips carry: 20 minutes after the actual departure, so on time.
 PLANNED_DEPARTURE_MINUTE = 120
 PLANNED_ARRIVAL_MINUTE = 400
-# The hour of the SAST day a seeded "n days ago" instant falls at.
 _DEFAULT_HOUR = 8
 _ID_NUMBER_DIGITS = 13
 _CLOSED_AFTER = timedelta(days=1)
-# How long a seeded capability token lives: long enough never to matter to a test.
 _TOKEN_LIFETIME = timedelta(hours=1)
 
 
@@ -83,14 +78,12 @@ class Step:
 @dataclass(frozen=True)
 class SeededTrip:
     trip: Trip
-    # In plan order, so a test can link an exception to a step by index or type.
     phases: list[PhaseEvent]
 
     def phase(self, phase_type: PhaseType) -> PhaseEvent:
         return next(phase for phase in self.phases if phase.phase_type == phase_type)
 
 
-# origin (stop 0) -> destination (stop 1), every step attested and every receipt anchored.
 SINGLE_LEG: tuple[Step, ...] = (
     Step(PhaseType.TRIP_CREATION, None, 0, anchor_status=AnchorStatus.ANCHORED),
     Step(PhaseType.ACTIVATION, 0, 30),
@@ -124,8 +117,6 @@ def not_started(steps: Sequence[Step] = SINGLE_LEG) -> tuple[Step, ...]:
     )
 
 
-# ── Time, always relative to now ─────────────────────────────────────────────
-
 
 def today_sast() -> date:
     return datetime.now(SAST).date()
@@ -144,8 +135,6 @@ def start_for_departure(departed_at: datetime, steps: Sequence[Step] = SINGLE_LE
     departure = next(step for step in steps if step.phase_type == PhaseType.DEPARTURE)
     return departed_at - timedelta(minutes=departure.minute)
 
-
-# ── People, vehicles, organisations ──────────────────────────────────────────
 
 
 def headers(operator: Operator) -> dict[str, str]:
@@ -178,7 +167,6 @@ def new_vehicle(
 def new_driver(
     organization_id: uuid.UUID, *, license_expiry: date | None = None, is_active: bool = True,
 ) -> Driver:
-    # id_number is unique per organisation, so each driver gets its own random 13 digits.
     id_number = f"{uuid.uuid4().int % 10**_ID_NUMBER_DIGITS:0{_ID_NUMBER_DIGITS}d}"
     return Driver(
         id=uuid.uuid4(), organization_id=organization_id, full_name="Fleet test driver",
@@ -204,8 +192,6 @@ async def other_operator(db: AsyncSession) -> Operator:
     await db.flush()
     return Operator(org=org, dispatcher=dispatcher, driver=driver, horse=horse)
 
-
-# ── Trips and exceptions ─────────────────────────────────────────────────────
 
 
 async def seed_trip(
@@ -252,7 +238,6 @@ async def seed_trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=None if planned_departure_minute is None else at(planned_departure_minute),
         planned_arrival_at=None if planned_arrival_minute is None else at(planned_arrival_minute),
-        # The final leg's attested arrival, as phases.completion sets it; None until then.
         actual_arrival_at=arrivals[-1] if arrivals else None,
         created_at=start,
         closed_at=(
@@ -263,7 +248,6 @@ async def seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -333,8 +317,6 @@ async def add_exception(
     await db.flush()
     return exception
 
-
-# ── Receiver QR sign-off (FP-155) ────────────────────────────────────────────
 
 
 async def add_receiver_confirmation(

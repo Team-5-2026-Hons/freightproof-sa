@@ -96,7 +96,6 @@ class RoadFinding:
 
 
 def _position(reading: RigReading) -> tuple[Decimal, Decimal] | None:
-    # Explicit None checks rather than a property, so mypy can narrow the Decimals.
     if reading.status is not PulsitFixStatus.OK or reading.lat is None or reading.lng is None:
         return None
     return reading.lat, reading.lng
@@ -112,8 +111,6 @@ def evaluate_road_readings(
     findings: list[RoadFinding] = []
 
     for reading in readings:
-        # NO_FIX only: a known tracker that went dark. UNKNOWN_DEVICE means it was never
-        # configured or staged — raising on it would flag every untouched trailer.
         if reading.status is PulsitFixStatus.NO_FIX:
             findings.append(RoadFinding(
                 exception_type=ExceptionType.TRACKER_SILENT,
@@ -128,8 +125,6 @@ def evaluate_road_readings(
     horse = next((r for r in readings if r.role is RigRole.HORSE), None)
     horse_position = _position(horse) if horse is not None else None
     if horse is None or horse_position is None:
-        # Both remaining rules measure against the horse. Without its fix there is
-        # nothing to compare, and "could not check" must not read as a verdict.
         return findings
 
     if stage.on_road:
@@ -145,7 +140,6 @@ def evaluate_road_readings(
                     phase_event_id=stage.current_phase_event_id,
                     trip_stop_id=stage.trip_stop_id,
                     vehicle_id=trailer.vehicle_id,
-                    # Registrations identify vehicles, not people, so they may be named.
                     description=(
                         f"On the road, trailer {trailer.registration} is "
                         f"{format_distance(separation)} from horse {horse.registration}. "
@@ -157,10 +151,7 @@ def evaluate_road_readings(
         verdict = evaluate_geofence(
             TrackerFix(lat=horse_position[0], lng=horse_position[1]), stage.stop_precinct,
         )
-        # distance_metres is None when nothing was measured; only a measured "outside" counts.
         if not verdict.confirmed and verdict.distance_metres is not None:
-            # A circle verdict measures from the centre, an outline verdict from the edge;
-            # the sentence says which so the number is never misread.
             where = (
                 f"outside the {stage.stop_precinct.name} property outline"
                 if verdict.shape is GeofenceShape.POLYGON
@@ -183,11 +174,6 @@ def evaluate_road_readings(
     return findings
 
 
-# ---------------------------------------------------------------------------
-# Writer: load the rig, read the trackers, record each finding once
-# ---------------------------------------------------------------------------
-
-# A finished trip has no road left to watch.
 _SKIPPED_STATUSES = frozenset({TripStatus.CLOSED, TripStatus.CANCELLED})
 
 
@@ -232,7 +218,6 @@ async def road_stage_for_current(db: AsyncSession, *, current: PhaseEvent) -> Ro
     if current.phase_type == PhaseType.IN_TRANSIT:
         return RoadStage(current.id, current.trip_stop_id, True, None, None)
     if current.trip_stop_id is None:
-        # trip_creation: no stop, so no fence to have left.
         return RoadStage(current.id, None, False, None, None)
     next_departure = (await db.execute(
         select(PhaseEvent)
@@ -244,8 +229,6 @@ async def road_stage_for_current(db: AsyncSession, *, current: PhaseEvent) -> Ro
         .order_by(PhaseEvent.sequence_number)
         .limit(1)
     )).scalar_one_or_none()
-    # Only a departure from THIS stop makes leaving the fence a finding. At the final
-    # stop there is no departure ahead; the truck may leave once confirmation is done.
     if next_departure is None or next_departure.trip_stop_id != current.trip_stop_id:
         return RoadStage(current.id, current.trip_stop_id, False, None, None)
     precinct = (await db.execute(

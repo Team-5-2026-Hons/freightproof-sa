@@ -103,7 +103,6 @@ describe('exceptionCountLabel', () => {
 })
 
 describe('firstUnreviewedException', () => {
-  // Only the plan position matters here; the rest of a phase is irrelevant to the ordering.
   const phases = [
     { phase_event_id: 'phase-2', sequence_number: 2 },
     { phase_event_id: 'phase-1', sequence_number: 1 },
@@ -140,11 +139,9 @@ describe('firstUnreviewedException', () => {
 
   it('compares instants, not text: a fractional second and a +02:00 offset order as the timeline does', () => {
     const rows = [
-      // As text "10:27:00.5Z" sorts before "10:27:00Z"; as an instant it is half a second later.
       exception('half-second-later', { review_status: 'needs_review', created_at: '2026-01-01T10:27:00.5Z' }),
       exception('on-the-second', { review_status: 'needs_review', created_at: '2026-01-01T10:27:00Z' }),
     ]
-    // 12:20+02:00 is 10:20Z: the earliest instant, though it is the latest as text.
     const offset = exception('offset-earliest', { review_status: 'needs_review', created_at: '2026-01-01T12:20:00+02:00' })
 
     expect(firstUnreviewedException(phases, rows, timeOf)?.id).toBe('on-the-second')

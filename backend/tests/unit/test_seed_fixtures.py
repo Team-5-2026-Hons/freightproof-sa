@@ -40,9 +40,6 @@ from scripts.seed_trips import (
     resolved_sequences,
 )
 
-# Expected plan length per seeded trip, keyed by trip_reference. Stated here rather
-# than computed so a change to build_phase_plan that silently reshapes the demo
-# trips has to be acknowledged: 2 stops -> 8 rows, 3-stop cross-dock -> 13.
 _EXPECTED_PLAN_LENGTHS = {
     "FP-DEMO-SINGLE-0001": 8,
     "FP-DEMO-XDOCK-0001": 13,
@@ -90,8 +87,6 @@ def test_unassigned_pool_resolves_in_pp():
 
 
 def test_trip_references_are_unique():
-    # trips.trip_reference is UNIQUE - a duplicate here fails mid-seed, after
-    # earlier trips have already been written.
     references = [spec.trip_reference for spec in TRIP_SPECS]
     assert len(references) == len(set(references))
 
@@ -104,8 +99,6 @@ def test_each_seeded_trip_rides_one_manifest_with_a_header() -> None:
 
 
 def test_manifest_keys_are_unique() -> None:
-    # uq_trips_pp_manifest refuses a duplicate on a live trip; the seeder writes rows
-    # directly and would sail past that guard into a state the application forbids.
     keys = [_manifest_key_for(spec) for spec in TRIP_SPECS]
     assert len(keys) == len(set(keys))
 
@@ -120,8 +113,6 @@ def test_consignment_legs_stay_within_the_route(spec):
     for leg in spec.consignments:
         assert leg.pickup_sequence in valid, leg.pp_reference
         assert leg.delivery_sequence in valid, leg.pp_reference
-        # A consignment travels forward along the route; equal or reversed stops
-        # would produce a stop that both loads and unloads the same cargo.
         assert leg.pickup_sequence < leg.delivery_sequence, leg.pp_reference
 
 

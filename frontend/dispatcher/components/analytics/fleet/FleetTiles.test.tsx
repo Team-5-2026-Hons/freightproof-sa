@@ -129,7 +129,6 @@ describe('FleetTiles', () => {
     expect(screen.getByText(line)).toBeInTheDocument()
     unmount()
 
-    // The source does not depend on the data arriving, so it survives both other states.
     const loading = renderTiles(null, { isLoading: true })
     expect(screen.getByText(line)).toBeInTheDocument()
     loading.unmount()

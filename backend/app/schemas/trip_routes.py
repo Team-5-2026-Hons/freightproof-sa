@@ -20,7 +20,6 @@ class TripRouteLegResponse(BaseModel):
     to_stop_sequence: int
     distance_metres: float = Field(..., ge=0)
     duration_seconds: float = Field(..., ge=0)
-    # [lat, lng] pairs, in driving order.
     coordinates: list[tuple[float, float]]
 
 

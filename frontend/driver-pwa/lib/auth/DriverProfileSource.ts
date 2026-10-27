@@ -21,10 +21,6 @@ export function isProfileUnreachable(result: ProfileLoad): result is ProfileUnre
   return result !== null && 'unreachable' in result && result.unreachable
 }
 
-// Why this is not part of the auth port: proving who someone is (a session) and loading
-// the application record about them (the Driver row) are different jobs with different
-// backends. Keeping them apart lets the demo walkthrough supply a fixture profile without
-// pretending to be an auth server, and lets auth be swapped without touching profiles.
 export interface DriverProfileSource {
   /**
    * The signed-in driver's own profile; null when the backend answered but there is no

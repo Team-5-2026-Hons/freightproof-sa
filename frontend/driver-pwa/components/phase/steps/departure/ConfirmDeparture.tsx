@@ -38,15 +38,10 @@ function HeadingTo({ trip }: { trip: Trip }) {
 
 export function ConfirmDeparture({ phase, stepIndex, draft, onComplete }: ConfirmDepartureProps) {
   const router = useRouter()
-  // Outside a trip session (a cold deep link mid-load) the destination row is left out.
   const trip = useOptionalTrip()?.trip ?? null
 
-  // Both halves checked, not just the number: submitPhase's departure branch throws
-  // locally without a seal photo, and a swipe that can only fail is worse than a disabled one.
   const isReady = draft.sealNumber !== null && draft.sealPhotoDataUrl !== null
 
-  // Edit and Retake both go back to the capture step, where the number and the photo
-  // live — one place to change either, the draft carried across.
   function backToCapture() {
     markTransition('back')
     router.push(phaseStepRoute(phase.phase_type, STEP_SLUGS[phase.phase_type][0]))
@@ -56,7 +51,6 @@ export function ConfirmDeparture({ phase, stepIndex, draft, onComplete }: Confir
     <StepLayout
       phase={phase}
       stepIndex={stepIndex}
-      // Names the control the driver actually sees ("Depart").
       intro="Check the seal one last time. When you swipe Depart, you’re in transit."
       requirements={[
         { label: 'Seal number', met: draft.sealNumber !== null },
@@ -73,8 +67,6 @@ export function ConfirmDeparture({ phase, stepIndex, draft, onComplete }: Confir
         />
       }
     >
-      {/* No GPS row: the fix is taken as this swipe submits, so a "Captured" line here
-          would claim something that hasn't happened yet. */}
       <div className="divide-y divide-hairline">
         <ReviewRow
           icon={<Lock className={ICON} strokeWidth={1.8} />}

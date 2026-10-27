@@ -9,30 +9,22 @@
 // and an animation can be grabbed and redirected mid-flight.
 
 export interface SpringConfig {
-  /** Approximate settle time in seconds. Lower is snappier. */
   response: number
-  /** 1 = critically damped (no overshoot). Below 1 overshoots. */
   dampingRatio: number
 }
 
-/** Default for UI that was not thrown: settles without overshoot. */
 export const SPRING_SETTLE: SpringConfig = { response: 0.35, dampingRatio: 1 }
 
-/** Apple's drawer/sheet spring — a little bounce, for motion a flick set going. */
 export const SPRING_FLICK: SpringConfig = { response: 0.3, dampingRatio: 0.8 }
 
-// Close enough to rest to snap and stop: half a pixel, barely moving.
 const REST_DISTANCE_PX = 0.5
 const REST_VELOCITY_PX_S = 10
 
-// A dropped frame (tab backgrounded, main thread busy) must not integrate one huge step
-// and fling the value past its target.
 const MAX_STEP_S = 1 / 30
 
 interface AnimateSpringOptions {
   from: number
   to: number
-  /** Initial velocity in px/s — the finger's speed at release. */
   velocity: number
   config: SpringConfig
   onUpdate: (value: number) => void
@@ -53,8 +45,6 @@ export function animateSpring({ from, to, velocity, config, onUpdate, onComplete
     const dt = last === null ? 1 / 60 : Math.min((now - last) / 1000, MAX_STEP_S)
     last = now
 
-    // Semi-implicit Euler: update velocity from the spring force first, then position
-    // from the new velocity. Stable at UI frame rates, unlike the explicit form.
     const force = -stiffness * (position - to) - damping * speed
     speed += force * dt
     position += speed * dt

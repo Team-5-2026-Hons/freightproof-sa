@@ -171,8 +171,6 @@ async def test_underway_trip_outranks_newer_created_assignment(client: AsyncClie
     resp = await client.get("/api/v1/trips/me/active", headers=auth_header(token))
 
     assert resp.status_code == 200
-    # The held trip, despite being two hours older: a held trip is still the trip the
-    # driver is on, just blocked from advancing.
     assert resp.json()["id"] == str(held.id)
 
 
@@ -203,13 +201,6 @@ async def test_two_underway_trips_returns_newest_not_500(client: AsyncClient, db
     db_session.add_all([user, driver, horse, origin, dest])
     await db_session.flush()
 
-    # BOTH created_at values are stamped here, from one clock. Leaving `newer` to the
-    # column's server_default would take it from POSTGRES's clock while `older` came from
-    # this process's — and the endpoint orders on that column, so the test's whole premise
-    # would rest on two machines agreeing. They need not: any skew larger than the two
-    # hours below silently inverts "older" and "newer", and the failure reads as a broken
-    # ordering rule rather than as a clock. An explicit pair costs one line and makes the
-    # assertion true by construction.
     now = datetime.now(UTC)
     older = Trip(
         id=uuid.uuid4(), trip_reference="FP-TEST-OLDER-ACTIVE", order_number="ORD-OLDER",
@@ -314,7 +305,6 @@ async def test_active_trip_includes_receipts_for_driver(client: AsyncClient, db_
     )
     db_session.add(trip)
     await db_session.flush()
-    # Simulate the H0 journey-lock anchor recorded at trip creation.
     h0_receipt = BlockchainReceipt(
         id=uuid.uuid4(), trip_id=trip.id,
         subject_type=SubjectType.TRIP, subject_id=trip.id,
@@ -331,7 +321,6 @@ async def test_active_trip_includes_receipts_for_driver(client: AsyncClient, db_
 
     body = resp.json()
     assert "blockchain_receipts" in body
-    # anchored seed trip -> at least the H0 anchor receipt must be visible.
     assert isinstance(body["blockchain_receipts"], list)
     assert len(body["blockchain_receipts"]) >= 1
     assert body["blockchain_receipts"][0]["id"] == str(h0_receipt.id)

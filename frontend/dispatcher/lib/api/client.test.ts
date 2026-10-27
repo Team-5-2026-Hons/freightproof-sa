@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The api client reads the bearer token and refreshes sessions through the
-// Supabase client. Mock that module so the tests exercise only the request /
-// retry / 401-recovery logic in client.ts.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: {
     auth: {
@@ -23,7 +20,6 @@ const mockedGetAccessToken = vi.mocked(getAccessToken)
 const mockedGetSession = vi.mocked(supabase.auth.getSession)
 const mockedSignOut = vi.mocked(supabase.auth.signOut)
 
-// Minimal Response stub covering the fields client.ts actually reads.
 function jsonResponse(status: number, body: unknown): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -33,14 +29,12 @@ function jsonResponse(status: number, body: unknown): Response {
   } as unknown as Response
 }
 
-// Shape of supabase.auth.getSession()'s resolved value (only access_token is read).
 function sessionWith(token: string | null) {
   return { data: { session: token ? { access_token: token } : null }, error: null }
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Hot path: a token is already cached, so getSession() is not hit per request.
   mockedGetAccessToken.mockReturnValue('cached-token')
 })
 
@@ -97,7 +91,6 @@ describe('401 recovery', () => {
   it('signs out and throws when the refresh yields the same (dead) token', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { detail: 'expired' }))
     vi.stubGlobal('fetch', fetchMock)
-    // Same token as the cache → the 401 is not a recoverable expiry.
     mockedGetSession.mockResolvedValue(sessionWith('cached-token') as never)
 
     await expect(api.get('/trips')).rejects.toMatchObject({ status: 401 })
@@ -178,9 +171,6 @@ describe('network-layer retry', () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
     vi.stubGlobal('fetch', fetchMock)
 
-    // A dropped POST may have already mutated server state, so it must not retry.
-    // The client normalises the raw TypeError into ApiError(0, …) so callers only ever
-    // reconcile one error shape — assert on that, not on the underlying fetch rejection.
     await expect(api.post('/trips', { driver_id: 'X' })).rejects.toMatchObject({
       name: 'ApiError',
       status: 0,
@@ -279,14 +269,8 @@ describe('manifest trip helpers', () => {
 })
 
 describe('request timeout', () => {
-  // Short enough to keep the suite fast, long enough that the stall is unambiguous.
   const SHORT_TIMEOUT_MS = 60
 
-  // A fetch that never settles on its own — it rejects only once the client aborts it,
-  // and it rejects the way WebKit does: an AbortError carrying "Fetch is aborted", not
-  // the TimeoutError the spec names. That exact shape is what used to slip past the
-  // client's name check, and jsdom's own AbortSignal.timeout is too spec-correct to
-  // reproduce it, so the reason is supplied here deliberately.
   function stallingFetch() {
     return vi.fn((_url: string, init: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
@@ -297,8 +281,6 @@ describe('request timeout', () => {
     )
   }
 
-  // Read-only POST: retry is on, so a timeout mistaken for a dropped connection would
-  // visibly cost a second window here.
   const stalledCall = () =>
     api.post('/blockchain/verify', {}, { idempotent: true, timeoutMs: SHORT_TIMEOUT_MS })
 
@@ -312,8 +294,6 @@ describe('request timeout', () => {
     })
   })
 
-  // The costly half of the same bug: a timeout that reads as an ordinary network failure
-  // gets retried, so an idempotent call spent two full windows stalling before it spoke.
   it('does not spend a second window retrying a request that timed out', async () => {
     const fetchMock = stallingFetch()
     vi.stubGlobal('fetch', fetchMock)
@@ -323,11 +303,6 @@ describe('request timeout', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  // A response whose headers arrive normally but whose BODY never settles. This is the
-  // half-open socket the timeout actually exists for, and the half fetch() cannot signal:
-  // it resolved back at the headers, so only the body promise is left to reject. json()
-  // settles solely when the client aborts, so if the window is disarmed on the headers
-  // this response hangs the caller forever.
   function stallingBodyResponse(signal: AbortSignal | undefined): Response {
     return {
       ok: true,
@@ -342,7 +317,6 @@ describe('request timeout', () => {
     } as unknown as Response
   }
 
-  // Same short-window call as stalledCall(), so the suite never waits on the real 12s ceiling.
   const stalledBodyCall = () =>
     api.post('/blockchain/verify', {}, { idempotent: true, timeoutMs: SHORT_TIMEOUT_MS })
 
@@ -359,8 +333,6 @@ describe('request timeout', () => {
     })
   })
 
-  // Rejecting the caller's promise is only half the job: the socket has to be released
-  // too, or a stalled body leaks a connection for as long as the tab lives.
   it('aborts the underlying request when the body stalls', async () => {
     let captured: AbortSignal | undefined
     const fetchMock = vi.fn((_url: string, init: RequestInit) => {
@@ -374,8 +346,6 @@ describe('request timeout', () => {
     expect(captured?.aborted).toBe(true)
   })
 
-  // The retry must survive: a dropped connection is not a timeout, and recovering from a
-  // dead keep-alive is the reason it exists.
   it('still retries a GET whose connection drops rather than stalls', async () => {
     const fetchMock = vi
       .fn()

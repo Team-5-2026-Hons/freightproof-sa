@@ -1,4 +1,4 @@
 export interface DateRange {
-  from: string  // YYYY-MM-DD
+  from: string
   to: string
 }

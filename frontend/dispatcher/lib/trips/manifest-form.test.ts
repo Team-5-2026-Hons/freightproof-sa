@@ -26,8 +26,6 @@ describe('parseManifestNumber', () => {
   })
 })
 
-// Literal strings on purpose: the answer must be the same whatever zone the machine is in, which
-// is also checked by running this file under TZ=UTC and TZ=America/New_York.
 describe('SAST datetime inputs', () => {
   it('renders an instant as the SAST wall-clock time', () => {
     expect(isoToSastInput('2026-10-06T18:00:00Z')).toBe('2026-10-06T20:00')

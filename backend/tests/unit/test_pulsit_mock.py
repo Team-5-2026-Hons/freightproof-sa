@@ -31,10 +31,8 @@ from app.integrations.pulsit import (
 )
 from tests.conftest import FakeMockStateStore
 
-# A device id that is deliberately absent from MOCK_DEVICE_POSITIONS.
 _UNKNOWN_DEVICE = "PLT-NOT-A-REAL-TRACKER"
 
-# Seeded fixture devices, used where the test is about the fixture library itself.
 _HORSE = "PLT-HORSE-001"
 _TRAILER_A = "PLT-TRAILER-001"
 _TRAILER_B = "PLT-TRAILER-002"
@@ -49,10 +47,6 @@ def mock_store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     monkeypatch.setattr(settings, "PULSE_USE_MOCK", True)
     return fake
 
-
-# ---------------------------------------------------------------------------
-# Reading positions with nothing staged — the fixture library
-# ---------------------------------------------------------------------------
 
 
 async def test_known_device_returns_fixture_position(mock_store):
@@ -91,7 +85,6 @@ async def test_unstaged_fixture_timestamp_is_current(mock_store):
 
     fix = await client.get_position(_HORSE)
 
-    # A position is a claim about now; a frozen fixture date would read as stale.
     assert fix.fixed_at is not None
     assert before <= fix.fixed_at <= datetime.now(UTC)
 
@@ -101,14 +94,9 @@ async def test_coordinates_are_decimal_not_float(mock_store):
 
     fix = await client.get_position(_HORSE)
 
-    # Decimal all the way through: these land in Numeric(10,7) columns.
     assert isinstance(fix.lat, Decimal)
     assert isinstance(fix.lng, Decimal)
 
-
-# ---------------------------------------------------------------------------
-# Staging — the state layer FP-197's dev endpoint will drive
-# ---------------------------------------------------------------------------
 
 
 async def test_staged_position_overrides_the_fixture(mock_store):
@@ -140,8 +128,6 @@ async def test_staged_position_is_isolated_by_organisation(mock_store):
 
 async def test_staged_position_survives_full_decimal_precision(mock_store):
     client = MockPulsitClient(_ORG_ID)
-    # Seven decimal places — the full precision of Numeric(10,7). A float
-    # round-trip through JSON would not return this value unchanged.
     await client.stage_position(_HORSE, Decimal("-33.9248765"), Decimal("18.4241234"))
 
     fix = await client.get_position(_HORSE)
@@ -177,7 +163,6 @@ async def test_staged_no_fix_reports_no_fix(mock_store):
 
     fix = await client.get_position(_HORSE)
 
-    # The tracker went dark: still a known device, but no position to report.
     assert fix.status is PulsitFixStatus.NO_FIX
     assert fix.has_position is False
     assert fix.lat is None and fix.lng is None
@@ -215,17 +200,12 @@ async def test_staging_no_fix_raises_when_mock_mode_is_off(monkeypatch: pytest.M
 
 async def test_corrupt_staged_state_degrades_to_no_fix(mock_store):
     client = MockPulsitClient(_ORG_ID)
-    # A malformed write by some future trigger: status says OK, coordinates absent.
     mock_store.data[f"freightproof:mock:pulsit:{_ORG_ID}:{_HORSE}"] = {"status": "ok"}
 
     fix = await client.get_position(_HORSE)
 
     assert fix.status is PulsitFixStatus.NO_FIX
 
-
-# ---------------------------------------------------------------------------
-# Batch reads — a trip with several trailers
-# ---------------------------------------------------------------------------
 
 
 async def test_multiple_trailers_return_one_fix_each_in_order(mock_store):
@@ -245,9 +225,9 @@ async def test_batch_mixes_staged_fixture_and_unknown_devices(mock_store):
     fixes = await client.get_positions([_HORSE, _TRAILER_A, _TRAILER_B, _UNKNOWN_DEVICE])
 
     assert [f.status for f in fixes] == [
-        PulsitFixStatus.OK,           # fixture library
-        PulsitFixStatus.OK,           # staged position
-        PulsitFixStatus.NO_FIX,       # staged dark
+        PulsitFixStatus.OK,
+        PulsitFixStatus.OK,
+        PulsitFixStatus.NO_FIX,
         PulsitFixStatus.UNKNOWN_DEVICE,
     ]
 
@@ -266,7 +246,6 @@ async def test_duplicate_device_ids_are_answered_positionally(mock_store):
 
     fixes = await client.get_positions([_HORSE, _HORSE])
 
-    # The contract promises one fix per requested id, in order — not a de-duplicated set.
     assert len(fixes) == 2
     assert [f.device_id for f in fixes] == [_HORSE, _HORSE]
 

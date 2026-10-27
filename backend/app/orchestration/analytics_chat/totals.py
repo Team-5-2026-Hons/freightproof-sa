@@ -43,7 +43,6 @@ JsonObject = dict[str, object]
 PER_100 = 100
 SECONDS_PER_HOUR = 3600
 HOURS_PER_DAY = 24
-# Two decimals: money and rates are compared as the page shows them, and float sums can carry noise.
 _DECIMALS = 2
 _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 _MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
@@ -89,7 +88,6 @@ def activity_totals(response: ActivityResponse) -> JsonObject:
         "closed_trips": loaded + empty,
         "loaded_trips": loaded,
         "empty_trips": empty,
-        # Trips that ended in the period, cancelled or closed: the "out of" for the cancelled rate.
         "trips_ended": ended,
         "cancelled_trips": cancelled,
         "cancelled_percent": percent(cancelled, ended),
@@ -105,7 +103,6 @@ def activity_totals(response: ActivityResponse) -> JsonObject:
 def _pattern_leaders(patterns: PatternSet) -> JsonObject:
     return {
         "total": sum(bar.event_count for bar in patterns.hour_of_day),
-        # By average per day, the measure the Busy patterns charts draw.
         "busiest_hour": top((f"{bar.key:02d}:00–{bar.key + 1:02d}:00", bar.average_per_day) for bar in patterns.hour_of_day),
         "busiest_weekday": top((_WEEKDAYS[bar.key], bar.average_per_day) for bar in patterns.weekday),
         "busiest_day_of_month": top((str(bar.key), bar.average_per_day) for bar in patterns.day_of_month),
@@ -129,7 +126,6 @@ def on_time_totals(response: OnTimeResponse) -> JsonObject:
         "arrivals_with_plan": arrivals,
         "on_time_arrivals": on_time_arrivals,
         "on_time_arrival_percent": percent(on_time_arrivals, arrivals),
-        # Only buckets with planned trips have a rate; the rest are "no data", never 0%.
         "lowest_on_time_arrival_percent_in": top(
             ((bucket_label(b.bucket_start, b.is_partial), as_percent(b.on_time_arrival_rate)) for b in response.punctuality),
             lowest=True,
@@ -158,7 +154,6 @@ def problems_totals(response: ProblemsResponse) -> JsonObject:
             theft_by_type[kind] = theft_by_type.get(kind, 0) + count
     return {
         "closed_trips": trips,
-        # Every severity: the 20 Oct miss was a model counting warnings only.
         "problems": info + warning + critical,
         "info": info,
         "warning": warning,
@@ -173,7 +168,6 @@ def problems_totals(response: ProblemsResponse) -> JsonObject:
         ),
         "most_common_type": top(_type_counts(response).items()),
         "step_with_most_problems": top((step.step, step.count) for step in response.by_step),
-        # Problems raised on the road, by quarter of the day (chart 3.5's measure).
         "riskiest_time_of_day": top((block.block.value, block.road_problem_count) for block in response.risky_times),
     }
 
@@ -206,7 +200,6 @@ def evidence_totals(response: EvidenceResponse) -> JsonObject:
         "tracker_confirmed": confirmed,
         "tracker_mismatch": mismatch,
         "tracker_unwitnessed": unwitnessed,
-        # Confirmed over checked steps; unwitnessed is "couldn't check", not a failure (Evidence tab rule).
         "tracker_agreement_percent": percent(confirmed, confirmed + mismatch),
         "steps": steps,
         "steps_overridden": overridden,

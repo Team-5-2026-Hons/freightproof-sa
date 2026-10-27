@@ -9,31 +9,16 @@ import { ApiError, type DriverConflictCode } from '@/lib/api/client'
 
 /** Why a queued capture stopped sending, kept with it until the driver decides. */
 export interface RetainedAttention {
-  /** The server's stable code, or null for a legacy uncoded refusal. */
   code: DriverConflictCode | null
-  /** HTTP status of the refusal; 0 for a local problem (unreadable photo). */
   status: number
-  /** Driver-facing explanation. */
   reason: string
-  /**
-   * The capture belongs to a period this driver no longer holds, so the only honest route
-   * left is the late-evidence endpoint. Still subject to the item having a known actor and
-   * custody period — the sender checks both.
-   */
   lateEligible: boolean
-  /** When the refusal happened (ISO), so a review screen can order and date it. */
   at: string
 }
 
 export type LiveWriteFailure =
-  /** Network, timeout, 5xx, 429, an expired sign-in: keep and retry under the existing policy. */
   | { kind: 'transient'; retryAfterMs: number | null }
-  /**
-   * EVIDENCE_ALREADY_RECORDED: the server proved THIS actor's exact earlier send landed. The
-   * only failure that may clear a queued item, and only the one item that was sent.
-   */
   | { kind: 'duplicate'; evidenceId: string | null }
-  /** Anything the server refused: kept intact, needs the driver. */
   | { kind: 'retain'; attention: RetainedAttention }
 
 const HTTP_UNAUTHORIZED = 401
@@ -41,8 +26,6 @@ const HTTP_REQUEST_TIMEOUT = 408
 const HTTP_TOO_MANY_REQUESTS = 429
 const HTTP_CLIENT_ERROR_MIN = 400
 const HTTP_SERVER_ERROR_MIN = 500
-// A 429 without Retry-After must still schedule a retry: a null delay would leave the item
-// waiting for an unrelated flush trigger.
 export const DEFAULT_RATE_LIMIT_RETRY_MS = 60_000
 
 const CODED_REASONS: Partial<Record<DriverConflictCode, string>> = {
@@ -56,15 +39,11 @@ const CODED_REASONS: Partial<Record<DriverConflictCode, string>> = {
     'The server already holds a different version of this capture. It is kept on this phone for review.',
 }
 
-// Codes whose capture can still reach the record, through the late-evidence route.
 const LATE_ELIGIBLE: ReadonlySet<DriverConflictCode> = new Set<DriverConflictCode>([
   'TRIP_HANDED_OVER',
   'CUSTODY_CONTEXT_CHANGED',
 ])
 
-// Only the defensive paths (an older backend that answers 200 or an uncoded 409 for an overridden
-// phase) need this; a coded PHASE_OVERRIDDEN carries the server's own message, which is the same
-// sentence. Deliberately not in CODED_REASONS, which would replace the server's wording.
 export const PHASE_OVERRIDDEN_REASON =
   'The dispatcher closed this step while your capture was waiting. It is kept on this phone.'
 
@@ -85,7 +64,6 @@ export function classifyLiveWriteFailure(err: unknown): LiveWriteFailure {
   if (err.status === HTTP_TOO_MANY_REQUESTS) {
     return { kind: 'transient', retryAfterMs: err.retryAfterMs ?? DEFAULT_RATE_LIMIT_RETRY_MS }
   }
-  // Statuses about the session or the timing, not the evidence: wait, never park.
   if (err.status === 0 || err.status === HTTP_UNAUTHORIZED || err.status === HTTP_REQUEST_TIMEOUT) {
     return { kind: 'transient', retryAfterMs: null }
   }

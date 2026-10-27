@@ -3,8 +3,6 @@ import { addMonths, defaultMonthRange, fmtMonthRange, operationsMonth, parseMont
 
 describe('operationsMonth', () => {
   it('reads the month from the SAST calendar, not UTC', () => {
-    // 23:30 UTC on 31 August is already 01:30 SAST on 1 September. A UTC browser
-    // calendar would still say August — the bug this module exists to avoid.
     expect(operationsMonth(new Date('2026-08-31T23:30:00Z'))).toBe('2026-09-01')
   })
 

@@ -103,7 +103,6 @@ describe('AnalyticsChatPanel', () => {
   })
 
   it('scrolls a new answer to its start, not its end, within the conversation only', async () => {
-    // The conversation's top edge is at 100 px; the new answer arrives with its top at 700 px.
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
       if (this.getAttribute('role') === 'log') return { top: 100 } as DOMRect
       return { top: this.textContent?.includes('On-time arrivals fell') ? 700 : 0 } as DOMRect
@@ -118,14 +117,12 @@ describe('AnalyticsChatPanel', () => {
 
     ask('How did delays change?')
     await screen.findByRole('status')
-    // While waiting: the question and the dots, at the bottom.
     expect(scrollTop).toBe(1500)
 
     scrollTop = 1500
     resolve(ANSWER)
     await within(log).findByText(/On-time arrivals fell/)
 
-    // Moved up by the answer's distance below the top edge, less the 8 px gap: 1500 + 600 - 8.
     await waitFor(() => expect(scrollTop).toBe(1500 + (700 - 100) - 8))
     vi.restoreAllMocks()
   })

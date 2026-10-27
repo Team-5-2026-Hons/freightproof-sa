@@ -25,7 +25,6 @@ from app.orchestration.fleet.vehicles import list_vehicles
 from app.schemas.assistant import RecordRef, RosterCard, RosterDepot, RosterGroupCard
 
 RosterKind = Literal["driver", "horse", "trailer", "depot"]
-# Names per kind a chat answer can usefully list; the totals still count everyone (as free_crew).
 MAX_NAMES = 40
 LISTS_RULE = (
     "Counts are of active records, as the Drivers and Vehicles pages list them; inactive ones are kept on record but "

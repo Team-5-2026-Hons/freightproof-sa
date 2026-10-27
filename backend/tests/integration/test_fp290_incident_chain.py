@@ -52,7 +52,6 @@ from tests.integration._audit_pack_anchor_helpers import anchor_event as _anchor
 from tests.integration._audit_pack_anchor_helpers import raise_critical as _raise_for_consignment
 from tests.integration.audit_pack_seed import AuditTrip, _artifact, seed_audit_trip
 
-# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
 pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 _HASH_FN = "app.orchestration.verification.evidence_payloads.hash_stored_evidence_file"
@@ -60,8 +59,6 @@ _PHOTO_LABELS = ("seal-cut-close-up", "seal-cut-wide-shot")
 _EVIDENCE_EVENT = SubjectType.EVIDENCE_EVENT.value
 _RECOVERY_WINDOW = timedelta(hours=1)
 
-
-# ── Fixtures ──────────────────────────────────────────────────────────────────
 
 class HederaSwitch:
     """Turns the faked Hedera SDK off and on, so the real failure handling runs."""
@@ -73,7 +70,7 @@ class HederaSwitch:
 @pytest.fixture
 def hedera(monkeypatch: pytest.MonkeyPatch) -> HederaSwitch:
     switch = HederaSwitch()
-    adapter = hedera_module._SdkHederaAdapter  # the stub installed by tests/integration/conftest.py
+    adapter = hedera_module._SdkHederaAdapter
     healthy_submit = adapter.submit_message
 
     def submit_message(
@@ -126,8 +123,6 @@ class Anchored:
 
 
 async def snapshot(db: AsyncSession, event_id: uuid.UUID) -> Anchored:
-    # populate_existing re-reads the row instead of trusting the session's cached copy, without
-    # expiring the whole session (which would make the seed's ORM objects unreadable here).
     event = (await db.execute(
         select(EvidenceAnchorEvent).where(EvidenceAnchorEvent.id == event_id).execution_options(populate_existing=True)
     )).scalar_one()
@@ -159,8 +154,8 @@ class Incident:
     cancel_event: uuid.UUID
     cancel_review_event: uuid.UUID
     report_review_event: uuid.UUID
-    raise_anchored: Anchored  # the raise receipt as it was before the cancellation and the review
-    other_client_receipt: uuid.UUID  # a critical report pinned to the OTHER client's consignment
+    raise_anchored: Anchored
+    other_client_receipt: uuid.UUID
     issued_by: UserRead
 
     @property
@@ -184,8 +179,7 @@ async def incident(db_session, hedera, photo_storage, stored_pdfs) -> Incident:
     """Raise (anchored) → cancel → review. The three later events are left pending."""
     seed = await seed_audit_trip(db_session)
     trip_id, org_id, dispatcher_id = seed.trip.id, seed.org.id, seed.dispatcher.id
-    issued_by = UserRead.model_validate(seed.dispatcher)  # read now: later actions refresh the ORM rows
-    # The seed trip is a finished journey; this incident happens while it is still underway.
+    issued_by = UserRead.model_validate(seed.dispatcher)
     await db_session.execute(update(Trip).where(Trip.id == trip_id).values(status=TripStatus.ACTIVE, closed_at=None))
     photos = [_artifact(trip_id, label, datetime.now(UTC)) for label in _PHOTO_LABELS]
     db_session.add_all(photos)
@@ -214,8 +208,6 @@ async def incident(db_session, hedera, photo_storage, stored_pdfs) -> Incident:
     cancel_event = next(i for (_, kind), i in events.items() if kind == BlockchainReceiptType.TRIP_CANCELLED.value)
     note_id = next(ex for (ex, kind) in events if kind == BlockchainReceiptType.TRIP_CANCELLED.value)
 
-    # A different client's critical report on the same trip, already anchored: a scoped pack
-    # for the first client must not show it.
     other_exception, other_event = await _raise_for_consignment(
         db_session, seed, photos=1, consignment_id=seed.consignment_b.id, label="other-client",
     )
@@ -231,8 +223,6 @@ async def incident(db_session, hedera, photo_storage, stored_pdfs) -> Incident:
         issued_by=issued_by,
     )
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _issue_scoped_pack(db: AsyncSession, incident: Incident) -> AuditPack:
     """A newly issued pack scoped to the first client's consignment, as a dispatcher would."""
@@ -277,16 +267,11 @@ async def _recover_everything(db: AsyncSession) -> int:
     return recovered
 
 
-# ── The chain ─────────────────────────────────────────────────────────────────
-
 async def test_each_action_has_its_own_event_and_receipts_stay_separate(db_session, incident):
-    # Arrange: the raise is anchored; cancel, cancel-note review and report review are not yet.
     assert await _anchor_later_events(db_session, incident) == [True, True, True]
 
-    # Act
     snapshots = [await snapshot(db_session, event_id) for event_id in incident.all_events]
 
-    # Assert: four events, four receipts, four different commitments
     assert len(set(incident.all_events)) == 4
     assert len({s.receipt_id for s in snapshots}) == 4
     assert len({s.data_hash for s in snapshots}) == 4
@@ -303,7 +288,6 @@ async def test_each_action_has_its_own_event_and_receipts_stay_separate(db_sessi
         (incident.note_id, "trip_cancelled"),
         (incident.note_id, "exception_reviewed"),
     }
-    # The cancellation and its authored review are about the note, not the broken-seal report.
     assert incident.note_id != incident.report_id
     for s in snapshots:
         assert s.anchor_status == "anchored" and s.receipt_payload == s.payload
@@ -315,8 +299,6 @@ async def test_later_actions_leave_the_original_raise_receipt_untouched(db_sessi
     after = await snapshot(db_session, incident.raise_event)
 
     assert after == incident.raise_anchored
-    # The report row now carries a review, yet the raise commitment excludes review fields,
-    # so it still rebuilds to exactly what was anchored.
     outcome = await verify_subject(
         db_session, subject_type=SubjectType.EVIDENCE_EVENT, subject_id=incident.raise_event,
         hedera_service=MagicMock(verify_hash=MagicMock(return_value=True)),
@@ -344,7 +326,7 @@ async def test_pack_issued_before_the_later_anchors_shows_them_pending_not_ancho
     manifest = _manifest(pack)
 
     report = _record(manifest, incident.report_id)
-    assert report.tier == "anchored"  # the raise receipt exists and is intact
+    assert report.tier == "anchored"
     assert _action_status(manifest, incident.report_id) == {
         "raised": ("anchored", "anchored"), "reviewed": ("pending", "recorded"),
     }
@@ -364,7 +346,6 @@ async def test_hedera_outage_leaves_failed_events_and_the_source_intact(db_sessi
     for event_id in incident.later_events:
         failed = await snapshot(db_session, event_id)
         assert failed.anchor_status == "failed" and failed.receipt_id is None
-    # Nothing was lost: the cancellation and the review stand, and the raise is still anchored.
     trip = await db_session.get(Trip, incident.seed.trip.id)
     report = await db_session.get(TripException, incident.report_id)
     assert trip is not None and trip.status == TripStatus.CANCELLED
@@ -389,7 +370,7 @@ async def test_pack_issued_during_the_outage_says_failed_and_recovery_during_it_
         "cancelled": ("failed", "recorded"), "reviewed": ("failed", "recorded"),
     }
     assert _evidence_receipts(manifest) == {incident.raise_anchored.receipt_id}
-    assert still_down is False  # a sweep during the outage attempts one event and it stays owed
+    assert still_down is False
     for event_id in incident.later_events:
         assert (await snapshot(db_session, event_id)).receipt_id is None
 
@@ -407,7 +388,6 @@ async def test_recovery_anchors_the_failed_events_without_touching_the_raise(db_
         assert done.anchor_status == "anchored" and done.receipt_id is not None
         assert done.receipt_payload == done.payload
     assert await snapshot(db_session, incident.raise_event) == incident.raise_anchored
-    # Debt cleared: a further sweep finds nothing to do.
     assert await recover_evidence_anchor(db_session, due_before=datetime.now(UTC) + _RECOVERY_WINDOW) is None
 
 
@@ -426,7 +406,6 @@ async def test_new_pack_after_recovery_has_exactly_the_right_receipts_and_both_p
     pack = await _issue_scoped_pack(db_session, incident)
     manifest = _manifest(pack)
 
-    # Exactly the four receipts of this incident: not the other client's, not a stale one.
     assert _evidence_receipts(manifest) == set(receipts.values())
     assert incident.other_client_receipt not in _evidence_receipts(manifest)
     assert _action_status(manifest, incident.report_id) == {
@@ -438,28 +417,22 @@ async def test_new_pack_after_recovery_has_exactly_the_right_receipts_and_both_p
     report = _record(manifest, incident.report_id)
     assert [p.artifact_id for p in report.photos] == list(incident.photo_ids)
     assert {p.tier for p in report.photos} == {"anchored"}
-    # Each photo is tied to the RAISE receipt, which committed it; the review receipt does not.
     assert {p.anchor_receipt_id for p in report.photos} == {receipts[incident.raise_event]}
     by_action = {a.action: a for a in report.anchors}
     assert by_action["raised"].receipt_id == receipts[incident.raise_event]
     assert by_action["reviewed"].receipt_id == receipts[incident.report_review_event]
-    # The other client's report is cut from this scope entirely...
     assert incident.other_client_receipt not in {a.receipt_id for e in manifest.exceptions for a in e.anchors}
-    # ...yet is in an unscoped pack, so its absence above is scoping, not a missing record.
     unscoped = await build_audit_manifest(
         db_session, trip_id=incident.seed.trip.id, operator_organization_id=incident.seed.org.id,
         options=AuditPackOptions(),
     )
     assert incident.other_client_receipt in _evidence_receipts(unscoped)
 
-    # The packs issued earlier are frozen snapshots: recovery did not rewrite what they said.
     earlier = (await db_session.execute(
         select(AuditPack).where(AuditPack.id == outage_pack_id).execution_options(populate_existing=True)
     )).scalar_one()
     assert _action_status(_manifest(earlier), incident.note_id)["cancelled"] == ("failed", "recorded")
 
-    # The shared-portal "Verify" re-checks every receipt in the pack against live rows and live
-    # photo bytes; Hedera's mirror is faked to agree.
     photo_storage.reset_mock()
     portal_hedera = MagicMock(verify_hash=MagicMock(return_value=True))
     monkeypatch.setattr(

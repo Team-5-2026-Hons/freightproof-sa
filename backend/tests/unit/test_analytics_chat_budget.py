@@ -21,7 +21,6 @@ from app.orchestration.analytics_chat.budget import (
     status,
 )
 
-# 10:00 SAST, 19 Oct 2026.
 _NOW = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
 
 
@@ -128,7 +127,6 @@ async def test_record_with_redis_down_logs_and_does_not_raise(
 
 
 def test_month_keys_use_south_african_time() -> None:
-    # 23:30 UTC on 31 Oct is 01:30 SAST on 1 Nov: November's counter.
     late = datetime(2026, 10, 31, 23, 30, tzinfo=UTC)
 
     assert global_key(late).endswith(":2026-11")

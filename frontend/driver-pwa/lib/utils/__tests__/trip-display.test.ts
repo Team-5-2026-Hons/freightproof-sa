@@ -86,7 +86,6 @@ describe('pastOutcome', () => {
     expect(pastOutcome(summary({ actual_arrival_at: null })).text).toBe('Delivered')
   })
 
-  // FP-83: the former driver did not deliver the load, whatever the trip later did.
   it('test_former_participant_on_an_active_trip_reads_handed_over', () => {
     expect(pastOutcome(summary({ status: 'active', participation: 'former', actual_arrival_at: null })))
       .toEqual({ tone: 'neutral', text: 'Handed over' })

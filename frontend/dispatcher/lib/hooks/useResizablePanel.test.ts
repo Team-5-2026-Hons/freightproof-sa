@@ -18,9 +18,6 @@ describe('nextPanelWidth', () => {
   })
 
   describe('left-edge handle (trip manifest panel)', () => {
-    // The defect: the manifest panel's handle is on its LEFT edge, so it grows backwards
-    // into the timeline column. Sharing the right-edge sign made it track the cursor in
-    // the opposite direction.
     it('widens as the pointer moves LEFT', () => {
       expect(nextPanelWidth(500, -80, 'left', MIN, MAX)).toBe(580)
     })
@@ -47,17 +44,12 @@ describe('nextPanelWidth', () => {
     })
 
     it('honours a max tightened by the available space, not the constant ceiling', () => {
-      // What stops the panel pushing Trip Info out of an overflow-hidden row: the caller
-      // passes the space actually left over, and that beats DETAIL_PANEL_MAX_W.
       const availableMax = 480
 
       expect(nextPanelWidth(460, -200, 'left', MIN, availableMax)).toBe(availableMax)
     })
 
     it('gives up its minimum when available space has collapsed below it', () => {
-      // A narrow viewport can leave less room than the panel's own minimum. Available
-      // space wins: a cramped panel is cosmetic, but one wider than the row pushes the
-      // next column out of an overflow-hidden container and clips it off screen.
       expect(nextPanelWidth(500, -100, 'left', MIN, 120)).toBe(120)
     })
 
@@ -68,8 +60,6 @@ describe('nextPanelWidth', () => {
 })
 
 describe('clampPanelWidth — the three-column budget', () => {
-  // The trip-detail row is timeline | manifest | Trip Info, inside overflow-hidden. If
-  // the three ever sum to more than the row, Trip Info is the one that gets clipped.
   const TIMELINE_MIN = 420
   const SIDEBAR = 304
 
@@ -85,8 +75,6 @@ describe('clampPanelWidth — the three-column budget', () => {
   })
 
   it('reserves the sidebar BORDER box — measuring its content box over-granted by its padding', () => {
-    // The regression: `w-304 p-5` measures 264 as a content box. Budgeting against 264
-    // handed the manifest 40px that Trip Info needed, and the row clipped it.
     const row = 1060
     const fromContentBox = clampPanelWidth(MAX, MIN, manifestMax(row, SIDEBAR - 40))
 

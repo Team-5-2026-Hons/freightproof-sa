@@ -34,7 +34,6 @@ async def _seed(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
     db.add_all([own, other])
     await db.flush()
 
-    # changed_by_user_id is a NOT NULL FK to users — every write needs a real actor.
     user = User(
         id=uuid.uuid4(), organization_id=own.id,
         email="admin@own.co.za", full_name="Admin", is_active=True,
@@ -243,9 +242,6 @@ _ANCHOR = "app.orchestration.fleet.precincts.anchor_subject"
 
 
 async def _create(db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID, **overrides):
-    # _fake_receipt is async and persists a real BlockchainReceipt row — see its
-    # docstring. A bare AsyncMock(return_value=_fake_receipt()) would hand back an
-    # unawaited coroutine, not a receipt, and fail the FK on event.blockchain_receipt_id.
     receipt = await _fake_receipt(db)
     with patch(_ANCHOR, new=AsyncMock(return_value=receipt)):
         return await create_precinct(
@@ -449,7 +445,7 @@ async def test_empty_patch_writes_no_event_and_no_anchor(db_session: AsyncSessio
             select(PrecinctEvent).where(PrecinctEvent.precinct_id == created.id)
         )
     ).scalars().all()
-    assert len(events) == 1  # the CREATED event only
+    assert len(events) == 1
     anchor.assert_not_awaited()
 
 

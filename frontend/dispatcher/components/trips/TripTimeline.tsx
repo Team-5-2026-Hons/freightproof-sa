@@ -51,11 +51,7 @@ export function readingPhaseAnchor(timeline: HTMLElement | null, readingTop?: nu
   return (anchors.find(anchor => anchor.getBoundingClientRect().bottom > top) ?? anchors.at(-1))?.id ?? null
 }
 
-// "Time on the road" counts whole minutes, so one tick a minute keeps it honest without a
-// timer per card.
 const CLOCK_TICK_MS = 60_000
-// Toolbar layouts. Below 1024 px the status takes its own row under the switch and the buttons;
-// from 1024 px it sits between them and wraps its own text if the column is narrow (docked panel).
 const TOOLBAR_AREAS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls']"
 const TOOLBAR_AREAS_WITH_STATUS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls'_'status_status'] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:[grid-template-areas:'view_status_controls']"
 const NO_OPEN: OpenException = () => undefined
@@ -63,10 +59,6 @@ const NO_OPEN_TRANSFER = (): void => undefined
 const NO_INCIDENTS: readonly IncidentSummary[] = []
 const NO_OPEN_INCIDENT = (): void => undefined
 const TIMELINE_READER_HEIGHT_VAR = '--timeline-reader-height'
-// The help panel hangs from the sticky toolbar, so it stays pinned under it while the scroller's overflow clips whatever
-// runs past the scroller's bottom edge, and scrolling cannot reveal it. Capping it to the reading area below the toolbar
-// makes it scroll inside itself instead. The floor keeps it readable if the area is momentarily tiny. Written out in full, not
-// built from the two variable names: Tailwind only generates a class it can read literally in the source.
 const HELP_MAX_HEIGHT = '[&_[role=region]]:max-h-[max(8rem,calc(var(--timeline-reader-height,70vh)_-_var(--timeline-toolbar-height,0px)_-_0.5rem))]'
 
 /** Chronological, id-tie-broken order shared by every phase's exception rows, so the rail and the
@@ -84,32 +76,24 @@ interface Props {
   trip: Trip; precincts: Precinct[]; artifactsById: Map<string, EvidenceArtifactWithUrl>
   artifactLoading: boolean; artifactError: string | null; onRetryArtifacts: () => void
   onChanged: () => void
-  /** When the record on screen was last read from the server, not a trip timestamp. */
   lastUpdated: number | null
   onJump: () => void
   view?: TimelineView
   onViewChange?: (view: TimelineView) => void
   expanded?: boolean
   onToggleExpanded?: () => void
-  /** An exception row was activated. A null id opens the panel on the phase's records ("+n more");
-   *  a null phase is a trip-level exception (D42). */
   onOpenException?: OpenException
   /** A completed driver transfer's card was activated. The page owns the evidence modal, so the
    *  Info panel's handover rows can open the same one. */
   onOpenTransfer?: (substitutionId: string) => void
-  /** The trip's incidents, drawn on the rail beside its driver transfers. */
   incidents?: readonly IncidentSummary[]
   /** An incident's card was activated; the page shows it in the Info panel. */
   onOpenIncident?: (incidentId: string) => void
-  /** The incident the Info panel is showing, so its row can show the same selected state as an exception's. */
   selectedIncidentId?: string | null
-  /** The exception the panel is open on, so its row can show the same selected state. */
   selectedExceptionId?: string | null
-  /** A page-originated "Show in timeline": open the card, keep the row visible, land on it. */
   revealRequest?: RevealRequest | null
   /** Called with the revealed row's element id once it has focus, so the page can scroll its container. */
   onRevealHandled?: (targetId: string) => void
-  /** Resources that could not be refreshed. Shown as one status beside "Record refreshed". */
   warnings?: readonly TimelineWarning[]
 }
 
@@ -124,13 +108,11 @@ export function TripTimeline({
   const hasFreshness = lastUpdated !== null || warnings.length > 0
   const toolbarRef = useCallback((element: HTMLDivElement | null): (() => void) | undefined => {
     if (!element) return
-    // The scroller the toolbar sticks in: its height is the reading area the help panel has to fit inside.
     const scroller = element.closest<HTMLElement>('[data-timeline-scroller]')
     const measure = (): void => {
       element.parentElement?.style.setProperty(TIMELINE_TOOLBAR_HEIGHT_VAR, `${element.getBoundingClientRect().height}px`)
       if (scroller) element.parentElement?.style.setProperty(TIMELINE_READER_HEIGHT_VAR, `${scroller.clientHeight}px`)
     }
-    // Wrapping and browser zoom change the reading space; never subtract a fixed header height.
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(element)
@@ -158,9 +140,6 @@ export function TripTimeline({
     artifactError: evidence.artifactError,
     onRetryArtifacts: evidence.onRetryArtifacts,
   }
-  // A polling merge can deliver conflicting copies of one record. Resolve that once,
-  // before assigning records to a phase or the trip-level stream, so one ID has one
-  // destination and cannot appear in both paths.
   const exceptionsById = uniqueExceptionsById(trip.exceptions)
   const activeTransit = active?.phase_type === 'in_transit' && trip.status !== 'closed' && trip.status !== 'cancelled'
     ? active
@@ -176,10 +155,6 @@ export function TripTimeline({
   )
   const tripVisible = visibleExceptions(tripNotes, revealRequest?.phaseId === null ? revealRequest.exceptionId : null)
   return <section ref={timelineRef} aria-label="Trip timeline" className={`mx-auto w-full px-4 pb-4 md:px-6 md:pb-6 ${expanded ? '' : 'max-w-4xl'}`}>
-    {/* One slim row: the header above already names the trip, so the toolbar only carries controls.
-        The view switch and the view buttons always share the first row; when the width runs out,
-        only the freshness status gives way (to a row of its own below 1024 px, or by wrapping its
-        own text beside a docked panel), so a control never moves because a message got longer. */}
     <div ref={toolbarRef} {...{ [TIMELINE_TOOLBAR_ATTR]: true }} className={`sticky top-0 z-20 -mx-4 mb-4 grid items-center gap-x-3 gap-y-2 border-b border-outline-v/30 bg-surf-lowest px-4 py-2 md:-mx-6 md:px-6 ${hasFreshness ? TOOLBAR_AREAS_WITH_STATUS : TOOLBAR_AREAS}`}>
       <h2 className="sr-only">Trip timeline</h2>
       <div className="[grid-area:view]" {...{ [TIMELINE_VIEW_CONTROL_ATTR]: true }} {...keepSelection}>
@@ -188,8 +163,6 @@ export function TripTimeline({
         }} size="sm" className="w-52 max-w-full" ariaLabel="Timeline view" panelId={bodyId} idPrefix={viewControlId} disabled={!onViewChange} />
       </div>
       {hasFreshness && <div data-toolbar-freshness className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 [grid-area:status] lg:justify-end">
-        {/* Reads the record's freshness, not a trip fact — an evidence view should always
-            be able to say when what you are looking at was last read. */}
         {lastUpdated !== null && <p className="text-meta tabular-nums text-on-surf-v">Record refreshed {fmtTime(new Date(lastUpdated).toISOString())}</p>}
         <RefreshStatus warnings={warnings} />
       </div>}
@@ -202,8 +175,6 @@ export function TripTimeline({
         </Button>}
       </div>
     </div>
-    {/* No space-y here: the rail has to run through the gap between rows, so each row
-        owns its own bottom margin instead. */}
     <div id={bodyId} role="tabpanel" aria-labelledby={`${viewControlId}-${view}`}>
       {activeTransit && <CurrentLegStrip
         phaseId={activeTransit.phase_event_id}

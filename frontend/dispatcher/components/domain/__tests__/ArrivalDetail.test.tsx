@@ -4,10 +4,6 @@ import { ArrivalDetail } from '../ArrivalDetail'
 import { makePhase } from './testFixtures'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
-// ArrivalDetail renders EvidencePhoto, which mounts ForensicOnly for any artifact with
-// provenance to show — mocked at the module boundary the same way UnloadingDetail's own
-// suite isolates itself, since this suite is about the seal-as-found record, not
-// forensic-mode plumbing.
 vi.mock('@/lib/context/ForensicModeContext', () => ({
   useForensicMode: () => ({ canViewForensics: false, forensicOn: false, toggle: vi.fn() }),
 }))
@@ -55,7 +51,7 @@ describe('ArrivalDetail: seal as found', () => {
     )
 
     expect(screen.getByText('No seal present')).toBeInTheDocument()
-    expect(screen.queryByText('SEAL-A')).toBeInTheDocument() // departure seal still shown for comparison
+    expect(screen.queryByText('SEAL-A')).toBeInTheDocument()
   })
 
   it('reports a mismatch as its own critical finding', () => {

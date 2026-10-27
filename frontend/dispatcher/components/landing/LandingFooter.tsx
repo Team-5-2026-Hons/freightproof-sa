@@ -3,7 +3,6 @@ import { ROUTES } from '@/lib/constants/routes'
 import { COMPANY, CONTACT_EMAIL, SECTIONS } from '@/lib/landing/content'
 import { Logo } from './Logo'
 
-// 44px rows on touch screens; plain text-height links once there's a pointer-sized layout.
 const linkClass = 'inline-flex min-h-[44px] items-center text-[0.875rem] text-on-surf-v transition-colors hover:text-on-surf md:min-h-0'
 
 export function LandingFooter() {

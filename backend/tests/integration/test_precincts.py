@@ -481,7 +481,6 @@ async def test_update_precinct_rejects_an_explicit_null_with_422(
     )
 
     assert resp.status_code == 422
-    # The error must name the offending field so the dispatcher UI can point at it.
     assert field in str(resp.json()["detail"])
 
 
@@ -558,9 +557,7 @@ async def test_detail_of_a_shared_precinct_withholds_the_change_history(
 
     assert resp.status_code == 200
     body = resp.json()
-    # Visible: the current geofence, which is the whole point of sharing.
     assert body["name"] == "Their Shared Depot"
     assert body["geofence_radius_metres"] is not None
-    # Withheld: how it got there, and who moved it.
     assert body["events"] == []
     assert body["receipts"] == []

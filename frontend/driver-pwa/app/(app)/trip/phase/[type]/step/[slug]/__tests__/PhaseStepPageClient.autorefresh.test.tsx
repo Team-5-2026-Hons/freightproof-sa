@@ -24,8 +24,6 @@ import type { PhaseEventId } from '@shared/lib/types/phase'
 
 const LOADING_PE = 'pe-loading-blocked' as PhaseEventId
 
-// Real (non-demo) mode: refreshQuietly is a documented no-op in demo mode, so the whole
-// mechanism is unreachable with the default flag.
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false, GOOGLE_MAPS_API_KEY: '' }))
 
 vi.mock('next/navigation', () => ({
@@ -43,9 +41,6 @@ vi.mock('@/lib/api/trips', () => ({
 const mockFetchLinehaul = vi.fn()
 vi.mock('@/lib/api/manifest', () => ({ fetchLinehaul: (id: string) => mockFetchLinehaul(id) }))
 
-// Leaf-level device/IO concerns, stubbed so the test exercises the data chain and not the
-// camera. CameraCapture only renders in the UNBLOCKED branch, which is exactly the branch
-// this test asserts we reach.
 vi.mock('@/lib/hooks/useArtifactUpload', () => ({
   useArtifactUpload: () => ({ uploadNow: vi.fn().mockResolvedValue(null) }),
 }))
@@ -125,7 +120,6 @@ afterEach(() => {
 
 describe('PhaseStepPageClient — the blocked step clears itself while the driver waits on it', () => {
   it('drops the wait card one poll interval after the warehouse closes its session', async () => {
-    // First read: blocked. Every read after: the warehouse has finished.
     mockFetchMyActiveTrip
       .mockResolvedValueOnce(buildTrip('warehouse_scan'))
       .mockResolvedValue(buildTrip(null))
@@ -140,8 +134,6 @@ describe('PhaseStepPageClient — the blocked step clears itself while the drive
 
     await waitFor(() => expect(screen.getByText('Waiting for the warehouse')).toBeInTheDocument())
 
-    // The driver touches NOTHING. No navigation, no remount, no foreground event —
-    // only time passing, which is the whole complaint.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TRIP_POLL_INTERVAL_MS + 1_000)
     })
@@ -151,10 +143,6 @@ describe('PhaseStepPageClient — the blocked step clears itself while the drive
   })
 
   it('checks immediately on arriving at a blocked step, not a full interval later', async () => {
-    // The field case this covers: the warehouse finished BEFORE the driver walked up to
-    // the step. The plan the page renders from is then already stale on arrival, and
-    // waiting a whole interval to ask reads exactly like "it never refreshes" to a driver
-    // standing at the gate — which is what a trailing-edge-only interval does.
     mockFetchMyActiveTrip
       .mockResolvedValueOnce(buildTrip('warehouse_scan'))
       .mockResolvedValue(buildTrip(null))
@@ -169,7 +157,6 @@ describe('PhaseStepPageClient — the blocked step clears itself while the drive
 
     await waitFor(() => expect(screen.getByText('Waiting for the warehouse')).toBeInTheDocument())
 
-    // Nowhere near a full poll interval.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000)
     })

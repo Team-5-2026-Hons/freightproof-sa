@@ -8,15 +8,10 @@
 // ended up showing a different format (and "Sept" vs "Sep") for the same field.
 
 export const OPERATIONS_TIMEZONE = 'Africa/Johannesburg'
-// South Africa has had no daylight saving since 1944, so SAST is a fixed +02:00 and a wall-clock
-// time can be turned into an instant without a timezone database. Keep in step with
-// OPERATIONS_TIMEZONE if that ever changes.
 export const SAST_OFFSET = '+02:00'
 const TIMEZONE_LABEL = 'SAST'
 const MISSING = '—'
 
-// Numeric month and h23 so nothing depends on locale wording; month names come from the table
-// below. Intl's own short month differs by ICU version ("Sept" vs "Sep" for en-GB).
 const SAST_FORMAT = new Intl.DateTimeFormat('en-GB', {
   timeZone: OPERATIONS_TIMEZONE, day: '2-digit', month: '2-digit', year: 'numeric',
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -52,7 +47,6 @@ export function sastCalendarDay(iso: string | Date): string | null {
 
 /** Today's SAST calendar day, "YYYY-MM-DD". */
 export function sastToday(): string {
-  // new Date() is always valid, so the null branch of sastCalendarDay cannot occur here.
   return sastCalendarDay(new Date())!
 }
 

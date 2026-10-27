@@ -19,9 +19,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   usePathname: () => '/',
 }))
-// TripContext itself is needed, not just the provider: the layout mounts
-// TripCompleteOverlay, which reads the completed-trip snapshot off this context. A
-// null-valued context renders the overlay as nothing, which is what this test wants.
 vi.mock('@/lib/context/TripContext', () => ({
   TripProvider: passthrough,
   TripContext: createContext<unknown>(null),

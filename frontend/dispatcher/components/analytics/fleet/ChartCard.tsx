@@ -23,40 +23,23 @@ export function queryState<T>(result: FleetQueryResult<T>) {
 
 interface ChartCardProps {
   title: string
-  /** The question the chart answers, in the dispatcher's words. Shown in the "i" popover. */
   question: string
-  /** The sample behind the chart, e.g. "Closed trips, by day departed · 16 trips". Shown in
-   *  the "i" popover, under the question. */
   basis?: string
-  /** Trips behind the chart. Under LOW_SAMPLE_TRIPS the chart still draws, with a warning. */
   sampleSize?: number
-  /** A caveat that changes how the chart should be read. Shown on the card face, not behind
-   *  the "i" — the reader needs it before reading the bars. */
   caveat?: string
-  /** How to read the chart. Shown in the "i" popover, under the basis. */
   note?: string
-  /** Where this chart's figures come from. Required, not optional: the type checker is what
-   *  guarantees "every figure names a source", so a card added later cannot forget one.
-   *  Shown in the "i" popover, never on the card face. */
   source: string
-  /** The card draws buckets over time, so its popover ends with what a faded bucket means. */
   timeAxis?: boolean
-  /** Controls for this one chart, shown in the header in every state. */
   controls?: ReactNode
   legend?: ReactNode
   isLoading: boolean
-  /** A new period is loading while the previous chart is still shown. */
   isRefreshing?: boolean
   error: string | null
   onRetry: () => void
   isEmpty: boolean
-  /** Specific to the chart, e.g. "No closed trips departed in this period." */
   emptyBody: string
-  /** The table twin: every value reachable without hovering. */
   table: ReactNode
-  /** The chart itself. */
   children: ReactNode
-  /** Placeholder height on first load, so nothing jumps. */
   chartHeight?: number
   className?: string
 }
@@ -75,10 +58,6 @@ export function ChartCard({
   const isReady = error === null && !isLoading && !isEmpty
   const isLowSample = sampleSize !== undefined && sampleSize > 0 && sampleSize < LOW_SAMPLE_TRIPS
 
-  // The ready view, shared by the card and its zoom modal so the two can never show different
-  // things: the warnings, then the chart or its table, whichever the card is showing. The chart
-  // takes whatever height the card has left, so when a taller card beside it stretches the
-  // grid row, the chart grows to fill it rather than leaving the bottom of the card empty.
   const view = (
     <>
       {isLowSample && <p className="mb-2 text-[12px] font-[600] text-warn">{COPY.lowSample(sampleSize)}</p>}
@@ -89,7 +68,6 @@ export function ChartCard({
 
   let content: ReactNode
   if (error !== null) {
-    // Checked first: a failed refetch clears the data, so there is nothing stale to show.
     content = (
       <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center text-[13px] text-on-surf">
         <span className="text-on-surf-v"><Ic n="warn" s={24} /></span>
@@ -125,8 +103,6 @@ export function ChartCard({
               {showTable ? COPY.showChart : COPY.showTable}
             </Button>
           )}
-          {/* Only with something to enlarge: zooming a placeholder, an error or an empty state
-              would show the same message bigger. */}
           {isReady && (
             <ChartZoom title={title}>
               <div className="flex flex-col gap-3">

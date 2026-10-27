@@ -25,10 +25,6 @@ const FIX: DriverPosition = { lat: -26.09, lng: 28.13, accuracyM: 8 }
 const mockSubmitPhase = vi.fn()
 vi.mock('@/lib/api/phases', () => ({ submitPhase: (...args: unknown[]) => mockSubmitPhase(...args) }))
 
-// The store's own rendering (in-flight line, failure notices) is covered where it is
-// actually consumed — components/layout/__tests__/OfflineBanner.test.tsx — rather than by
-// reaching into module internals from here.
-
 function makePhase(status: PhaseStatus): PhaseDescriptor {
   return {
     phase_event_id: LOADING_PE,
@@ -106,7 +102,6 @@ interface Harness {
 }
 
 function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
-  // true: stored, as the real queue answers when the phone has room (see the queue test for false).
   const enqueuePhase = vi.fn(() => true)
   const refetchTrip = vi.fn().mockResolvedValue(null)
   let settle: (outcome: PhaseSubmissionOutcome) => void = () => {}
@@ -116,8 +111,6 @@ function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
     tripId: TRIP_ID,
     phaseEventId: LOADING_PE,
     phaseType: 'loading',
-    // loading no longer captures anything itself (the linehaul step is read-only) —
-    // capturedAt alone is a valid LoadingEvidence.
     evidence: { capturedAt: '2026-01-01T00:00:00Z' },
     idempotencyKey: 'idem-1',
     position: Promise.resolve<DriverPosition | null>(FIX),
@@ -205,8 +198,6 @@ describe('startPhaseSubmission — 409 reconciliation', () => {
   })
 
   it('reports a conflict rather than guessing when the 409 refetch itself fails', async () => {
-    // Guessing "already recorded" here would tell a driver their evidence landed when we
-    // have no idea whether it did.
     mockSubmitPhase.mockRejectedValue(new ApiError(409, 'conflict'))
     const h = harness()
     h.refetchTrip.mockRejectedValue(new TypeError('network down'))
@@ -321,7 +312,6 @@ describe('position budget', () => {
     startPhaseSubmission(first.request)
     await first.outcome
 
-    // Second phase, seconds later, GPS now unavailable (the driver stepped inside).
     const second = harness({ phaseEventId: 'pe-departure-1', position: Promise.resolve(null) })
     startPhaseSubmission(second.request)
     await second.outcome
@@ -366,16 +356,11 @@ describe('failure notices', () => {
     startPhaseSubmission(h.request)
     await h.outcome
 
-    // No throw, and idempotent — the banner calls this from a click handler that may fire
-    // after the notice has already gone.
     dismissPhaseSubmissionFailure(LOADING_PE)
     dismissPhaseSubmissionFailure(LOADING_PE)
   })
 })
 
-// A dispatcher override closes a phase the driver could not complete. Evidence the driver
-// captured before that, and sends after it, was never recorded — so it must be kept, never
-// reported as recorded (backend A1: 409 PHASE_OVERRIDDEN).
 describe('startPhaseSubmission — phase overridden by dispatch', () => {
   const SERVER_MESSAGE = 'The dispatcher closed this step while your capture was waiting. It is kept on this phone.'
   const overriddenError = () => new ApiError(409, SERVER_MESSAGE, undefined, {

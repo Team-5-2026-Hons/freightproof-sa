@@ -27,10 +27,8 @@ from app.orchestration.phases.queries import current_phase_event
 from app.orchestration.evidence.road_check import RigRole, RigVehicle, load_rig, road_stage_for_current
 from app.dev.schemas import SCENARIO_AT_STOP, SCENARIO_THREE_KM, DevTruckScenario, RigScenario
 
-# 5 km: unmistakably apart on the dispatcher's map, and ten times the default 500 m
-# separation threshold, so the scenario still trips the rule if the threshold is tuned.
 UNCOUPLED_TRAILER_MIN_OFFSET_METRES = 5_000.0
-_COORDINATE_SCALE = Decimal("0.0000001")  # Numeric(10,7), same as precinct columns
+_COORDINATE_SCALE = Decimal("0.0000001")
 
 
 class ScenarioNotApplicableError(Exception):
@@ -38,8 +36,6 @@ class ScenarioNotApplicableError(Exception):
 
 
 def midpoint(a: tuple[Decimal, Decimal], b: tuple[Decimal, Decimal]) -> tuple[Decimal, Decimal]:
-    # A straight average: for a leg of tens of kilometres it lands well clear of both
-    # fences, which is all "driving normally" needs. It is not meant to be on a road.
     return (
         ((a[0] + b[0]) / 2).quantize(_COORDINATE_SCALE),
         ((a[1] + b[1]) / 2).quantize(_COORDINATE_SCALE),
@@ -109,8 +105,6 @@ async def stage_rig_scenario(
 
     if scenario in ("at_stop", "away_from_stop"):
         if trip_stop_id is None:
-            # RigScenarioRequest's validator already refuses this; the check keeps the
-            # service safe for any other caller rather than trusting an assert.
             raise ScenarioNotApplicableError(f"{scenario} needs a stop.")
         offset: DevTruckScenario = SCENARIO_AT_STOP if scenario == "at_stop" else SCENARIO_THREE_KM
         name, position = await _stop_target(db, trip=trip, trip_stop_id=trip_stop_id, scenario=offset)
@@ -137,7 +131,6 @@ async def stage_rig_scenario(
         await _stage_rig(client, rig, middle)
         return f"Truck driving from {origin.name} to {destination.name}"
 
-    # trailer_uncoupled
     trailer = next((v for v in rig if v.vehicle_id == vehicle_id and v.role is RigRole.TRAILER), None)
     if trailer is None:
         raise ResourceNotFoundError("Trailer", str(vehicle_id))

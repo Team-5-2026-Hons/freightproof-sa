@@ -85,8 +85,6 @@ async def test_unexpected_database_failure_propagates_from_separation_persistenc
         )
 
 
-# ── record_driver_location_finding: driver's phone vs the stop's precinct ───────
-
 
 @pytest_asyncio.fixture(name="located_trip")
 async def _located_trip_fixture(db_session):

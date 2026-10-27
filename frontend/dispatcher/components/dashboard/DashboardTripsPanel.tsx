@@ -22,8 +22,6 @@ export function DashboardTripsPanel(): React.JSX.Element {
   const { trips, precincts, initialLoad, loadFailed, error, refetch } = useActiveTrips()
   const ordered = useMemo(() => activeTripsByAttention(trips, precincts), [trips, precincts])
   const needAction = useMemo(() => trips.filter(trip => trip.needs_review_count > 0).length, [trips])
-  // Built per render: route names depend on the loaded precincts. No sorting: the panel's order is
-  // the point of it, and eight rows have nothing to search.
   const columns = useMemo(
     () => buildTripColumns<TripSummary>({ precincts, date: CREATED_DATE_COLUMN, showProgress: true }),
     [precincts],
@@ -54,7 +52,6 @@ export function DashboardTripsPanel(): React.JSX.Element {
           body="Trips between creation and closure appear here."
         />
       ) : (
-        // Fills what the other two panels leave, so they stay fully visible; the rest scrolls here.
         <Table<TripSummary>
           tableId={TABLE_ID}
           caption="Active trips"

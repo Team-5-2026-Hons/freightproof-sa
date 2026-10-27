@@ -39,7 +39,7 @@ async def _drain() -> None:
 async def test_a_savepoint_release_does_not_publish_but_the_outer_commit_does_once(db_session) -> None:
     event = _event()
     anchor_phase_event_task.delay.reset_mock()
-    await db_session.execute(text("select 1"))  # a request always has written something
+    await db_session.execute(text("select 1"))
     _register(db_session, event)
 
     async with db_session.begin_nested():
@@ -49,7 +49,7 @@ async def test_a_savepoint_release_does_not_publish_but_the_outer_commit_does_on
 
     await db_session.commit()
     await _drain()
-    await db_session.commit()  # a second commit must not publish again
+    await db_session.commit()
     await _drain()
 
     anchor_phase_event_task.delay.assert_called_once()

@@ -13,14 +13,10 @@ describe('safeReturnTo', () => {
   const rejected: readonly (readonly [string, string | null])[] = [
     ['an absolute URL', 'https://example.com/phish'],
     ['a protocol-relative URL that leaves the origin', '//example.com/phish'],
-    // The prefix check this replaced accepted every one of these: each starts with a
-    // single "/" and each resolves to a different origin once actually parsed.
     ['a backslash that the URL parser reads as a second slash', '/\\example.com/phish'],
     ['a backslash pair', '/\\\\example.com/phish'],
     ['a tab smuggled between the slashes', '/\t/example.com/phish'],
     ['a newline smuggled between the slashes', '/\n/example.com/phish'],
-    // Climbing above root leaves a pathname of "//host". The input resolves on-origin,
-    // so only checking what is RETURNED rejects these.
     ['a parent segment that climbs above root', '/a/..//example.com'],
     ['a bare climb above root', '/..//example.com'],
     ['a climb above root carrying a path and query', '/a/b/../..//evil.com/x?q=1'],
@@ -32,10 +28,6 @@ describe('safeReturnTo', () => {
     expect(safeReturnTo(value, '/fallback')).toBe('/fallback')
   })
 
-  // The property the two origin checks exist to hold. Deliberately spans ACCEPTED inputs
-  // as well as rejected ones: an earlier version of this test looped over the rejected
-  // list alone, so every case returned the fallback and it could not fail — which is how
-  // the climb-above-root family got through in the first place.
   it('never returns a value that resolves off-origin, whatever it accepts', () => {
     const everyInput: readonly (string | null)[] = [
       ...rejected.map(([, value]) => value),

@@ -5,9 +5,6 @@ import type { DevConsignment, PpTriggerRequest, RoadCheckResponse } from '@/lib/
 export type ScanPreset = 'all' | 'one_short' | 'stray'
 export type PpPreset = 'delivered' | 'delivery_failed' | 'parcel_added'
 
-// Deterministic, so pressing "stray parcel" twice stages the same scan: MockScanFeed
-// REPLACES staged barcodes rather than appending, and a new random stray each press would
-// read as a second stranger parcel.
 export const STRAY_BARCODE_SUFFIX = '-STRAY'
 export const DEMO_FAILURE_REASON = 'Receiver not available'
 
@@ -28,8 +25,6 @@ export function barcodesForPreset(consignments: readonly DevConsignment[], prese
 
 /** dd/mm/yyyy — the format Parcel Perfect itself returns for a POD date. */
 export function ppDate(now: Date): string {
-  // The SAST day, not the UTC one: between 00:00 and 02:00 SAST they differ.
-  // A valid Date always has a day, so the null branch cannot occur.
   const [year, month, day] = sastCalendarDay(now)!.split('-')
   return `${day}/${month}/${year}`
 }
@@ -38,7 +33,6 @@ export function ppRequestForPreset(tripId: string, consignment: DevConsignment, 
   const base = { trip_id: tripId, parcel_perfect_reference: consignment.parcel_perfect_reference }
   if (preset === 'delivered') return { ...base, poddate: ppDate(now) }
   if (preset === 'delivery_failed') return { ...base, failtype: DEMO_FAILURE_REASON }
-  // One more parcel than the manifest: the verified mid-trip PP edit.
   return { ...base, parcel_count: consignment.barcodes.length + 1 }
 }
 

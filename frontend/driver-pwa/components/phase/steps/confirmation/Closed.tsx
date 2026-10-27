@@ -23,23 +23,13 @@ interface ClosedProps {
 }
 
 export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
-  // The trip summary rows need the session trip; outside one (tests, a cold deep link
-  // mid-load) they are left out rather than guessed.
   const trip = useOptionalTrip()?.trip ?? null
-  // Only THIS phase's draft: unloading fields (waybillHandedOver etc.) belong to a
-  // separate phase_event_id and are already resolved server-side by this point.
-  // driverVisualCount is deliberately excluded — it's optional, and gating on it made a
-  // skipped count silently unclosable. The signature half is the receiver's confirmation,
-  // so this checks the artifact id the handover poll wrote into the draft.
   const isReady =
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureArtifactId)
 
-  // Gated on the destination warehouse's scan-IN session (GATED_PHASES, phase_gate.py).
   const isBlocked = isPhaseBlocked(phase)
 
-  // No success tick and no swipe while blocked: the control is omitted entirely rather
-  // than left visible-but-disabled, and the wait card says why.
   if (isBlocked) {
     return (
       <StepLayout phase={phase} stepIndex={stepIndex} showTitle={false} action={<WarehouseWaitAction />}>
@@ -61,7 +51,6 @@ export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
         { label: 'Proof of delivery photo', met: draft.podPhotoDataUrl !== null },
         { label: 'Receiver confirmation', met: Boolean(draft.podSignatureArtifactId) },
       ]}
-      // onComplete itself, not a wrapper: its promise is what holds SwipeToConfirm in Submitting.
       action={<SwipeToConfirm label="Swipe to Close Trip" onConfirm={onComplete} disabled={!isReady} />}
     >
       <div className="flex flex-col items-center pt-8 text-center">

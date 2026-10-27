@@ -14,7 +14,6 @@ describe('sortRows', () => {
 
     expect(ids(sortRows(rows, { key: 'score', dir: 'asc' }, valueOf))).toEqual(['b', 'a', 'c'])
     expect(ids(sortRows(rows, { key: 'score', dir: 'desc' }, valueOf))).toEqual(['c', 'a', 'b'])
-    // Natural order: FP-9 before FP-10 before fp-100, and case does not matter.
     expect(ids(sortRows(rows, { key: 'name', dir: 'asc' }, valueOf))).toEqual(['b', 'a', 'c'])
   })
 

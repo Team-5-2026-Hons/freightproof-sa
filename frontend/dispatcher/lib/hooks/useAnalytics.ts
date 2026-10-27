@@ -13,7 +13,6 @@ import type {
 
 const ANALYTICS_PATH = '/api/v1/analytics'
 
-// Lanes are read by the fleet page's Routes & sites tab now (useFleetRoutes), not per month.
 type MonthlyGrain = 'facilities' | 'vehicles' | 'drivers'
 
 export interface AnalyticsResult<T> {
@@ -43,8 +42,6 @@ function useAnalyticsList<T>(path: string): AnalyticsResult<T> {
 
   const runFetch = useCallback(() => {
     const generation = ++generationRef.current
-    // A new range changes what the rows mean. Clear them up front so a failed request
-    // can never leave the previous range's numbers on screen under the new range.
     setRows([])
     setIsLoading(true)
     setError(null)
@@ -65,7 +62,6 @@ function useAnalyticsList<T>(path: string): AnalyticsResult<T> {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     runFetch()
-    // Retire the in-flight request on unmount or path change, so it cannot land late.
     return () => { generationRef.current += 1 }
   }, [runFetch])
 

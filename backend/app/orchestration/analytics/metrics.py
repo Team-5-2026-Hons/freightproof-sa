@@ -78,8 +78,6 @@ def check_month_range(start_month: date, end_month: date) -> None:
     validate_month_range(start_month, end_month)
 
 
-# ── Pure assembly: result rows + looked-up names -> response rows ─────────────
-
 
 def _extend(response_model: type[ResponseT], row: BaseModel, **added: object) -> ResponseT:
     """Copy `row`'s stored fields into `response_model`, plus the display fields.
@@ -143,8 +141,6 @@ def attach_facility_names(
     ]
 
 
-# ── Name lookups — one query per grain, however many rows ────────────────────
-
 
 async def _driver_names(
     db: AsyncSession, *, organization_id: uuid.UUID, driver_ids: Collection[uuid.UUID],
@@ -171,8 +167,6 @@ async def _vehicle_registrations(
             Vehicle.id.in_(vehicle_ids),
         )
     )
-    # vehicle_type is a String column, so it comes back as a plain str. Converted here
-    # so the label really holds the enum its annotation promises.
     return {
         vehicle_id: VehicleLabel(registration, VehicleType(vehicle_type))
         for vehicle_id, registration, vehicle_type in result.tuples().all()
@@ -190,8 +184,6 @@ async def _precinct_names(
     )
     return dict(result.tuples().all())
 
-
-# ── One function per endpoint ────────────────────────────────────────────────
 
 
 async def list_driver_analytics(

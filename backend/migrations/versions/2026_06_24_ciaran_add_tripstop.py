@@ -40,8 +40,6 @@ def upgrade() -> None:
         sa.UniqueConstraint("trip_id", "sequence", name="uq_trip_stops_trip_id_sequence"),
     )
 
-    # Backfill: every existing trip becomes a 2-stop route (seq 0 = its current
-    # origin, seq 1 = its current destination) so single-leg trips are unaffected.
     op.execute(
         """
         INSERT INTO trip_stops (id, trip_id, precinct_id, sequence, created_at, updated_at)

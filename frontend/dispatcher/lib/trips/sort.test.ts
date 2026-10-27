@@ -180,7 +180,6 @@ describe('sortTrips', () => {
     ]
 
     expect(ids(sortTrips(trips, { key: 'driver', dir: 'asc' }, PRECINCTS))).toEqual(['x', 'y', 'z'])
-    // The tie-break does not flip with the direction: a descending sort keeps equal rows steady too.
     expect(ids(sortTrips(trips, { key: 'driver', dir: 'desc' }, PRECINCTS))).toEqual(['x', 'y', 'z'])
   })
 

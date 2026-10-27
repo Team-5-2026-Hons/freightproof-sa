@@ -13,7 +13,6 @@ const { mockScan, mockBuildPdf, mockUploadNow, mockIsNative } = vi.hoisted(() =>
   mockIsNative: vi.fn(),
 }))
 
-// StepLayout's header calls useRouter, as in every step suite.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
@@ -21,8 +20,6 @@ vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => mockIsN
 vi.mock('@/lib/scan/scanLinehaulSheet', () => ({ scanLinehaulSheet: () => mockScan() }))
 vi.mock('@/lib/scan/buildLinehaulPdf', () => ({ buildLinehaulPdf: (...a: unknown[]) => mockBuildPdf(...a) }))
 vi.mock('@/lib/hooks/useArtifactUpload', () => ({ useArtifactUpload: () => ({ uploadNow: mockUploadNow }) }))
-// CameraCapture stubbed as in the seal suites, but it honours nativeSource so the
-// scanner wiring is what the test exercises.
 vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture, nativeSource, busy, busyLabel }: {
     label: string; onCapture: (d: string) => void; nativeSource?: () => Promise<string | null>
@@ -33,8 +30,6 @@ vi.mock('@/components/phase/CameraCapture', () => ({
         void (nativeSource ? nativeSource() : Promise.resolve(`data:image/jpeg;base64,${label}`))
           .then((d) => { if (d !== null) onCapture(d) })
       }}>{label}</button>
-      {/* The real control lays a veil over the preview; the stub only has to prove the
-          step asks for one, and with what wording. */}
       {busy === true && <span data-testid="capture-busy">{busyLabel}</span>}
     </>
   ),
@@ -65,7 +60,6 @@ function renderUnblocked(onUpdate: (patch: Partial<LoadingEvidence>) => void) {
   )
 }
 
-// Holds the draft the way the step page does, so the swipe sees each patch.
 function LiveDraft({ onUpdate }: { onUpdate: (patch: Partial<LoadingEvidence>) => void }) {
   const [draft, setDraft] = useState<LoadingEvidence>(EMPTY_DRAFT)
   return (
@@ -144,9 +138,6 @@ describe('Linehaul — scan and PDF', () => {
   })
 
   it('test_marks_the_scan_itself_busy_while_the_pdf_builds', async () => {
-    // Tim, 21 Oct: the sheet looked finished the instant the scanner closed, while the
-    // build ran on — the only sign of the wait was the swipe's label, which a driver
-    // looking at their scan never reads.
     const build = deferred<string>()
     mockBuildPdf.mockReturnValue(build.promise)
     render(<LiveDraft onUpdate={vi.fn()} />)
@@ -186,7 +177,6 @@ describe('Linehaul — scan and PDF', () => {
     await waitFor(() => expect(mockBuildPdf).toHaveBeenCalledTimes(1))
     fireEvent.click(screen.getByRole('button', { name: 'Linehaul sheet' }))
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ linehaulPdfArtifactId: 'pdf-2' }))
-    // The newest capture's PDF has settled, so the swipe is free even though the first build is not.
     expect(swipe()).toHaveAttribute('aria-disabled', 'false')
     await act(async () => { first.resolve('data:application/pdf;base64,PDF1') })
 
@@ -207,22 +197,17 @@ describe('Linehaul — scan and PDF', () => {
   })
 })
 
-// Android recreates the WebView after the document scanner on a low-memory phone. The
-// draft kept the scan (usePhaseDraft), but the PDF the step builds from it was lost with
-// the JavaScript heap, so a returning driver would have submitted the loading without it.
 describe('Linehaul PDF rebuilt on resume', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('test_a_resumed_draft_with_a_scan_but_no_pdf_rebuilds_and_uploads_the_pdf', async () => {
-    // Arrange
     mockIsNative.mockReturnValue(false)
     mockBuildPdf.mockResolvedValue('data:application/pdf;base64,REBUILT')
     mockUploadNow.mockResolvedValue('pdf-artifact')
     const onUpdate = vi.fn()
 
-    // Act
     render(
       <Linehaul
         tripId="trip-1"
@@ -235,7 +220,6 @@ describe('Linehaul PDF rebuilt on resume', () => {
       />,
     )
 
-    // Assert
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ linehaulPdfDataUrl: 'data:application/pdf;base64,REBUILT' }))
     expect(mockBuildPdf).toHaveBeenCalledTimes(1)
     expect(mockBuildPdf).toHaveBeenCalledWith('data:image/jpeg;base64,SCAN')

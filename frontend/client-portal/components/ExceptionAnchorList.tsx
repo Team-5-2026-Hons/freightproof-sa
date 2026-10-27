@@ -28,7 +28,6 @@ export function ExceptionAnchorList({ anchors }: { anchors: ExceptionAnchorRecor
                   <span className="num break-all text-muted">{anchor.receipt_id ? `Receipt ${anchor.receipt_id}` : 'Receipt unavailable'}</span>
                 </>
               ) : (
-                // Plain sentence, no Anchored badge: this action is recorded, and the debt is visible.
                 <span className="font-semibold text-warn">{`Recorded — ${reason}`}</span>
               )}
             </li>

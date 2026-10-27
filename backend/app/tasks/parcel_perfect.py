@@ -25,12 +25,6 @@ from app.tasks import celery
 
 logger = logging.getLogger(__name__)
 
-# Trip statuses that represent an open, in-progress journey.
-# CLOSED, CANCELLED, and EXCEPTION_HOLD are excluded: closed trips are
-# immutable evidence records; cancelled trips have no active cargo; held
-# trips may be legally sensitive and should not be auto-refreshed.
-# Coarse set — ACTIVE now covers every old per-handshake
-# value (ORIGIN_GATE_IN..UNLOADING) that used to enumerate this frozenset.
 _ACTIVE_STATUSES: frozenset[TripStatus] = frozenset({
     TripStatus.CREATED,
     TripStatus.ACTIVE,
@@ -63,11 +57,6 @@ async def _sync_all_active() -> dict[str, Any]:
     Returns:
         {"synced": <int>, "errors": <int>}
     """
-    # Build a short-lived engine + session factory scoped to this task run.
-    # We do not reuse the module-level engine from db/session.py because Celery
-    # workers may run in a forked subprocess where a pre-fork connection pool
-    # would be unsafe. A fresh engine per invocation is inexpensive at this
-    # polling frequency (at most once per PP_POLL_INTERVAL_SECONDS).
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     session_factory = async_sessionmaker(
         bind=engine,
@@ -80,21 +69,14 @@ async def _sync_all_active() -> dict[str, Any]:
     pods_confirmed: int = 0
 
     async with session_factory() as db:
-        # Query consignments joined to trips with an active status.
-        # We select (Consignment, trip_id, client_organization_id) in one
-        # round-trip to avoid N+1 queries for trip metadata.
         result = await db.execute(
             select(Consignment)
             .join(Trip, Trip.id == Consignment.trip_id)
             .where(Trip.status.in_(_ACTIVE_STATUSES))
         )
-        # Plain values, copied out before the loop. db.rollback() below expires EVERY instance
-        # the session holds, and an expired attribute in async code is a lazy load that raises
-        # (MissingGreenlet) — inside the error handler, and again on every later iteration.
-        # Nothing in the loop may touch a loaded Consignment for its own bookkeeping.
         work: list[_ConsignmentWork] = [
             _ConsignmentWork(c.id, c.parcel_perfect_reference, c.trip_id, c.pp_raw_json)
-            for c in result.scalars().all() if c.trip_id is not None  # the join already excludes NULL; narrows the type
+            for c in result.scalars().all() if c.trip_id is not None
         ]
 
         logger.info(
@@ -103,9 +85,6 @@ async def _sync_all_active() -> dict[str, Any]:
         )
 
         for item in work:
-            # Skip consignments where PP already confirmed delivery in a prior poll.
-            # poddate is written into pp_raw_json by serialise_waybill() on every sync,
-            # so a non-empty value here means PP has definitively closed the delivery.
             prior_poddate: str = (item.pp_raw_json or {}).get("details", {}).get("poddate", "")
             if prior_poddate:
                 logger.info(
@@ -133,7 +112,6 @@ async def _sync_all_active() -> dict[str, Any]:
                 await db.commit()
                 synced += 1
 
-                # Detect a freshly confirmed POD in this sync cycle.
                 new_poddate: str = (
                     (updated.pp_raw_json or {}).get("details", {}).get("poddate", "")
                 )
@@ -152,12 +130,8 @@ async def _sync_all_active() -> dict[str, Any]:
                         item.pp_reference,
                     )
             except Exception:
-                # Roll back only this consignment's in-progress changes so the
-                # session remains usable for subsequent consignments.
                 await db.rollback()
                 errors += 1
-                # logger.exception keeps the traceback; the ids are the plain locals above,
-                # never the (now expired) instance.
                 logger.exception(
                     "pp_sync: failed to sync consignment id=%s pp_reference=%s",
                     item.id,
@@ -188,8 +162,6 @@ def sync_active_consignments(self: Task) -> dict[str, Any]:
     the final exception as a task failure.
     """
     try:
-        # Celery workers are synchronous; asyncio.run() drives the async
-        # implementation without requiring an async worker (e.g. gevent).
         return asyncio.run(_sync_all_active())
     except Exception as exc:
         logger.error(
@@ -198,6 +170,4 @@ def sync_active_consignments(self: Task) -> dict[str, Any]:
             self.max_retries,
             exc,
         )
-        # self.retry() raises celery.exceptions.Retry, which Celery catches
-        # and reschedules. Re-raising ensures the task is marked RETRY not SUCCESS.
         raise self.retry(exc=exc)

@@ -38,7 +38,6 @@ export const TRIP_AUDIT_PACKS_SECTION_ID = 'trip-audit-packs'
 const AUDIT_SECTION = 'audit'
 const TRIP_ACTIONS_HEADING_ID = 'trip-actions-heading'
 const NO_OPEN_TRANSFER = (): void => undefined
-// Long enough to be seen once the scroll lands, short enough not to read as a status.
 const INCIDENT_HIGHLIGHT_MS = 2000
 const INCIDENT_LANDING_MAX_FRAMES = 20
 const INCIDENT_LANDING_GAP_PX = 12
@@ -63,23 +62,19 @@ function participantNames(trip: Trip): Record<string, string> {
 
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
-  /** Resolves an exception's supporting photo in the exceptions tab. */
   artifactsById: Map<string, EvidenceArtifactWithUrl>
   selectedPhaseId?: string | null; invalidPhaseId?: string | null
   selectedExceptionId?: string | null; invalidExceptionId?: string | null
   overlayOpen: boolean
-  /** Legacy audit links land here once; ordinary Info navigation starts at the top. */
   scrollToAuditPacks?: boolean
   onSelect: (panel: TripPanel) => void
   onClose: () => void; onFilter: (value: ExceptionFilter) => void; onClearPhaseFilter?: () => void; onClearExceptionSelection?: () => void
   onShowInTimeline?: (exceptionId: string, phaseId: string | null) => void; onChanged: () => void; returnTo: string
-  /** The trip's incidents. The page reads them once, because the timeline draws the same records. */
   incidents: AsyncState<IncidentSummary[]>
   /** Where to go once an incident is reported (the page owns routing; this panel does not). */
   onIncidentReported?: (incidentId: string) => void
   /** Opens a completed driver transfer's evidence. The page owns that modal, shared with the timeline. */
   onOpenTransfer?: (substitutionId: string) => void
-  /** Asks the Info panel to open the Incidents section and land on one incident (a timeline card was activated). */
   focusIncident?: IncidentFocusRequest | null
 }
 export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById, selectedPhaseId, invalidPhaseId, selectedExceptionId, invalidExceptionId, overlayOpen, scrollToAuditPacks = false, onSelect, onClose, onFilter, onClearPhaseFilter, onClearExceptionSelection, onShowInTimeline, onChanged, returnTo, incidents: tripIncidents, onIncidentReported, onOpenTransfer = NO_OPEN_TRANSFER, focusIncident = null }: Props): React.JSX.Element {
@@ -92,9 +87,6 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   const needsReview = exceptions.filter(e => e.review_status === 'needs_review').length
   const hasCriticalException = exceptions.some(e => e.severity === 'critical')
   const pendingTransfer = hasPendingTransfer(trip)
-  // Rendered as siblings of DetailPanel, not inside it: below the dock width DetailPanel
-  // wraps its own children in a <dialog>, and a modal nested inside another open modal
-  // centers on that ancestor's box instead of the viewport.
   const [openPrecinct, setOpenPrecinct] = useState<Precinct | null>(null)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
@@ -103,20 +95,13 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   const activeIncident = hasActiveIncident(tripIncidents.data)
   const leadingStatus = leadingActiveIncidentStatus(tripIncidents.data)
   const incidentsText = incidentsSummary(tripIncidents.data, tripIncidents.isLoading, tripIncidents.error !== null)
-  // Mirrors the server's summarise_incident: a fact sheet needs a critical exception or a recorded
-  // hijacking (a hijacking reported by phone never raised a panic). A shortage or damage record alone does not count.
   const canBuildSheet = hasCriticalException || tripIncidents.data.some(i => i.incident_type === HIJACKING_INCIDENT)
-  // An exception belongs to one investigation; the report dialog offers only the free ones.
   const groupedExceptionIds = useMemo(
     () => new Set(tripIncidents.data.flatMap(i => i.exception_ids)), [tripIncidents.data],
   )
-  // Re-key only the audit content: the trip information and its scroller stay put.
   const [packsVersion, setPacksVersion] = useState(0)
-  // The police details are read again in place when a declaration is saved; nothing remounts.
   const [policeVersion, setPoliceVersion] = useState(0)
-  // Held here, not in the exceptions panel, so these survive a visit to the Info or Cargo tab.
   const [exceptionGrouping, setExceptionGrouping] = useState<ExceptionGrouping>('none')
-  // Reviewing is scan then open, so the pane starts as one line per record.
   const [exceptionDensity, setExceptionDensity] = useState<ExceptionDensity>('compact')
   const recordSort = useTableSort({ keys: EXCEPTION_RECORD_SORT_KEYS, firstDir: firstExceptionRecordDir, initial: DEFAULT_EXCEPTION_RECORD_SORT })
   const [auditMinimumHeight, setAuditMinimumHeight] = useState(0)
@@ -128,23 +113,18 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
     const section = auditSectionRef.current
     const scroller = section?.closest<HTMLElement>(PANEL_SCROLLER_SELECTOR)
     if (!section || !scroller) return
-    // A short loading state must still have enough reading space to land at its heading.
     if (auditMinimumHeight < scroller.clientHeight) {
       setAuditMinimumHeight(scroller.clientHeight)
       return
     }
-    // scrollIntoView would also move the timeline/page; move only this panel's scroller.
     scroller.scrollTop += section.getBoundingClientRect().top - scroller.getBoundingClientRect().top
     auditLandingTripRef.current = trip.id
-    // The reserved space was only for the scroll to land: once it has, a collapsed section must not leave a blank.
     landingFrameRef.current = window.requestAnimationFrame(() => setAuditMinimumHeight(0))
   }, [scrollToAuditPacks, trip.id, panel, docked, overlayOpen, auditMinimumHeight])
 
   const [highlightedIncidentId, setHighlightedIncidentId] = useState<string | null>(null)
   const handledFocusRef = useRef<number | null>(null)
   const infoVisible = panel === TRIP_PANELS.information && (docked || overlayOpen)
-  // The section opens during render (forceOpenKey), but the panel itself may only just have been raised, so
-  // wait for the row to exist instead of assuming it does.
   useEffect(() => {
     if (!focusIncident || !infoVisible || handledFocusRef.current === focusIncident.requestId) return
     let frame = 0
@@ -153,7 +133,6 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
     const land = (): void => {
       const row = sectionsRef.current?.querySelector<HTMLElement>(`[${INCIDENT_ROW_ATTR}="${focusIncident.incidentId}"]`)
       if (!row) {
-        // The incident may not have loaded yet; give up quietly rather than poll forever.
         if (++frame < INCIDENT_LANDING_MAX_FRAMES) handle = window.requestAnimationFrame(land)
         return
       }
@@ -174,8 +153,6 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   useEffect(() => {
     const trigger = auditTriggerRef.current
     if (issueOpen || declareOpen || !trigger) return
-    // Issuing an audit pack remounts AuditPacksPanel, so Modal may hold a detached trigger. Look
-    // across every section, since the police buttons now live under Incidents.
     const replacement = Array.from(sectionsRef.current?.querySelectorAll('button') ?? [])
       .find(button => button.textContent === trigger.textContent)
     const target = trigger.isConnected ? trigger : replacement
@@ -188,8 +165,6 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   }
 
   function refreshAuditPacks(): void {
-    // The keyed child's loading state empties its lists. Reserve their measured space
-    // before the key changes, otherwise the browser clamps the mounted scroller's position.
     const height = auditSectionRef.current?.getBoundingClientRect().height ?? 0
     setAuditMinimumHeight(previous => Math.max(previous, height))
     setPacksVersion(previous => previous + 1)
@@ -197,22 +172,14 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   const tabs: readonly Tab[] = [
     { id: TRIP_PANELS.information, label: 'Info' },
     { id: TRIP_PANELS.manifest, label: 'Cargo' },
-    // The count is the reason a dispatcher opens this tab, so it rides on the tab itself
-    // rather than waiting behind a click. Urgent only when something is actually owed.
     { id: TRIP_PANELS.exceptions, label: 'Exceptions', badge: exceptions.length, badgeUrgent: needsReview > 0 },
   ]
   return <>
     <DetailPanel tabs={tabs} active={panel} onSelect={id => onSelect(id as TripPanel)} title={TITLES[panel]}
       onClose={onClose} overlayOpen={overlayOpen} ariaLabel="Trip detail">
-      {/* A zero-height row with the icon lifted into the panel's own top padding (20px, docked and in the overlay), so the help
-          costs no space and the content starts exactly where it would without it. The 14px glyph sits 5px inside its 24px
-          button, so the button overhangs the padding by that much to put the glyph on the content's right edge. */}
       <div className="relative h-0"><TripHelp topic={HELP_TOPIC[panel]} className="absolute -top-[22px] -right-[5px]" /></div>
       {panel === TRIP_PANELS.information && <div ref={sectionsRef} className="divide-y divide-outline-v">
         <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} />
-        {/* Both open themselves while there is something to act on, and carry a chip in the summary
-            for the reader who folded them away: a remembered "closed" outranks the default, and it is
-            stored per section, not per trip. */}
         <Disclosure id="custody" title="Driver & custody" defaultOpen={pendingTransfer}
           summary={pendingTransfer ? <Chip type="pending" label={custodySummary(trip)} /> : custodySummary(trip)}>
           <DriverSubstitutionPanel trip={trip} onOpenTransfer={onOpenTransfer} />
@@ -225,7 +192,6 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
             onDeclare={() => { rememberTrigger(); setDeclareOpen(true) }} />
         </Disclosure>
         <section ref={auditSectionRef} id={TRIP_AUDIT_PACKS_SECTION_ID} aria-labelledby={disclosureHeadingId(AUDIT_SECTION)} style={{ minHeight: auditMinimumHeight || undefined }}>
-          {/* A legacy audit link opens it once, before the scroll effect measures; after that the reader can fold it away. */}
           <Disclosure id={AUDIT_SECTION} title="Audit packs" summary={AUDIT_SUMMARY} forceOpenKey={scrollToAuditPacks ? trip.id : null}
             onOpenChange={open => { if (!open) setAuditMinimumHeight(0) }}>
             <AuditPacksPanel key={packsVersion} tripId={trip.id} tripReference={trip.trip_reference} onLoaded={() => setAuditMinimumHeight(0)}

@@ -56,20 +56,12 @@ from app.orchestration.evidence import corroboration as evidence_corroboration
 
 from tests.conftest import FakeMockStateStore, auth_header, make_token
 
-# The origin precinct sits exactly here, so a horse staged at the same point is
-# unambiguously inside the 200 m default geofence and a verdict of True cannot be
-# an accident of tolerance arithmetic.
 _ORIGIN_LAT = Decimal("-33.9249")
 _ORIGIN_LNG = Decimal("18.4241")
 
-# Johannesburg — ~1270 km from the origin precinct. Far enough that no radius or
-# tolerance value anyone might later configure could reclassify it as "confirmed".
 _FAR_AWAY_LAT = Decimal("-26.2041")
 _FAR_AWAY_LNG = Decimal("28.0473")
 
-# Device ids for this module's own fleet. Deliberately NOT the seeded demo ids from
-# MOCK_DEVICE_POSITIONS: every position these tests rely on is staged explicitly, so
-# a change to the demo fixture library can never silently alter an expectation here.
 _HORSE_DEVICE = "TEST-HORSE-CORROB"
 _TRAILER_A_DEVICE = "TEST-TRAILER-A"
 _TRAILER_B_DEVICE = "TEST-TRAILER-B"
@@ -85,13 +77,6 @@ async def override_get_db(db_session):
     app.dependency_overrides.pop(get_db, None)
 
 
-# name="pulsit_store" pins the fixture's PYTEST-VISIBLE name to the decorator rather
-# than to this def's own identifier. test_gps_mismatch.py imports this fixture under
-# a different Python name (_pulsit_store_fixture) specifically so ITS test functions
-# can still declare a plain `pulsit_store` parameter without ruff reading that
-# parameter as redefining an unused import (F811) — the collision only exists when
-# the import and the parameter share the same literal identifier. Registration by
-# explicit `name=` means pytest resolves the fixture correctly either way.
 @pytest.fixture(name="pulsit_store")
 def _pulsit_store_fixture(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     """Run the real MockPulsitClient over a dict, exactly as the dev panel would.
@@ -112,10 +97,6 @@ async def _stage(device_id: str, lat: Decimal, lng: Decimal, *, fixed_at: dateti
     )
 
 
-# Same name= reasoning as pulsit_store above — test_gps_mismatch.py imports this
-# fixture as _corroboration_trip_fixture to avoid an F811 collision with its own
-# `corroboration_trip` test parameters, and relies on this explicit name to still
-# resolve correctly.
 @pytest_asyncio.fixture(name="corroboration_trip")
 async def _corroboration_trip_fixture(db_session):
     """A single-leg trip whose origin precinct has real coordinates.
@@ -166,8 +147,6 @@ async def _corroboration_trip_fixture(db_session):
     db_session.add_all([stop0, stop1])
     await db_session.flush()
 
-    # Mirrors what create_trip produces: P0 already COMPLETED, every driver-facing
-    # row PENDING. Same shape as test_phases.py's seed_trip, kept in step with it.
     db_session.add_all([
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.TRIP_CREATION, sequence_number=0, status=PhaseStatus.COMPLETED),
         PhaseEvent(trip_id=trip.id, phase_type=PhaseType.ACTIVATION, trip_stop_id=stop0.id, sequence_number=1, status=PhaseStatus.PENDING),
@@ -212,9 +191,6 @@ async def _complete_activation(
     driver_accuracy_metres: float | None = None,
     location_warning_acknowledged_at: str | None = None, location_warning_reason: str | None = None,
 ) -> Any:
-    # A caller replaying a submission MUST pass the same token: make_token mints a
-    # fresh session_id each call, and the one-device-per-driver rule would reject the
-    # second request as a different device before it ever reached the replay guard.
     token = token or make_token(sub=str(driver.id), role="driver")
     phase_event_id = await _phase_id(client, trip.id, token, "activation")
     body: dict[str, Any] = {
@@ -223,11 +199,6 @@ async def _complete_activation(
         "driver_phone_lng": float(_ORIGIN_LNG) if driver_phone_lng is None else driver_phone_lng,
         "idempotency_key": idempotency_key or f"idem-{uuid.uuid4()}",
     }
-    # Defaults to "now", matching the Pulsit fixture's own default fixed_at
-    # (both _stage's default and the unstaged MOCK_DEVICE_POSITIONS fixture use
-    # datetime.now(UTC)) so an ordinary test stays inside the corroboration skew
-    # without every caller having to think about timing. omit_driver_captured_at
-    # simulates an older client that never sends the field at all.
     if not omit_driver_captured_at:
         body["driver_captured_at"] = driver_captured_at or datetime.now(UTC).isoformat()
     if driver_accuracy_metres is not None:
@@ -301,7 +272,6 @@ async def test_phase_completion_persists_warning_acknowledgement_without_overrid
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
     assert event.location_warning_acknowledged_at is not None
     assert event.location_warning_reason == "Truck is waiting at the gate."
-    # The final server evaluation remains a measurement, not the driver's text.
     assert event.action_location_assessment is not None
 
 
@@ -343,8 +313,6 @@ async def _resolve_phases_before(db_session, trip: Trip, sequence_number: int) -
     )
     await db_session.flush()
 
-
-# ── The normal handshake: all four writes land ──────────────────────────────────
 
 
 async def test_a_normal_handshake_populates_every_corroboration_column(
@@ -401,8 +369,6 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
         {"phase_type": "confirmation",
          "pod_photo_artifact_id": pod_photo_id, "pod_signature_artifact_id": pod_signature_id},
     ]
-    # departure and confirmation anchor to Hedera; patched so the walk exercises the
-    # corroboration wiring rather than the network.
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
         for body in bodies:
@@ -410,9 +376,6 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
             resp = await client.post(
                 f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
                 headers=auth_header(token),
-                # Every phase needs a capture time close to the staged Pulsit
-                # fix's "now" to keep this walk's True/False verdicts meaningful rather
-                # than uniformly NULL.
                 json={
                     **body, "idempotency_key": f"idem-{uuid.uuid4()}",
                     "driver_captured_at": datetime.now(UTC).isoformat(),
@@ -429,19 +392,12 @@ async def test_corroboration_is_written_at_every_phase_not_only_the_first(
         assert event.horse_gps_lng == _ORIGIN_LNG, phase_type
         assert len(await _load_snapshots(db_session, event)) == 1, phase_type
 
-    # The verdict tracks the stop each phase actually belongs to: the origin phases
-    # confirm against the origin precinct, and the destination phases correctly report
-    # a mismatch, because the horse never left the origin in this walk. That asymmetry
-    # is the proof the precinct is resolved per row rather than once per trip.
     for phase_type in (PhaseType.ACTIVATION, PhaseType.LOADING, PhaseType.DEPARTURE):
         assert (await _load_event(db_session, trip, phase_type)).pulsit_geofence_confirmed is True
     for phase_type in (PhaseType.ARRIVAL, PhaseType.UNLOADING, PhaseType.CONFIRMATION):
         assert (await _load_event(db_session, trip, phase_type)).pulsit_geofence_confirmed is False
-    # in_transit alone carries no verdict — see its own test below.
     assert (await _load_event(db_session, trip, PhaseType.IN_TRANSIT)).pulsit_geofence_confirmed is None
 
-
-# ── The three-state contract: FALSE is an accusation, NULL is an admission ──────
 
 
 async def test_a_geofence_failing_position_writes_false_not_null(
@@ -460,8 +416,6 @@ async def test_a_geofence_failing_position_writes_false_not_null(
     assert resp.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
     assert event.pulsit_geofence_confirmed is False
-    # The position is still recorded — a truck in the wrong place is evidence, and
-    # discarding the coordinate would leave the false verdict unexplainable.
     assert event.horse_gps_lat == _FAR_AWAY_LAT
 
 
@@ -519,9 +473,6 @@ async def test_in_transit_records_position_but_no_geofence_verdict(
     resp = await client.post(
         f"/api/v1/trips/{trip.id}/phases/{phase_event_id}/complete",
         headers=auth_header(token),
-        # Within skew of the staged fix's default "now", so this test still
-        # proves ITS OWN point (a position is stored with no verdict) rather than
-        # accidentally exercising the timing gate instead.
         json={
             "phase_type": "in_transit", "idempotency_key": f"idem-{uuid.uuid4()}",
             "driver_captured_at": datetime.now(UTC).isoformat(),
@@ -533,8 +484,6 @@ async def test_in_transit_records_position_but_no_geofence_verdict(
     assert event.horse_gps_lat == _FAR_AWAY_LAT
     assert event.pulsit_geofence_confirmed is None
 
-
-# ── A failed Pulsit call must never fail the handshake ──────────────────────────
 
 
 async def test_a_pulsit_outage_leaves_the_handshake_successful(
@@ -567,7 +516,6 @@ async def test_a_pulsit_outage_leaves_the_handshake_successful(
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
     assert event.status == PhaseStatus.COMPLETED
     assert event.completed_at is not None
-    # Corroboration recorded as unavailable — null means "we could not check".
     assert event.horse_gps_lat is None
     assert event.pulsit_geofence_confirmed is None
     assert await _load_snapshots(db_session, event) == []
@@ -594,8 +542,6 @@ async def test_an_unavailable_fix_does_not_erase_a_position_from_an_earlier_atte
     assert refreshed.horse_gps_lat == _ORIGIN_LAT
 
 
-# ── Trailers: one row each, and the awkward fleet shapes ────────────────────────
-
 
 async def test_multiple_trailers_each_get_their_own_snapshot_row(
     client: AsyncClient, db_session, corroboration_trip, pulsit_store,
@@ -615,8 +561,6 @@ async def test_multiple_trailers_each_get_their_own_snapshot_row(
     snapshots = await _load_snapshots(db_session, event)
     assert len(snapshots) == 2
     by_trailer = {s.trailer_id: s for s in snapshots}
-    # Each trailer's OWN position, not the horse's copied twice — a positional
-    # zip bug against FP-87's ordered batch response would show up exactly here.
     assert by_trailer[trailer_a.id].lat == _ORIGIN_LAT
     assert by_trailer[trailer_b.id].lat == _FAR_AWAY_LAT
 
@@ -661,8 +605,6 @@ async def test_a_trailer_with_no_tracker_gets_no_row_and_does_not_block_the_othe
     assert [s.trailer_id for s in snapshots] == [reporting.id]
     assert dark.id not in {s.trailer_id for s in snapshots}
 
-
-# ── Offline queue delivery and the timestamp decision ───────────────────────────
 
 
 async def test_a_replayed_offline_handshake_does_not_duplicate_snapshot_rows(
@@ -719,9 +661,6 @@ async def test_a_snapshot_records_the_trackers_reading_time_not_the_servers_cloc
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
     snapshot = (await _load_snapshots(db_session, event))[0]
     assert snapshot.captured_at == three_hours_ago
-    # Narrowed rather than asserted inline: completed_at is Optional on the model,
-    # and the comparison is the point of the test — a mypy error here would be
-    # silenced by a cast that could hide a genuinely unset timestamp.
     assert event.completed_at is not None
     assert snapshot.captured_at < event.completed_at
 
@@ -768,14 +707,10 @@ async def test_a_positioned_fix_with_no_reading_time_is_dropped_rather_than_inve
 
     assert resp.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
-    # A timestampless fix cannot be verified as timely, so neither the horse position
-    # nor the snapshot row is written — both are refused for the same reason.
     assert event.horse_gps_lat is None
     assert await _load_snapshots(db_session, event) == []
     assert trailer.id is not None
 
-
-# ── The corroboration skew gate ──────────────────────────────────────────────────
 
 
 async def test_a_stale_driver_captured_at_leaves_horse_position_and_verdict_null(
@@ -787,7 +722,7 @@ async def test_a_stale_driver_captured_at_leaves_horse_position_and_verdict_null
     as evidence at all. Without the gate this would wrongly read as a clean TRUE.
     """
     trip, driver, _org, _stop = corroboration_trip
-    await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)  # fixed_at defaults to now()
+    await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
     stale_capture = (datetime.now(UTC) - timedelta(hours=3)).isoformat()
 
     resp = await _complete_activation(client, trip, driver, driver_captured_at=stale_capture)
@@ -836,15 +771,11 @@ async def test_trailer_snapshots_are_written_even_when_the_horse_position_misses
 
     assert resp.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
-    # The horse position missed skew and was correctly refused...
     assert event.horse_gps_lat is None
-    # ...but the trailer snapshot, keyed to its OWN tracker time, was not.
     snapshots = await _load_snapshots(db_session, event)
     assert len(snapshots) == 1
     assert snapshots[0].lat == _ORIGIN_LAT
 
-
-# ── The trailer device id is the snapshot, not the live vehicle row ─────────────
 
 
 async def test_a_snapshot_uses_the_trip_frozen_device_id_not_the_current_vehicle_row(
@@ -859,7 +790,6 @@ async def test_a_snapshot_uses_the_trip_frozen_device_id_not_the_current_vehicle
     trailer = await _attach_trailer(db_session, trip=trip, org=org, device_id=_TRAILER_A_DEVICE)
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
     await _stage(_TRAILER_A_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
-    # The fleet office re-registers this trailer's tracker after the trip was built.
     trailer.pulsit_device_id = "TEST-TRAILER-REASSIGNED"
     await db_session.flush()
 
@@ -871,15 +801,6 @@ async def test_a_snapshot_uses_the_trip_frozen_device_id_not_the_current_vehicle
     assert snapshot.pulsit_device_id == _TRAILER_A_DEVICE
 
 
-# ── Checkpoints: the driver payload no longer supplies the horse position ───────
-#
-# SCOPE NOTE FOR REVIEW: FP-143 as written covers phase handshakes only. These three
-# tests cover an explicit extension of the same treatment to evidence/checkpoints.py,
-# decided 2026-09-04. Flagged here rather than buried, because it changes an existing
-# endpoint's behaviour: Checkpoint.horse_gps_lat/lng used to be whatever the driver's
-# app put in the request body, which made the column a second copy of the driver's own
-# claim rather than an independent source.
-
 
 async def _log_checkpoint(
     client: AsyncClient, trip: Trip, driver: Driver, **extra: Any
@@ -888,9 +809,6 @@ async def _log_checkpoint(
     return await client.post(
         f"/api/v1/trips/{trip.id}/checkpoints",
         headers=auth_header(token),
-        # Defaults to "now" so the checkpoint's horse position stays inside
-        # the corroboration skew by default — same reasoning as _complete_activation's
-        # own default. **extra last so a test can still override it explicitly.
         json={
             "checkpoint_type": "manual",
             "driver_captured_at": datetime.now(UTC).isoformat(),
@@ -969,15 +887,6 @@ async def test_a_pulsit_outage_leaves_the_checkpoint_successful(
     assert checkpoint.horse_gps_lng is None
 
 
-# ── DRIVER_LOCATION_MISMATCH ─────────────────────────────────────────────────────
-#
-# The gap DRIVER_VEHICLE_SEPARATION alone leaves open: with no tracker fix to
-# compare against, evaluate_proximity can only return "unverified" (missing_
-# tracker), so DRIVER_VEHICLE_SEPARATION never fires — yet the driver's own phone
-# is measurably outside the stop's precinct the whole time. These tests drive a
-# real completion request and assert the DB state after the mutation, not a mock
-# call, consistent with FP-143/FP-145's sibling tests above.
-
 
 async def _mismatch_rows(db_session, trip: Trip) -> list:
     result = await db_session.execute(
@@ -1007,7 +916,7 @@ async def test_driver_outside_precinct_with_no_tracker_fix_raises_driver_locatio
 
     assert resp.status_code == 200
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
-    assert event.horse_gps_lat is None  # tracker genuinely had nothing to report
+    assert event.horse_gps_lat is None
 
     rows = await _mismatch_rows(db_session, trip)
     assert len(rows) == 1
@@ -1018,8 +927,6 @@ async def test_driver_outside_precinct_with_no_tracker_fix_raises_driver_locatio
     assert "Driver's reason:" in rows[0].description
     assert "far gate" in rows[0].description
 
-    # The gap closed here, proven negatively: no distance was ever measured
-    # (no tracker fix), so DRIVER_VEHICLE_SEPARATION correctly raised nothing.
     separation_rows = await db_session.execute(
         select(TripException).where(
             TripException.trip_id == trip.id,

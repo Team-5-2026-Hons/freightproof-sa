@@ -10,13 +10,8 @@ import { api } from './client'
 export interface LocationPingBody {
   lat: number
   lng: number
-  // Metres of horizontal uncertainty, when the platform reports one. Omitted rather
-  // than zeroed when it doesn't — 0 would claim a perfect fix.
   accuracy_m?: number
-  // What the driver was doing: a route path, or an action name like 'phase-submit'.
   context: string
-  // When the DEVICE took the fix (ISO-8601). Not the send time — a replayed offline
-  // ping is hours older than its request, and the trail is ordered by this.
   recorded_at: string
 }
 

@@ -56,20 +56,14 @@ from app.main import app
 from app.orchestration.substitutions.access import current_driver_ids
 from app.schemas.people import DriverRead, UserRead
 
-# Mirrors scripts/seed_demo.py; repeated here so this tool does not import a seeding script.
 DEFAULT_DISPATCHER_EMAIL = "demo-dispatcher@freightproof.co.za"
 
-# What get_current_dispatcher / get_current_driver cost per request (measured by
-# test_query_budgets.py, warm session). Added to the last column only.
 DISPATCHER_AUTH_STATEMENTS = 2
 DRIVER_AUTH_STATEMENTS = 4
 
-# One unmeasured request first: it pays for the TLS handshake and a cold pool, which is not what
-# a user waits on once the app is warm.
 WARM_UP_REQUESTS = 1
 DEFAULT_REPEATS = 3
 
-# Statements this tool will let through. Anything else is a bug in the tool or the endpoint.
 _ALLOWED_START = re.compile(r"^\s*(SELECT|WITH|SHOW|SAVEPOINT|RELEASE\s+SAVEPOINT|ROLLBACK\s+TO\s+SAVEPOINT)\b", re.I)
 _WRITES_OR_LOCKS = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|FOR\s+(NO\s+KEY\s+)?(UPDATE|SHARE))\b", re.I)
 _FIRST_FROM = re.compile(r'\bFROM\s+("?[\w.]+"?)', re.I)
@@ -115,19 +109,14 @@ class Result:
 def _install_guards(probe: Probe) -> None:
     """Read-only sessions for the app, plus the statement counter and the write guard."""
     read_only_engine = db_session_module.engine.execution_options(postgresql_readonly=True)
-    # get_db() looks AsyncSessionLocal up in this module on every request, so replacing the name
-    # is enough: every request now opens `BEGIN ... READ ONLY` transactions.
     db_session_module.AsyncSessionLocal = async_sessionmaker(
         bind=read_only_engine, class_=DatabaseSession, expire_on_commit=False,
     )
 
-    # SQLAlchemy passes (conn, cursor, statement, parameters, context, executemany); only the
-    # statement is used.
     @sa_event.listens_for(read_only_engine.sync_engine, "before_cursor_execute")
     def _before(*args: Any) -> None:
         statement: str = args[2]
         if not _ALLOWED_START.match(statement) or _WRITES_OR_LOCKS.search(statement):
-            # Class name only: a statement can embed values, and this tool prints nothing from the DB.
             raise WriteRefused("a non-read statement was about to be sent")
         probe.statements.append(statement)
         probe._started = time.perf_counter()
@@ -215,7 +204,6 @@ async def _measure(client: httpx.AsyncClient, probe: Probe, endpoint: Endpoint, 
             result.status = response.status_code
             result.statements = list(probe.statements)
     except Exception as exc:  # noqa: BLE001 — the tool must report and carry on to the next endpoint
-        # Class name only (see module docstring); WriteRefused is the one that matters.
         result.error = type(exc).__name__
     return result
 
@@ -253,7 +241,6 @@ def _print(results: list[Result], *, detail: bool) -> None:
 async def _run(email: str, trip_id: uuid.UUID | None, repeats: int, detail: bool) -> int:
     probe = Probe()
     _install_guards(probe)
-    # The per-IP limiter needs Redis and a request count is not a traffic model.
     settings.RATE_LIMIT_ENABLED = False
 
     dispatcher = await _lookup_identity(email)

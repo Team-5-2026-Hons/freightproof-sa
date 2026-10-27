@@ -23,7 +23,6 @@ Create Date: 2026-09-23
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_trailer_geofence"
 down_revision = "ciaran_arrival_seal_condition"
 branch_labels = None

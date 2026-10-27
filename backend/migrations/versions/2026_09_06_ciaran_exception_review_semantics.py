@@ -33,7 +33,6 @@ Create Date: 2026-09-06
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_exc_review_semantics"
 down_revision = "ciaran_exc_idempotency"
 branch_labels = None
@@ -46,11 +45,6 @@ def upgrade() -> None:
     op.add_column(_TABLE, sa.Column("review_status", sa.String(20), nullable=True))
     op.add_column(_TABLE, sa.Column("review_outcome", sa.String(30), nullable=True))
 
-    # Backfill before the NOT NULL is applied — every existing row needs a value before
-    # the constraint can be enforced. CRITICAL is singled out because an unresolved
-    # CRITICAL exception (a panic button, a broken seal) is the one case where "nobody
-    # has looked at this yet" (recorded) understates the situation; every other severity
-    # defaults to recorded, same as a freshly-raised exception would.
     op.execute("""
     UPDATE exceptions
     SET review_status = CASE
@@ -67,9 +61,6 @@ def upgrade() -> None:
     op.alter_column(_TABLE, "resolver_note", new_column_name="review_note")
     op.alter_column(_TABLE, "resolution_method", new_column_name="contact_method")
 
-    # Value remap on the renamed column, after the rename so both statements address it
-    # by its new name. 'no_contact_yet' first: it must never be mistaken for 'phoned'
-    # once relabelled, and neither UPDATE's WHERE clause overlaps the other's target.
     op.execute("UPDATE exceptions SET contact_method = NULL WHERE contact_method = 'no_contact_yet'")
     op.execute("UPDATE exceptions SET contact_method = 'phone' WHERE contact_method = 'phoned'")
 
@@ -89,9 +80,6 @@ def downgrade() -> None:
     op.alter_column(_TABLE, "resolved", nullable=False, server_default="false")
     op.create_index("ix_exceptions_trip_resolved", _TABLE, ["trip_id", "resolved"])
 
-    # 'no_contact_yet' has no way back — the upgrade folded it into NULL alongside every
-    # row that simply never had a method recorded, and the two are now indistinguishable.
-    # Only the reversible half of the remap (phone -> phoned) is undone.
     op.execute("UPDATE exceptions SET contact_method = 'phoned' WHERE contact_method = 'phone'")
     op.alter_column(_TABLE, "contact_method", new_column_name="resolution_method")
     op.alter_column(_TABLE, "review_note", new_column_name="resolver_note")

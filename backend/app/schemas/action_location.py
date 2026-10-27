@@ -35,27 +35,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-# Bumped whenever a field is added, removed, renamed, or a threshold's meaning
-# changes in a way that would make an older stored assessment misleading if read
-# under the new rules. This string is persisted verbatim; a reader comparing
-# `policy_version` across two assessments can tell whether they were evaluated
-# under the same policy at all before comparing their numbers.
-# 2026-10-14.1: precinct_geofence_polygon added; when set, the outline (not the radius)
-# is what driver_in_precinct/truck_in_precinct were judged against.
 ACTION_LOCATION_POLICY_VERSION = "2026-10-14.1"
 
-# The driver/truck separation verdict. 'within_limit' and 'separated' are both
-# POSITIVE claims — every quality gate passed and a real distance was measured
-# either at-or-under, or over, the policy threshold. 'unverified' means the
-# quality gates did not all pass (see ProximityReason) — it may still carry a
-# real `separation_metres` for display, but that number must never be read as a
-# pass/fail verdict on its own. See orchestration/evidence/proximity.py.
 ProximityVerdict = Literal["within_limit", "separated", "unverified"]
 
-# Why a proximity check could not produce a positive verdict. Deliberately
-# distinct from GeofenceVerdictReason (evidence/geofence.py) — these two modules
-# answer independent questions (truck-vs-precinct vs. driver-vs-truck) and must
-# never share a reason vocabulary that implies one explains the other.
 ProximityReason = Literal[
     "missing_phone",
     "missing_tracker",
@@ -133,50 +116,33 @@ class ActionLocationAssessment(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    # Schema shape version. Distinct from `policy_version`: this changes only if
-    # the FIELD SET itself changes; policy_version changes when the numbers a
-    # reader would use to interpret those same fields change.
     schema_version: Literal[1] = 1
     policy_version: str
     evaluated_at: datetime
 
-    # The driver's own phone fix, and how accurate the phone claims it is.
     driver_lat: float | None
     driver_lng: float | None
     driver_captured_at: datetime | None
     driver_accuracy_metres: float | None
 
-    # The vehicle's independent Pulsit tracker fix.
     tracker_lat: float | None
     tracker_lng: float | None
     tracker_captured_at: datetime | None
 
-    # The proximity verdict itself (see evaluate_proximity).
     separation_metres: float | None
     proximity: ProximityVerdict
     reasons: list[ProximityReason]
 
-    # The exact policy thresholds this assessment was evaluated against —
-    # snapshotted onto the record itself so a later change to settings.py can
-    # never silently reinterpret a stored assessment under different numbers.
     max_separation_metres: float
     max_age_seconds: int
     max_skew_seconds: int
     max_phone_accuracy_metres: float
 
-    # Which stop this assessment was checked against, and the precinct-membership
-    # facts for that stop at evaluation time (see module docstring on
-    # geometry-at-evaluation-time). All None when the phase has no stop to check
-    # against (mirrors evidence.corroboration._load_precinct_for_phase) or when a
-    # historical record predates this contract.
     expected_trip_stop_id: UUID | None
     precinct_id: UUID | None
     precinct_lat: float | None
     precinct_lng: float | None
     precinct_radius_metres: float | None
-    # The outline as it stood at evaluation time ([lat, lng] corners). Set = the verdicts
-    # below were judged against it and precinct_radius_metres is None. Defaulted so
-    # assessments stored before outlines existed still validate (they were all circles).
     precinct_geofence_polygon: list[tuple[float, float]] | None = None
     precinct_tolerance_metres: float | None
     driver_in_precinct: bool | None
@@ -185,10 +151,6 @@ class ActionLocationAssessment(BaseModel):
     @field_validator("evaluated_at", "driver_captured_at", "tracker_captured_at")
     @classmethod
     def _require_timezone_aware(cls, value: datetime | None) -> datetime | None:
-        # A naive value would silently compare as if it were UTC everywhere this
-        # assessment's timestamps are later diffed (skew, age) — see
-        # evidence.proximity.evaluate_proximity and evidence.corroboration's own
-        # identical rule for driver_captured_at.
         if value is not None and value.tzinfo is None:
             raise ValueError("datetime fields must be timezone-aware")
         return value

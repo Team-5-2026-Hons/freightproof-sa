@@ -59,7 +59,6 @@ describe('useMyTrips shared store', () => {
     fetchMyTrips.mockReturnValueOnce(request.promise)
     renderHook(() => useMyTrips())
 
-    // NowCard's situation: it mounts after the working trip loads, mid-request.
     const late = renderHook(() => useMyTrips())
     await act(async () => { request.resolve([summary('1')]); await request.promise })
 
@@ -139,7 +138,6 @@ describe('useMyTrips shared store', () => {
     mockUserId = 'driver-b'
     rerender()
     await waitFor(() => expect(result.current.trips.map((t) => t.id)).toEqual(['b1']))
-    // Driver A's late answer must not overwrite driver B's list.
     await act(async () => { slow.resolve([summary('a1')]); await slow.promise })
 
     expect(result.current.trips.map((t) => t.id)).toEqual(['b1'])

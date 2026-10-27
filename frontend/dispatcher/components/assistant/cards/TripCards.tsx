@@ -159,7 +159,6 @@ export function TripCardView({ card, onNavigate }: { card: TripCard } & CardProp
       {card.delivery_confirmed_at && <Muted>{ASSISTANT_COPY.deliveryConfirmed} {fmtDateTime(card.delivery_confirmed_at)}</Muted>}
       {card.closed_at && <Muted>{ASSISTANT_COPY.closed} {fmtDateTime(card.closed_at)}</Muted>}
       {trip.manifest && <Muted>Manifest {trip.manifest}</Muted>}
-      {/* An empty leg carries no parcels, so it gets no parcels line unless something was scanned anyway. */}
       {(card.parcels_booked !== null || card.parcels_scanned_out > 0 || card.parcels_scanned_in > 0) && (
         <Muted>{ASSISTANT_COPY.parcels(card.parcels_booked, card.parcels_scanned_out, card.parcels_scanned_in)}</Muted>
       )}

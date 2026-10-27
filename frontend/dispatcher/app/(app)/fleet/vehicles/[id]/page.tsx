@@ -31,8 +31,6 @@ import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type Vehicl
 import { VIN_LENGTH } from '@shared/lib/validation/constants'
 import { AdminOnly } from '@/components/auth/AdminOnly'
 
-// The vehicle info column's facts: registration, type, make, model, year, device, VIN, licence disc,
-// GVM and status.
 const VEHICLE_SKELETON_INFO_ROWS = 10
 
 type EditState = {
@@ -48,9 +46,6 @@ type EditState = {
   is_active: boolean
 }
 
-// Every vehicle, horse or trailer, can switch its history panel to its analytics. The
-// vehicle views cover trailers since the trailer analytics work, which supersedes the
-// toggle spec's original horses-only rule.
 const RIGHT_PANEL_TABS = [
   { id: 'history', label: 'Immutable History' },
   { id: 'analytics', label: 'Analytics' },
@@ -64,8 +59,6 @@ export default function VehicleDetailPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const search = useSearchParams()
-  // A vehicle is reached from its list, a search, or the trip that is using it. Back
-  // means "where I came from", which only the caller can say.
   const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.fleetVehicles)
   const { data: vehicle, isLoading, error, refetchSilent } = useVehicleDetail(params.id)
 
@@ -91,8 +84,6 @@ export default function VehicleDetailPage() {
     )
   }
 
-  // Only an empty page is a load failure. With vehicle details on screen a failed background
-  // refresh keeps them and says so inline (below), rather than discarding what was loaded.
   if (!vehicle) {
     return (
       <div className="flex flex-col flex-1">
@@ -107,14 +98,8 @@ export default function VehicleDetailPage() {
   const subtitle = [vehicle.make, vehicle.model, vehicle.year ? String(vehicle.year) : null]
     .filter(Boolean).join(' ')
 
-  // Derived on every render — validateVehicleForm is pure and cheap, same
-  // treatment as latestReceipt/typeLabel above. `form` (EditState) satisfies
-  // VehicleFormValues directly since every VehicleField key is typed string
-  // on EditState too.
   const errors = form ? validateVehicleForm(form) : null
   const hasErrors = errors ? Object.values(errors).some((e) => e !== null) : false
-  // VIN gets live feedback the moment the user types (not touched-gated): a neutral
-  // character count while still entering, a red error only once it's the wrong shape.
   const vinFeedback = form ? vinFieldFeedback(form.vin_number) : null
 
   function startEdit() {
@@ -147,8 +132,6 @@ export default function VehicleDetailPage() {
   async function handleSave() {
     if (!form) return
 
-    // Defensive re-validate: the disabled Save button already blocks this
-    // in the common path, but guard here too (e.g. a future Enter-key submit).
     if (errors && hasErrors) {
       setTouched(new Set(VEHICLE_FIELD_ORDER))
       const firstInvalidField = VEHICLE_FIELD_ORDER.find((field) => errors[field] !== null)
@@ -179,7 +162,6 @@ export default function VehicleDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/vehicles/${vehicle!.id}`, body)
-      // Not awaited: refetchSilent returns void, so the panel closes before fresh data lands.
       refetchSilent()
       setIsEditing(false)
     } catch (err) {
@@ -207,13 +189,11 @@ export default function VehicleDetailPage() {
 
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT — resizable vehicle info column, widest default + drag-to-resize */}
         <div
           style={{ width: panelWidth }}
           className="relative shrink-0 overflow-y-auto bg-surf-low border-r border-outline-v/20 p-5"
         >
 
-          {/* Resize handle — hover to reveal, drag to resize (mirrors trip history table columns) */}
           <div
             onMouseDown={startResize}
             className="absolute top-0 right-0 -mr-2 h-full w-4 cursor-col-resize flex items-center justify-center group z-10"
@@ -221,7 +201,6 @@ export default function VehicleDetailPage() {
             <div className="w-[2px] h-10 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
 
-          {/* Vehicle info */}
           <div className="flex items-center justify-between mb-3">
             <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">
               Vehicle Info
@@ -300,7 +279,6 @@ export default function VehicleDetailPage() {
             </div>
           )}
 
-          {/* Blockchain — forensic detail; hidden for non-admin / forensic-off dispatchers. */}
           <ForensicOnly>
             <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
               Blockchain
@@ -328,7 +306,6 @@ export default function VehicleDetailPage() {
             </div>
           </ForensicOnly>
 
-          {/* Trips */}
           {vehicle.trip_ids.length > 0 && (
             <>
               <div className="text-[11px] font-[700] tracking-[0.1em] uppercase text-on-surf-v mb-3">
@@ -351,8 +328,6 @@ export default function VehicleDetailPage() {
 
         </div>
 
-        {/* RIGHT — scrollable immutable history, takes remaining space. Every vehicle,
-            horse or trailer, can switch it to its own analytics. */}
         <div className="flex-1 overflow-y-auto p-6 bg-surf-lowest">
           <Tabs
             tabs={RIGHT_PANEL_TABS}

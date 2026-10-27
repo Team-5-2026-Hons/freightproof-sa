@@ -38,8 +38,6 @@ class Usage:
     cache_read_tokens: int
 
 
-# end: finished its turn · tool_use: wants tools run · refusal: declined for safety reasons ·
-# max_tokens: cut off by the output limit.
 StopKind = Literal["end", "tool_use", "refusal", "max_tokens"]
 
 
@@ -49,8 +47,6 @@ class ModelReply:
     tool_calls: tuple[ToolCall, ...]
     stop: StopKind
     usage: Usage
-    # The provider's own form of this assistant turn. Sent back unchanged on the next call of
-    # the same question, because providers may attach reasoning that must not be edited.
     raw: object
 
 
@@ -76,7 +72,6 @@ class AssistantReply:
 @dataclass(frozen=True)
 class ToolResult:
     call_id: str
-    # The tool's name: Gemini matches a result to its call by name as well as id.
     name: str
     content: str
     is_error: bool

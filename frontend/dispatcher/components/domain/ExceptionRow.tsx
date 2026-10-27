@@ -29,21 +29,14 @@ export function exceptionRowId(exceptionId: string): string {
   return `${ROW_ID_PREFIX}${exceptionId}`
 }
 
-// Open item O1: the card treatment around a row is deliberately one class string, so the owner's
-// choice (this, no card, or a severity tint) is a one-line change.
 const ROW_CARD = 'border border-outline-v/40 hover:border-outline'
 const ROW_CARD_CRITICAL = 'border border-err/60 hover:border-err'
-// Selection persists; a landing highlight fades. Neither replaces keyboard focus or severity.
-// Selection is a 1 px hairline inside the row; keyboard focus alone is the 2 px outline outside it,
-// so a reader tabbing past the selected row never sees two rows that look focused (A3).
 export const EXCEPTION_SELECTION_OUTLINE = 'shadow-[inset_0_0_0_1px_theme(colors.sec.DEFAULT)]'
 export const EXCEPTION_SELECTED_SURFACE = 'bg-sec-c/25'
 const ROW_HIGHLIGHT = 'bg-sec-c/70'
 const ROW_TRANSITION = 'transition-colors duration-700 hover:duration-150 motion-reduce:transition-none'
 
 const OPEN_ACTION = 'Open in exceptions panel'
-// The accessible name carries the first words of the visible description (label in name), but
-// not all of it: the panel is where it is read in full.
 const NAME_EXCERPT_WORDS = 8
 
 function descriptionExcerpt(description: string): string {
@@ -55,17 +48,12 @@ const ROW_BASE = 'relative block min-h-11 w-full min-w-0 rounded-md px-3 py-2 te
 
 interface RowProps {
   exception: TripException
-  /** The instant the rail orders the row by: the supporting evidence's capture time when it
-   *  has one, otherwise the time the system recorded it. */
   at: string
   phaseId: string | null
-  /** The exceptions panel is open on this record. */
   selected: boolean
-  /** "Show in timeline" just landed here. */
   highlighted: boolean
   onOpen: OpenException
   density?: 'compact' | 'full'
-  /** Compact only: the rail continues from this row's icon to the next row. */
   connectToNext?: boolean
 }
 
@@ -100,7 +88,6 @@ export function ExceptionRow({ exception, at, phaseId, selected, highlighted, on
     <button
       type="button"
       id={exceptionRowId(exception.id)}
-      // Opening a panel is navigation, not a toggle, so the selected row is `current`, not `pressed`.
       aria-current={selected ? 'true' : undefined}
       aria-label={`${typeLabel}, ${severity.label}, ${review}. ${OPEN_ACTION}. ${descriptionExcerpt(exceptionDescriptionText(exception))}`}
       data-highlighted={highlighted ? 'true' : undefined}

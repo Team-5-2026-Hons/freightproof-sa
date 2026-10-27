@@ -115,10 +115,6 @@ def test_confirmation_rejects_one_artifact_used_for_two_evidence_roles():
         )
 
 
-# ---------------------------------------------------------------------------
-# driver_captured_at
-# ---------------------------------------------------------------------------
-
 
 def test_driver_captured_at_is_optional_for_an_older_queued_client():
     """A client that predates this field must still 200, never 422 forever."""

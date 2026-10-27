@@ -19,7 +19,6 @@ describe('LandingPage', () => {
       'Built for how freight actually moves.',
       'Built in Cape Town, for South African roads.',
       'Put your next trip on the record.',
-      // Footer column headings.
       'Product',
       'Company',
       'Legal',

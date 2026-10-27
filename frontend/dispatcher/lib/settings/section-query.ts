@@ -1,8 +1,6 @@
 /** Query parameter naming the open settings section: /settings?section=display. */
 export const SECTION_PARAM = 'section'
 
-/** Ids of the settings sections. Kept apart from the section registry so a caller that only
- *  needs to link to one (the sidebar) does not import every section's component. */
 export const SETTINGS_SECTION_IDS = {
   account: 'account',
   display: 'display',

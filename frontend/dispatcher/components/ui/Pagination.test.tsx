@@ -25,8 +25,6 @@ describe('Pagination', () => {
   })
 
   it('renders the visible item range for a later page from itemCount, not pageSize', () => {
-    // Page 6 of a 137-item set at 25/page has only 12 items on it (137 - 125) —
-    // the range end must reflect that, not a full page's worth.
     render(
       <Pagination
         {...makeProps({ page: 6, itemCount: 12, hasPrevious: true, hasNext: false })}

@@ -20,23 +20,16 @@ import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
 const SWIPE_LABEL = 'Swipe to Close Trip'
 
-// StepHeader calls useRouter — stub it so the component mounts under jsdom.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
-// Stubbed to a plain button exposing `disabled`, so these tests assert the GATE rather
-// than SwipeToConfirm's pointer-drag internals (which have their own suite).
 vi.mock('@/components/phase/SwipeToConfirm', () => ({
   SwipeToConfirm: ({ label, onConfirm, disabled }: { label: string; onConfirm: () => void; disabled?: boolean }) => (
     <button onClick={onConfirm} disabled={disabled}>{label}</button>
   ),
 }))
 
-// The blocked branch now renders WarehouseWaitCard, which reads useTrip() directly
-// (see components/phase/WarehouseWaitCard.tsx) — this suite renders Closed bare, with no
-// TripProvider ancestor, so the real hook (which throws outside one) has to be stubbed
-// the same way linehaul.test.tsx already stubs it.
 vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => ({ refreshQuietly: vi.fn(), isRefreshing: false, lastRefreshedAt: null }),
 }))
@@ -68,15 +61,12 @@ function renderStep(draft: ConfirmationEvidence, blockedOn: string | null = null
 
 describe('Closed — the visual count must not gate trip closure', () => {
   it('arms the swipe when the driver skipped the visual count entirely', () => {
-    // The regression. `null` here is a legitimate value, not missing data.
     const swipe = renderStep(makeDraft({ driverVisualCount: null }))
 
     expect(swipe).toBeEnabled()
   })
 
   it('arms the swipe when a count of zero was recorded', () => {
-    // Zero is a real, flaggable observation (a fully pilfered load) and must not read as
-    // "absent" to a falsy check — the exact bug a `!draft.driverVisualCount` gate creates.
     const swipe = renderStep(makeDraft({ driverVisualCount: 0 }))
 
     expect(swipe).toBeEnabled()
@@ -91,8 +81,6 @@ describe('Closed — POD evidence stays mandatory', () => {
   })
 
   it('blocks closure until the receiver has confirmed', () => {
-    // podSignatureArtifactId is written by the handover poll (FP-155), so a null here
-    // means the receiver never scanned — not that an upload failed.
     const swipe = renderStep(makeDraft({ podSignatureArtifactId: null }))
 
     expect(swipe).toBeDisabled()
@@ -105,10 +93,6 @@ describe('Closed — POD evidence stays mandatory', () => {
   })
 })
 
-// GATED_PHASES[CONFIRMATION] = ScanDirection.IN (orchestration/phase_gate.py). The server
-// 409s a blocked completion whatever this renders; the point of these is that the driver
-// is told, rather than discovering it by swiping at the customer's gate after capturing
-// the POD photo, the signature and the reconciliation.
 describe('Closed — blocked on the destination warehouse scan', () => {
   it('hides the swipe entirely while the warehouse is still scanning in', () => {
     render(
@@ -120,15 +104,11 @@ describe('Closed — blocked on the destination warehouse scan', () => {
       />,
     )
 
-    // Hidden, not disabled — same choice as loading/Linehaul.tsx and
-    // unloading/VisualCount.tsx, so a blocked screen offers no control at all.
     expect(screen.queryByRole('button', { name: SWIPE_LABEL })).toBeNull()
     expect(screen.getByText('Waiting for the warehouse')).toBeInTheDocument()
   })
 
   it('does not claim the trip is complete while blocked', () => {
-    // The success tick and "Trip Complete" would be two false statements on a trip the
-    // server will refuse to close.
     render(
       <Closed
         phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
@@ -142,7 +122,6 @@ describe('Closed — blocked on the destination warehouse scan', () => {
   })
 
   it('restores the swipe once the warehouse session closes', () => {
-    // blocked_on comes back null on the next poll — nothing else about the draft changed.
     const swipe = renderStep(makeDraft(), null)
 
     expect(swipe).toBeEnabled()

@@ -17,8 +17,6 @@ TEARDOWN_SECONDS = 5.0
 logger = logging.getLogger(__name__)
 
 
-# eq=False: relays are tracked by identity. Two live relays with the same silence flag
-# compare equal as ordinary dataclasses, so list.remove() could drop the wrong one.
 @dataclass(eq=False)
 class Relay:
     silent: bool = False
@@ -48,7 +46,6 @@ class FaultProxy:
         task.add_done_callback(self.finished)
 
     def record_error(self, error: BaseException) -> None:
-        # Type only: a driver error message can contain connection parameters.
         logger.warning("Fault relay error error_type=%s", type(error).__name__)
         self.errors.append(type(error).__name__)
 
@@ -76,8 +73,6 @@ class FaultProxy:
                     writer.write(data)
                     await writer.drain()
         except ConnectionError:
-            # A reset is expected whenever a timed-out client aborts its socket. A reset
-            # the client did not cause still surfaces, as a database 503 with its reason.
             return
         finally:
             writer.close()
@@ -111,7 +106,6 @@ class FaultProxy:
     async def close(self) -> None:
         if self.server is not None:
             self.server.close()
-        # Copies: done callbacks remove writers and tasks while we iterate.
         for writer in tuple(self.writers):
             writer.close()
         tasks = tuple(self.tasks)

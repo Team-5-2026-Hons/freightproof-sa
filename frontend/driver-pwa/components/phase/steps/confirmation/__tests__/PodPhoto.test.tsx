@@ -10,8 +10,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
-// The hook is the seam under test here: what matters is the phase id and role this step
-// hands it, not the upload itself (lib/hooks/__tests__/useArtifactUpload.test.ts).
 const { mockUseArtifactUpload, mockUploadNow } = vi.hoisted(() => ({
   mockUseArtifactUpload: vi.fn(),
   mockUploadNow: vi.fn().mockResolvedValue(null),
@@ -23,8 +21,6 @@ vi.mock('@/lib/hooks/useArtifactUpload', () => ({
   },
 }))
 
-// CameraCapture needs native camera APIs and a ToastProvider; it has its own coverage in
-// components/phase/__tests__/CameraCapture.test.tsx.
 vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
     <button onClick={() => onCapture('data:image/jpeg;base64,POD')}>{label}</button>

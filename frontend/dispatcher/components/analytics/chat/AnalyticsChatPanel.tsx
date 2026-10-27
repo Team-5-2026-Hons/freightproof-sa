@@ -10,27 +10,20 @@ import type { Basis, ChatPageView, SpendStatus } from '@shared/lib/types/analyti
 import { ChatMessage } from './ChatMessage'
 import { CHAT_COPY, spendLine } from './chatCopy'
 
-/** The server's limit (app/schemas/analytics_chat.py MAX_QUESTION_CHARS). */
 export const MAX_QUESTION_CHARS = 500
-// A new answer is scrolled to this far below the top of the conversation, so its first line
-// isn't flush against the header.
 const ANSWER_SCROLL_GAP_PX = 8
-// The thinking dots pulse one after another, this far apart.
 const DOT_DELAY_MS = 150
 const THINKING_DOTS = [0, 1, 2] as const
 
 interface AnalyticsChatPanelProps {
   id?: string
   onClose: () => void
-  /** This month's spend from the page's status read, until the first answer brings a newer one. */
   statusSpend: SpendStatus | null
   /** Re-read the status after a 429, to tell the per-minute limit from a spent budget. */
   onRecheckStatus: () => void
   /** Switch the page to a "Based on" line's tab and dates. */
   onOpenBasis: (basis: Basis) => void
-  /** A question to put in the box, not send: the dispatcher assistant's "Ask in Analytics" (assistant spec B30). */
   initialQuestion?: string
-  /** What's on screen beside the panel, sent with each question (B45): "these figures" means this tab and period. */
   pageView?: ChatPageView
 }
 
@@ -63,11 +56,8 @@ export function AnalyticsChatPanel({
     if (log === null) return
     const answer = lastAnswerRef.current
     if (chat.pending === null && lastMessage?.role === 'assistant' && answer !== null) {
-      // A new answer: show its start, not its end, so a long answer is read from the top. Moved
-      // within the conversation only, never the page around it.
       log.scrollTop += answer.getBoundingClientRect().top - log.getBoundingClientRect().top - ANSWER_SCROLL_GAP_PX
     } else {
-      // A question sent: show it, with the thinking dots under it.
       log.scrollTop = log.scrollHeight
     }
   }, [chat.messages.length, chat.pending, lastMessage?.role])
@@ -82,8 +72,6 @@ export function AnalyticsChatPanel({
 
   async function ask(text: string): Promise<void> {
     if (isSending || budgetSpent) return
-    // Cleared straight away (the question shows in the conversation while it's answered), and
-    // put back only if the answer fails, ready for "Try again".
     setQuestion('')
     if (!(await chat.send(text, pageView))) setQuestion(text)
   }
@@ -94,7 +82,6 @@ export function AnalyticsChatPanel({
   }
 
   function onInputKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    // Enter asks; Shift+Enter makes a new line.
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       if (canSend) void ask(question)
@@ -109,7 +96,6 @@ export function AnalyticsChatPanel({
       aria-label={CHAT_COPY.title}
       className="fixed inset-0 z-[40] flex flex-col bg-surf-lowest lg:static lg:z-auto lg:w-[400px] lg:shrink-0 lg:border-l lg:border-outline-v/20"
     >
-      {/* A full-strength line under the header, so where the conversation starts is clear. */}
       <header className="flex items-start justify-between gap-3 border-b border-outline-v px-4 py-3">
         <div>
           <h2 className="text-[15px] font-[800] tracking-[-0.01em] text-on-surf">{CHAT_COPY.title}</h2>
@@ -144,8 +130,6 @@ export function AnalyticsChatPanel({
         {chat.pending !== null && (
           <>
             <ChatMessage message={{ role: 'user', text: chat.pending }} onOpenBasis={onOpenBasis} />
-            {/* Where the answer will appear, with three dots pulsing in turn while it's worked
-                out. They hold still for anyone who has asked for reduced motion. */}
             <div role="status" className="flex items-center gap-1 self-start rounded-lg bg-surf-low px-3 py-3">
               <span className="sr-only">{CHAT_COPY.waiting}</span>
               {THINKING_DOTS.map((dot) => (
@@ -173,10 +157,6 @@ export function AnalyticsChatPanel({
           </div>
         )}
         <div className="flex items-end gap-2">
-          {/* One box: the text above, and the counter in its own strip along the bottom-right,
-              so typed text scrolls above it and never runs underneath. The counter shows the
-              limit before the box stops taking characters, and turns the warning colour once it
-              does. The border sits on the wrapper, so focus colours the whole box. */}
           <div className="flex flex-1 flex-col rounded-md border border-outline-v/30 bg-surf-low focus-within:border-sec">
             <textarea
               ref={inputRef}

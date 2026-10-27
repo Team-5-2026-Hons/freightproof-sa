@@ -4,8 +4,6 @@ import { useState, useCallback, useRef, useMemo } from 'react'
 import { actorGeneration, captureCustody } from '@/lib/session/custody-context'
 import { draftKey, migrateLegacyDrafts, readDraft, removeDraft, writeDraft } from '@/lib/offline/retained-drafts'
 
-// Phase IDs distinguish repeated phases; actor/period distinguish successive capturers of
-// the same pending phase. A mounted screen must apply the same boundary as a fresh mount.
 export function usePhaseDraft<T extends object>(
   tripId: string,
   phaseEventId: string,
@@ -34,7 +32,6 @@ export function usePhaseDraft<T extends object>(
   const [state, setState] = useState(() => ({ scope, draft: load() }))
   let draft = state.draft
   if (state.scope !== scope) {
-    // Adjust before children render: an effect would expose the old photo for one render.
     draft = load()
     setState({ scope, draft })
   }
@@ -55,7 +52,6 @@ export function usePhaseDraft<T extends object>(
           console.warn('usePhaseDraft: a newer draft is stored; preserving it instead of applying a stale edit')
           return previous
         }
-        // Persist in the updater: steps can update and navigate in the same event.
         writeDraft(tripId, phaseEventId, scope, next)
         revision.current = localStorage.getItem(key)
       } catch (err) {
@@ -76,8 +72,6 @@ export function usePhaseDraft<T extends object>(
         const stored: unknown = JSON.parse(raw)
         if (typeof stored !== 'object' || stored === null || !('draft' in stored)
             || typeof stored.draft !== 'object' || stored.draft === null) return
-        // The submitted value may include defaults absent from a legacy stored shape.
-        // Compare evidence as submitted so a later edit in this same period survives.
         if (JSON.stringify({ ...initial, ...stored.draft }) !== JSON.stringify({ ...initial, ...acknowledgedDraft })) return
         expectedValue = raw
       }

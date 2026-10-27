@@ -19,8 +19,6 @@ export const AUDIT_PACK_EXPIRY_OPTIONS: AuditPackExpiryDays[] = [7, 30, 90]
 export interface AuditPackCreate {
   recipient_name: string
   recipient_organization: string
-  // Required since FP-291: issuing mails a password to this address, and the pack opens
-  // only after it is entered.
   recipient_email: string
   purpose: AuditPackPurpose
   external_reference: string | null
@@ -63,9 +61,6 @@ export interface AuditPackIssued {
   share_token: string
   share_url: string
   verify_url: string
-  // Shown only now, like share_token: the password just mailed to the recipient, so you
-  // can still pass it on yourself if that automatic send failed. null for a legacy pack
-  // with no recipient email.
   viewer_password: string | null
 }
 
@@ -76,11 +71,8 @@ export interface AuditPackAccessEvent {
   created_at: string
 }
 
-// Police-report and notification facts the operator declares after an incident. Shown in
-// packs under the Declared tier — FreightProof never captured them itself.
 export interface IncidentDeclarationCreate {
   exception_id: string | null
-  // The investigation it belongs to; absent on declarations made outside an incident.
   incident_id?: string | null
   saps_station: string | null
   saps_cas_number: string | null

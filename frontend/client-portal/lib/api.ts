@@ -15,8 +15,6 @@ import type {
 
 const LOCAL_API_URL = 'http://localhost:8000'
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
-// A production bundle that silently fell back to the loopback address would ship a portal that
-// can never load a pack (and would try to reach the visitor's own machine), so fail the build.
 if (!configuredApiUrl && process.env.NODE_ENV === 'production') {
   throw new Error('NEXT_PUBLIC_API_URL must be set for a production build of the client portal.')
 }
@@ -31,7 +29,6 @@ export class PackError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    /** Set when the pack needs its mailed password: which inbox it went to, masked. */
     public readonly emailHint: string | null = null,
   ) {
     super(message)
@@ -55,9 +52,6 @@ export function detailText(detail: ErrorBody['detail']): string | null {
   return null
 }
 
-// The grant also lives in memory for the life of the page: when site storage is blocked
-// (private mode, "block all cookies") the recipient who just entered a code would otherwise
-// be asked again by the very next request, and the pack would never open.
 const memoryGrants = new Map<string, string>()
 let storageWriteFailed = false
 
@@ -68,8 +62,6 @@ export function storageBlocked(): boolean {
   return storageWriteFailed
 }
 
-// Storage can throw (private mode, blocked site data). A lost stored grant only means
-// entering a fresh code, so every failure here degrades to the in-memory copy, never to a broken page.
 function readGrant(token: string): string | null {
   const remembered = memoryGrants.get(token)
   if (remembered) return remembered
@@ -109,7 +101,6 @@ async function failure(response: Response, token: string | null): Promise<PackEr
   const body = (await response.json().catch(() => ({}))) as ErrorBody
   const message = detailText(body.detail)
   if (response.status === 401 && body.verification_required && token !== null) {
-    // A stored grant the server no longer accepts is useless; drop it so the next password sticks.
     forgetGrant(token)
     return new PackError(401, message ?? 'Enter the mailed password to open this pack.', body.email_hint ?? '')
   }
@@ -138,8 +129,6 @@ export async function runServerVerification(token: string): Promise<LiveVerifica
 /** `signal` lets a photo that scrolls away or unmounts cancel its download. */
 export async function fetchArtifactBytes(token: string, artifactId: string, signal?: AbortSignal): Promise<ArrayBuffer> {
   const response = await fetch(`${PUBLIC}/${encode(token)}/artifacts/${encode(artifactId)}`, packRequest(token, { signal }))
-  // Through failure(), not a bare PackError: the caller needs the real status (expired grant,
-  // closed link, rate limit, storage outage) and whether the emailed code is wanted again.
   if (!response.ok) throw await failure(response, token)
   return response.arrayBuffer()
 }
@@ -169,6 +158,5 @@ export async function downloadPackFile(token: string, file: PackDownload, filena
   link.href = url
   link.download = filename
   link.click()
-  // Revoked later, not at once: some browsers are still reading the blob when click() returns.
   window.setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_LIFETIME_MS)
 }

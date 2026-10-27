@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
-// Same pause the Exceptions list uses before a search reaches its URL.
 const SEARCH_DEBOUNCE_MS = 300
 
 /** How a list's filters map to a query string. `serialize` leaves out anything at its default so an
@@ -14,15 +13,11 @@ export interface UrlListCodec<S extends { q: string }> {
 }
 
 export interface UrlListState<S extends { q: string }> {
-  /** The filters as last committed to the URL. */
   state: S
   /** Commits filters at once, carrying whatever has been typed into the search box. */
   update: (patch: Partial<S>) => void
-  /** What the search box shows: runs ahead of `state.q` while the debounce waits. */
   search: string
   setSearch: (value: string) => void
-  /** This list with its committed filters, for a row link's returnTo, so a detail page's own Back
-   *  button (not only the browser's) returns to the list as it was left. */
   href: string
 }
 
@@ -40,10 +35,8 @@ export function useUrlListState<S extends { q: string }>(codec: UrlListCodec<S>)
   const [state, setState] = useState<S>(() => codec.parse(new URLSearchParams(urlKey)))
   const [search, setSearch] = useState(state.q)
   const [seenKey, setSeenKey] = useState(urlKey)
-  // The query string this hook last wrote, so its own write coming back is not mistaken for navigation.
   const [writtenKey, setWrittenKey] = useState(urlKey)
 
-  // Adjusted during render, not in an effect, so the list never paints one frame of stale filters.
   if (urlKey !== seenKey) {
     setSeenKey(urlKey)
     if (urlKey !== writtenKey) {

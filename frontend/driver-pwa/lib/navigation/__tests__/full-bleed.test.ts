@@ -2,10 +2,6 @@
 import { describe, it, expect } from 'vitest'
 import { isFullBleedRoute } from '@/lib/navigation/full-bleed'
 
-// Regression test for the double sticky header bug: isFullBleedRoute must exempt every
-// route whose page renders its own components/layout/SubpageHeader (or, for panic, no
-// shell chrome at all) from AppShell — otherwise AppShell's sticky top bar stacks with
-// the page's own sticky header, producing two stacked bars and pushing content down.
 describe('isFullBleedRoute', () => {
   it('exempts the in-transit hub, checkpoint, and exception screens (all render SubpageHeader)', () => {
     expect(isFullBleedRoute('/trip/in-transit')).toBe(true)
@@ -25,8 +21,6 @@ describe('isFullBleedRoute', () => {
   })
 
   it('exempts Kept on this phone, whose TabSubpage brings its own header and tab bar', () => {
-    // Regression: without this entry AppShell also rendered its large "FreightProof" title,
-    // a second sticky header and a second tab bar around the page's own.
     expect(isFullBleedRoute('/evidence')).toBe(true)
   })
 

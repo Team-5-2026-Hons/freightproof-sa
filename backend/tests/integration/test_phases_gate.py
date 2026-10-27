@@ -94,10 +94,6 @@ async def test_departure_is_never_blocked(db_session, store, seeded):
     until it joined LOADING/CONFIRMATION as a gated phase — see the tests below.)"""
     blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
-    # Via blocked_on_for, not blocked[...]: an ungated phase has NO KEY in the map —
-    # "absent means not gated" is the contract. Indexing it directly raises KeyError,
-    # and the fix for that is to use the accessor, never to insert null keys for every
-    # phase type into the derivation.
     assert blocked_on_for(
         blocked, phase_type=PhaseType.DEPARTURE, trip_stop_id=seeded["stop"].id,
     ) is None

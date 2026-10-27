@@ -31,7 +31,6 @@ from tests.integration.test_driver_substitution_service import (  # noqa: F401 -
 )
 
 EXCHANGE = (-32.35, 22.58)
-# ~1.1 km north of the exchange point: far beyond DRIVER_TRUCK_MAX_SEPARATION_METRES.
 FAR_AWAY = (-32.34, 22.58)
 FRESH = NOW - timedelta(seconds=5)
 
@@ -44,9 +43,6 @@ def tracker(position: tuple[float, float] | None, *, fixed_at: datetime = FRESH)
                      lat=Decimal(str(position[0])), lng=Decimal(str(position[1])), fixed_at=fixed_at)
 
 
-# name="staged" keeps the fixture's pytest-visible name while the Python identifier differs, so
-# test_driver_substitution_review_exception.py can import it without its `staged` test parameters
-# reading to ruff as redefining an unused import (F811). Same pattern as pulsit_store.
 @pytest.fixture(name="staged")
 def _staged_fixture(monkeypatch: pytest.MonkeyPatch) -> dict[str, PulsitFix]:
     """The tracker fix the next confirmation will see; defaults to fresh and at the exchange."""
@@ -67,7 +63,6 @@ async def photo(db: AsyncSession, w: SubWorld, driver_id: uuid.UUID, request_id:
     )
     db.add(artifact)
     await db.flush()
-    # As the handover upload route records it (C4): the confirmation may cite only this.
     db.add(DriverSubstitutionUpload(
         artifact_id=artifact.id, trip_id=w.trip_id, driver_id=driver_id, purpose="handover", request_id=request_id,
         role="outgoing" if driver_id == w.a else "incoming",
@@ -108,8 +103,6 @@ async def findings(db: AsyncSession, trip_id: uuid.UUID) -> list[TripException]:
         select(TripException).where(TripException.trip_id == trip_id).order_by(TripException.exception_type)
     )).scalars())
 
-
-# ── each capture's location assessment ───────────────────────────────────────
 
 
 async def test_a_capture_beside_its_truck_is_within_limit_and_raises_nothing(
@@ -193,8 +186,6 @@ async def test_the_tracker_read_never_raises(db_session: AsyncSession, monkeypat
     assert fix.status is PulsitFixStatus.UNAVAILABLE and not fix.has_position
 
 
-# ── the two-capture seal comparison ──────────────────────────────────────────
-
 
 async def test_matching_seal_readings_complete_with_no_finding(
     db_session: AsyncSession, staged: dict[str, PulsitFix],
@@ -225,7 +216,6 @@ async def test_differing_seal_numbers_record_one_mismatch_without_blocking_the_h
     assert finding.severity == ExceptionSeverity.CRITICAL
     assert (finding.substitution_confirmation_id, finding.vehicle_id) == ((await saved(db_session, w.b)).id, w.horse_id)
     assert "AB-1234" in finding.description and "AB-9999" in finding.description
-    # A finding is evidence, not a hold: the handover completed and is not itself an exception.
     assert done.state is SubstitutionState.COMPLETED
     [link] = (await db_session.execute(select(DriverSubstitution))).scalars().all()
     assert link.exception_id is None

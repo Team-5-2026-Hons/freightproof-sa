@@ -75,8 +75,6 @@ describe('analytics hooks', () => {
     expect(result.current.error).toBeNull()
   })
 
-  // Before the FP-153 migration reaches Supabase the backend answers 500; that failure
-  // must reach the panel's error state, not read as an empty table.
   it('surfaces the error and no rows when the request fails', async () => {
     mockedGet.mockRejectedValue(new Error('Internal server error.'))
 
@@ -137,7 +135,6 @@ describe('analytics hooks', () => {
     )
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(1))
 
-    // A fresh object with the same months — what a page re-render produces.
     rerender({ range: { ...RANGE } })
 
     expect(mockedGet).toHaveBeenCalledTimes(1)

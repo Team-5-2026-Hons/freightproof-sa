@@ -19,15 +19,11 @@ import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
 import type { IncidentSummary } from '@/lib/types/incident'
 import { line } from '@/components/domain/__tests__/textLine'
 
-// PhaseOverrideAction imports lib/api/client -> lib/supabase/client, which calls createClient()
-// at import time and throws without a real Supabase URL.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// ForensicOnly is gated on a real provider (itself gated on useAuth); the gate is what is
-// under test, so its two inputs are set directly.
 const forensic = vi.hoisted(() => ({ canViewForensics: true, forensicOn: false, toggle: vi.fn() }))
 vi.mock('@/lib/context/ForensicModeContext', () => ({ useForensicMode: () => forensic }))
 
@@ -92,7 +88,6 @@ describe('TripTimeline Evidence and Minimised views', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
 
-    // Same cards, same anchors: Minimised only changes what a collapsed card shows.
     expect(trip.phases.map(phase => document.getElementById(`phase-${phase.phase_event_id}`))).toEqual(evidenceOrder)
     const card = phaseGroup('Loading')
     expect(card).toHaveTextContent('Needs attention')
@@ -155,7 +150,6 @@ describe('TripTimeline Evidence and Minimised views', () => {
     const card = phaseGroup('In Transit')
     expect(toggleOf('In Transit')).toHaveAttribute('aria-expanded', 'false')
     expect(within(card).queryByText('Reached FedEx DBN')).not.toBeInTheDocument()
-    // Collapsing must not hide the signal: the headline and the count stay on the card.
     expect(card.querySelector('[data-outcome]')).toHaveTextContent('1 exception')
     openCard('In Transit')
     expect(within(card).getByText('Reached FedEx DBN')).toBeInTheDocument()
@@ -391,7 +385,6 @@ describe('TripTimeline: the header verdict answers "did this phase go cleanly?" 
 
     const row = phaseGroup('Departure')
     expect(within(row).getByText('Checks passed')).toBeInTheDocument()
-    // Clean is short (Batch 3): a count, with each passing check left to the Checked zone.
     expect(row.textContent).toMatch(/Checks passed · (\d+) of \1(?!\d)/)
     expect(within(row).queryByText(/No exceptions/)).toBeNull()
     expect(toggleOf('Departure')).toHaveAttribute('aria-expanded', 'false')
@@ -712,7 +705,6 @@ describe('TripTimeline: the override action', () => {
 
     const action = within(phaseGroup('Arrival')).getByRole('button', { name: 'Record as unable to complete' })
     const checked = zone('Arrival', 'Checked')
-    // Document order: the action comes after the last zone, never between zones.
     expect(checked.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(phaseGroup('Loading')).queryByRole('button', { name: 'Record as unable to complete' })).not.toBeInTheDocument()
     fireEvent.click(toggleOf('Loading')!)
@@ -843,7 +835,6 @@ describe('TripTimeline: forensic gating (D32)', () => {
   it('gates by wrapping in ForensicOnly, never by a prop a caller could forget', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
     const read = (file: string): string => readFileSync(resolve(root, file), 'utf8')
-    // A prop, parameter or variable named after forensic mode would be a gate that can be passed wrongly.
     const FLAG = /\bforensic\w*\s*[?:=]/i
     for (const file of ['domain/PhaseActs.tsx', 'domain/PhaseActRow.tsx', 'domain/PhaseAudit.tsx', 'trips/PhaseCardBody.tsx', 'trips/TimelinePhase.tsx']) {
       expect(read(file), file).not.toMatch(FLAG)
@@ -1032,8 +1023,6 @@ describe('TripTimeline: a cancelled trip', () => {
     expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
   })
 
-  // The phase is the first unresolved one, carrying an exception so that a cancelled trip still has
-  // a card to open (a cancelled phase with nothing recorded has no body at all).
   function stalledTrip(type: 'loading' | 'unloading', status: Trip['status']): Trip {
     const base = tripFor(TRIP_0040_ID)
     const target = phaseOf(base, type)
@@ -1046,7 +1035,6 @@ describe('TripTimeline: a cancelled trip', () => {
       closed_at: status === 'cancelled' ? '2026-05-09T09:00:00Z' : null,
       consignments: [counts],
       exceptions: [exception('stalled', { phase_event_id: target.phase_event_id })],
-      // Everything before the target is done, so the target is the plan's first unresolved phase.
       phases: base.phases.map(phase => phase.sequence_number >= target.sequence_number
         ? { ...phase, status: 'pending' as const, completed_at: null }
         : { ...phase, status: 'completed' as const, completed_at: phase.completed_at ?? SERVER_TIME }),
@@ -1274,8 +1262,6 @@ describe('TripTimeline: the in-transit card is always open once the leg has star
 })
 
 describe('TripTimeline: the side-by-side split (D30)', () => {
-  // A ResizeObserver on the card body is the only thing that may decide the layout: these tests
-  // drive it by hand and never touch the viewport.
   const observers: Array<{ callback: ResizeObserverCallback }> = []
 
   beforeEach(() => {
@@ -1574,7 +1560,6 @@ describe('TripTimeline: "Show in timeline" reveals the row', () => {
     })
     expect(row).toHaveAttribute('data-highlighted', 'true')
     expect(onRevealHandled).toHaveBeenCalledWith(exceptionRowId('ex-1'))
-    // Rendered once: in the opened rail, not also under the header.
     expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
   })
 
@@ -1601,8 +1586,6 @@ describe('TripTimeline: "Show in timeline" reveals the row', () => {
   it('reveals the 5th of 6 exceptions, which the cap of three hides, then scrolls to and highlights it', async () => {
     const base = closedTrip()
     const loading = phaseOf(base, 'loading')
-    // Priority is unreviewed, then severity, then newest: ex-1..ex-3 are critical and unreviewed,
-    // so they fill the cap, and the reviewed info-level ex-5 is the 5th and hidden.
     const exceptions = Array.from({ length: 6 }, (_unused, index) => exception(`ex-${index + 1}`, {
       phase_event_id: loading.phase_event_id, created_at: `2026-05-03T0${index + 1}:00:00Z`,
       severity: index < 3 ? 'critical' : index === 4 ? 'info' : 'warning',
@@ -1682,7 +1665,6 @@ describe('TripTimeline: refresh trouble is one status in the toolbar', () => {
     const statuses = within(toolbar()).getAllByRole('status')
     expect(statuses).toHaveLength(1)
     expect(statuses[0]).toHaveTextContent('2 sources could not be refreshed')
-    // The words for each stay available to a screen reader.
     expect(statuses[0]).toHaveTextContent('Location names could not be refreshed.')
     fireEvent.click(within(statuses[0]!).getByRole('button', { name: 'Retry' }))
     expect(evidenceRetry).toHaveBeenCalledOnce()

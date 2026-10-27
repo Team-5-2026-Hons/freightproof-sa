@@ -9,20 +9,10 @@ interface ModalProps {
   open: boolean
   onClose: () => void
   title: string
-  /** A 48px disc above the title that says, before any words, what kind of moment this is. */
   icon?: ReactNode
-  /** One line under the title. */
   description?: ReactNode
   children?: ReactNode
-  /** Actions, stacked full width — the primary first. */
   footer?: ReactNode
-  /**
-   * Set false to remove every path a driver could use to dismiss the modal without
-   * choosing an outcome — Escape, overlay click, and the close X all stop firing
-   * onClose. Defaults to true. Introduced for LocationCheckModal, whose two actions
-   * (Retry / Continue) are both recorded choices — a stray dismiss must not silently
-   * drop the driver back onto the step.
-   */
   dismissible?: boolean
 }
 
@@ -42,13 +32,7 @@ export function Modal({ open, onClose, title, icon, description, children, foote
             'max-h-[calc(100dvh-4rem)] overflow-y-auto rounded-[32px] bg-surface px-5 pb-[22px] pt-6 shadow-ambient',
             'focus:outline-none animate-sheet-up motion-reduce:animate-none',
           )}
-          // Radix warns when a dialog has no description; when there is none, say so
-          // explicitly rather than leave it pointing at a missing id.
           {...(description === undefined ? { 'aria-describedby': undefined } : {})}
-          // Belt-and-braces alongside the missing Close button below: onOpenChange alone
-          // stops onClose from firing, but Radix's DismissableLayer still intercepts
-          // Escape/outside-pointer events first — preventDefault on all three is what
-          // actually keeps the dialog's own open/closed state from moving at all.
           onEscapeKeyDown={(event) => { if (!dismissible) event.preventDefault() }}
           onPointerDownOutside={(event) => { if (!dismissible) event.preventDefault() }}
           onInteractOutside={(event) => { if (!dismissible) event.preventDefault() }}

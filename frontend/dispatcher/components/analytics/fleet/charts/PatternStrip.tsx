@@ -26,9 +26,7 @@ import {
   yAxisHeading,
 } from './chartStyle'
 
-// All four cards share one source line: they are the same attested steps, grouped four ways.
 const COPY = FLEET_COPY.activity.patterns
-// Averages under 10 need two decimals to tell 0.14 from 0.43; bigger ones only one.
 const SMALL_AVERAGE = 10
 const HOUR_DIGITS = 2
 const WEEKDAY_ABBREVIATION_LENGTH = 3
@@ -45,7 +43,6 @@ interface DimensionSpec {
 
 const pad = (hour: number): string => String(hour).padStart(HOUR_DIGITS, '0')
 
-// Clock and calendar order, never sorted by size.
 const DIMENSIONS: readonly DimensionSpec[] = [
   { id: 'hour_of_day', ...COPY.dimensions.hour_of_day, tick: String, name: (key) => `${pad(key)}:00–${pad(key + 1)}:00` },
   {
@@ -86,7 +83,6 @@ interface PatternColumnsProps {
 /** One small column chart. Emphasis form: the busiest bar in the accent, the rest in the
  *  neutral grey, so the eye goes to the peak without the bars being reordered. */
 function PatternColumns({ bars, spec, renderTooltip, yLabel }: PatternColumnsProps) {
-  // Taller inside the zoom modal.
   const height = useChartHeight(PATTERN_CHART_HEIGHT)
   const busiest = busiestKey(bars)
   const byKey = new Map(bars.map((bar) => [String(bar.key), bar]))
@@ -133,15 +129,12 @@ const TABLE_COLUMNS = (column: string): Column<PatternRow>[] => [
 
 interface PatternStripProps {
   set: PatternSet | null
-  /** "departures" or "arrivals", for the words around the numbers. */
   eventNoun: string
   isLoading: boolean
   isRefreshing: boolean
   error: string | null
   onRetry: () => void
-  /** Shown under the month chart when the period is under a year. */
   monthNote?: string
-  /** The y-axis heading of all four charts, e.g. "Avg per day". */
   yLabel: string
 }
 

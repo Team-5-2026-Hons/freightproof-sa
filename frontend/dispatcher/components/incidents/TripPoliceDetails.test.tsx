@@ -7,7 +7,6 @@ import { incidentSheetPdf, listIncidentDeclarations, saveBlob } from '@/lib/api/
 import type { IncidentDeclaration } from '@/lib/types/auditPack'
 import { TripPoliceDetails } from './TripPoliceDetails'
 
-// The API client builds a Supabase client at import time.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -112,7 +111,6 @@ describe('TripPoliceDetails', () => {
     rerender(<ToastProvider><TripPoliceDetails tripId="trip-1" tripReference="TRP-0042" showSection canBuildSheet onDeclare={vi.fn()} refreshKey={1} /></ToastProvider>)
 
     expect(await screen.findByText('CAS 123/09/2026')).toBeInTheDocument()
-    // The same button element: nothing remounted, so focus and scroll are undisturbed.
     expect(screen.getByRole('button', { name: 'Record police details' })).toBe(trigger)
     expect(listIncidentDeclarations).toHaveBeenCalledTimes(2)
   })

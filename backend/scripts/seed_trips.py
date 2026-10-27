@@ -59,14 +59,8 @@ _CPT = "Cape Town Depot (Epping)"
 _BFN = "Bloemfontein Depot (Hamilton)"
 _JHB = "Johannesburg Depot (Linbro)"
 
-# Consolidated-unit grain. PP reports parcels, never pallets, so a real dispatcher
-# types this into the wizard; the seeder derives it the same way they would estimate
-# it rather than leaving the trip-detail unit column empty on every demo trip.
 _PARCELS_PER_PALLET = 6
 
-# Walk every phase of the trip, whatever the plan's length. Spelled as a literal
-# rather than a large int because the plan's length is data - the whole premise of
-# the phase refactor - so no fixed number can mean "all of them".
 _ADVANCE_ALL: Literal["all"] = "all"
 
 
@@ -90,52 +84,38 @@ class _TripSpec:
     trip_reference: str
     precinct_names: tuple[str, ...]
     consignments: tuple[_ConsignmentLeg, ...]
-    # Format enforced by schemas/phases.py _SEAL_PATTERN - XX-####.
     seal_number: str
-    # Mark rows up to and including this sequence COMPLETED. _ADVANCE_ALL walks the
-    # whole plan, which closes the trip.
     advance_through: Optional[int | Literal["all"]] = None
 
 
 TRIP_SPECS: tuple[_TripSpec, ...] = (
-    # Single-leg: the degenerate case of the multi-stop plan. 8 rows.
     _TripSpec(
         trip_reference="FP-DEMO-SINGLE-0001",
         precinct_names=(_CPT, _JHB),
         consignments=(_ConsignmentLeg("MOCKWB0001", 1, 2),),
         seal_number="FP-4471",
     ),
-    # Cross-dock: stop 2 is both a drop-off and a pick-up. 13 rows.
     _TripSpec(
         trip_reference="FP-DEMO-XDOCK-0001",
         precinct_names=(_CPT, _BFN, _JHB),
         consignments=(
-            _ConsignmentLeg("MOCKWB0002", 1, 3),   # A: straight through
-            _ConsignmentLeg("MOCKWB0003", 1, 2),   # B: dropped at the hub
-            _ConsignmentLeg("MOCKWB0004", 2, 3),   # C: collected at the hub
+            _ConsignmentLeg("MOCKWB0002", 1, 3),
+            _ConsignmentLeg("MOCKWB0003", 1, 2),
+            _ConsignmentLeg("MOCKWB0004", 2, 3),
         ),
         seal_number="FP-5182",
     ),
-    # The in-flight trip. Same cross-dock shape, walked through seq 4 - trip_creation,
-    # activation, loading, departure and the leg-1 in_transit are done; the trip sits
-    # at `arrival` at stop 2. This is the trip a reviewer is walked through: it is
-    # the only seed on which the derived-active marker, the coarse `active` status
-    # filter, and a real seal + parcel count are all visible at once.
     _TripSpec(
         trip_reference="FP-DEMO-ACTIVE-0001",
         precinct_names=(_CPT, _BFN, _JHB),
         consignments=(
-            _ConsignmentLeg("MOCKWB0005", 1, 3),   # A: straight through
-            _ConsignmentLeg("MOCKWB0006", 1, 2),   # B: dropped at the hub
-            _ConsignmentLeg("MOCKWB0007", 2, 3),   # C: collected at the hub
+            _ConsignmentLeg("MOCKWB0005", 1, 3),
+            _ConsignmentLeg("MOCKWB0006", 1, 2),
+            _ConsignmentLeg("MOCKWB0007", 2, 3),
         ),
         seal_number="FP-6390",
         advance_through=4,
     ),
-    # The finished trip. Every phase resolved, so recompute_position's closing rule
-    # applies and the trip is CLOSED with a closed_at - without this seed nothing in
-    # the dispatcher ever renders a completed custody chain, and the `closed` status
-    # filter has no rows to return.
     _TripSpec(
         trip_reference="FP-DEMO-CLOSED-0001",
         precinct_names=(_CPT, _JHB),
@@ -156,28 +136,15 @@ def _manifest_key_for(spec: _TripSpec) -> PPManifestKey:
     return PPManifestKey(header.issuer_account, header.origin_hub, number)
 
 
-# Every PP reference this seeder consumes. Exported so a unit test can assert the
-# seeder and the PP mock library have not drifted apart again.
 SEEDED_WAYBILL_REFERENCES: frozenset[str] = frozenset(
     leg.pp_reference for spec in TRIP_SPECS for leg in spec.consignments
 )
 
-# The walked trips share a start time so their phase timestamps are comparable
-# on screen. Fixed, not now(): a seed that moves every run makes screenshots and
-# bug reports impossible to compare.
 _WALK_STARTED_AT = datetime(2026, 7, 30, 6, 0, tzinfo=UTC)
 _MINUTES_PER_PHASE = 20
 
-# Every seeded trip now carries a real schedule, because activation is gated on it:
-# phases.scheduling._reject_if_not_due refuses to start a trip before its scheduled day, and
-# treats a trip with no schedule at all as not-yet-due. Seeding without these would make
-# every demo trip permanently unstartable.
 _OPERATING_TZ = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
-# 06:00 local is the shift start these depots run to, and it puts the whole scheduled
-# day comfortably ahead of whenever the seed is actually run.
 _DEPARTURE_HOUR = 6
-# Cape Town to Johannesburg is a long-haul day; the exact figure only has to be plausible
-# and to order the stop slots sensibly.
 _TRIP_DURATION_HOURS = 10
 
 
@@ -200,9 +167,6 @@ def _scheduled_departure_for(spec: _TripSpec) -> datetime:
         _DEPARTURE_HOUR, 0, tzinfo=_OPERATING_TZ,
     ).astimezone(UTC)
 
-# build_phase_plan always emits trip_creation first, at sequence 0 with a NULL stop.
-# Named rather than spelled 0 inline because resolved_sequences() below turns
-# on it and the reason it is special is not obvious from the literal.
 TRIP_CREATION_SEQUENCE = 0
 
 
@@ -345,8 +309,6 @@ async def _reference(db: AsyncSession):
     precincts = {
         p.name: p for p in (await db.execute(select(Precinct))).scalars().all()
     }
-    # Client attribution comes from the waybill's PP account number, exactly as
-    # consignments.sync resolves it on the live path - never hardcoded here.
     organizations = {
         o.pp_account_number: o
         for o in (await db.execute(select(Organization))).scalars().all()
@@ -398,15 +360,13 @@ async def _seed_consignments(
             trip_id=trip.id,
             parcel_perfect_reference=leg.pp_reference,
             client_organization_id=None if client_org is None else client_org.id,
-            # Per-leg, not whole-route: this is what makes stop 2 a real cross-dock
-            # point rather than a stop everything happens to pass through.
             origin_precinct_id=pickup.precinct_id,
             destination_precinct_id=delivery.precinct_id,
             pickup_stop_id=pickup.id,
             delivery_stop_id=delivery.id,
             declared_value=declared_value,
             parcel_count_expected=parcel_count,
-            unit_count_expected=-(-parcel_count // _PARCELS_PER_PALLET),  # ceil
+            unit_count_expected=-(-parcel_count // _PARCELS_PER_PALLET),
             pp_manifest_number=waybill.details.manifest,
             pp_raw_json=serialise_waybill(waybill),
         )
@@ -452,9 +412,6 @@ def _apply_walk_evidence(
     elif phase_type == PhaseType.DEPARTURE:
         event.seal_number = spec.seal_number
     elif phase_type == PhaseType.ARRIVAL:
-        # The seal as found at the gate. Intact and matching the departure seal is what
-        # a clean trip looks like; the mismatch and compromised paths are exceptions,
-        # not seeds.
         event.seal_number = spec.seal_number
         event.seal_condition = SealCondition.INTACT.value
     elif phase_type == PhaseType.CONFIRMATION and stop_sequence is not None:
@@ -483,7 +440,6 @@ async def _seed_trip(
     trip = Trip(
         id=uuid.uuid4(),
         trip_reference=spec.trip_reference,
-        # Keyed on its PP manifest, as a trip created through the API would be.
         client_organization_id=organizations[key.issuer_account].id,
         pp_manifest_issuer_account=key.issuer_account,
         pp_manifest_origin_hub=key.origin_hub,
@@ -501,9 +457,6 @@ async def _seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Stop slots spread evenly across the planned run. They are not decoration: they are
-    # the fallback activation gates on when planned_departure_at is null, so seeding them
-    # exercises that path instead of leaving it only ever covered by tests.
     leg_count = max(len(spec.precinct_names) - 1, 1)
     hours_per_leg = _TRIP_DURATION_HOURS / leg_count
     stops = [
@@ -530,9 +483,6 @@ async def _seed_trip(
         for pp_reference, parcels in parcels_by_reference.items()
     }
 
-    # Per-stop cargo movement, derived from the legs - the same derivation the phase
-    # plan itself runs on, so the counts a driver "recorded" always agree with the
-    # plan's shape rather than being a second, independently-invented number.
     loaded_at: dict[int, int] = {}
     delivered_at: dict[int, int] = {}
     for leg in spec.consignments:
@@ -558,8 +508,6 @@ async def _seed_trip(
                            else AnchorStatus.NOT_REQUIRED),
         ))
 
-    # Cache seeded from the ledger, never independently: the current phase is the
-    # lowest-sequence row that is not resolved.
     events = sorted(
         (await db.execute(
             select(PhaseEvent).where(PhaseEvent.trip_id == trip.id)
@@ -574,10 +522,6 @@ async def _seed_trip(
         for s, name in zip(stops, spec.precinct_names, strict=True)
     }
 
-    # Which rows start resolved is a decision, not a loop bound - resolved_sequences()
-    # owns it so the "P0 is always complete" rule is unit-testable without a database
-    # (tests/unit/test_seed_fixtures.py) rather than buried in this walk. Note this
-    # is now unconditional: even a spec with advance_through=None resolves P0.
     resolved = resolved_sequences(spec, len(events))
     for event in events:
         if event.sequence_number not in resolved:
@@ -586,8 +530,6 @@ async def _seed_trip(
         event.completed_at = (
             _WALK_STARTED_AT + timedelta(minutes=event.sequence_number * _MINUTES_PER_PHASE)
         )
-        # A no-op for trip_creation - it has no phase-specific evidence branch, which
-        # is the point: P0 is resolved by the trip existing, not by driver capture.
         _apply_walk_evidence(
             event, spec=spec,
             stop_sequence=None if event.trip_stop_id is None
@@ -633,22 +575,15 @@ async def _seed_trip(
             loading_event.parcel_count_origin = len(parcels)
 
     current = next((e for e in events if e.status != PhaseStatus.COMPLETED), None)
-    # event.phase_type comes back as a plain str after the bulk PhaseEvent insert
-    # (insertmanyvalues repopulates every column from the RETURNING row, not just
-    # server-generated ones) — coerce before .value, matching the same guard in
-    # complete_phase (phases/service.py: `actual = PhaseType(event.phase_type)`).
     trip.current_phase = PhaseType(current.phase_type).value if current is not None else None
     trip.current_stop = (
         None if current is None or current.trip_stop_id is None
         else stop_sequence_by_id[current.trip_stop_id]
     )
     if current is None:
-        # Every phase resolved. Mirrors recompute_position's closing rule rather than
-        # inventing a second definition of "closed".
         trip.status = TripStatus.CLOSED
         trip.closed_at = events[-1].completed_at
     elif spec.advance_through is not None:
-        # Walked but not finished - U9's derived-active state.
         trip.status = TripStatus.ACTIVE
 
     departure_times = [
@@ -684,9 +619,6 @@ async def seed() -> None:
             user, drivers, horses, trailers, precincts, organizations = await _reference(db)
 
             for i, spec in enumerate(TRIP_SPECS):
-                # Modulo, not a hard requirement of one vehicle per trip: the seed
-                # must still run against a reference set smaller than TRIP_SPECS
-                # (e.g. a database seeded before seed_demo.py grew its fleet).
                 await _seed_trip(
                     db, spec=spec, user=user,
                     driver=drivers[i % len(drivers)],

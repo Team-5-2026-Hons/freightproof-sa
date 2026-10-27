@@ -4,9 +4,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import config from '@/tailwind.config'
 
-// D37: new and rewritten phase-card components speak in four type tokens only. A literal size
-// (`text-[11px]`) or a stock Tailwind size (`text-sm`) would quietly reintroduce the scale-less
-// type this redesign removes, so this reads the files rather than trusting review.
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const SCANNED = [
   'components/domain/PhaseVerdictLine.tsx',

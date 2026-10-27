@@ -13,7 +13,6 @@ describe('resolveSection', () => {
   })
 
   it('does not open a section the dispatcher cannot see', () => {
-    // A regular dispatcher following an admin's link to the forensic section.
     expect(resolveSection(SETTINGS_SECTION_IDS.forensic, VISIBLE)).toBe(VISIBLE[0])
   })
 

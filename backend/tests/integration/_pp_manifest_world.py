@@ -28,12 +28,9 @@ from app.db.models.vehicles import Vehicle
 from app.schemas.people import UserRead
 from tests.conftest import auth_header, make_token
 
-# The PP mock's demo client (integrations/parcel_perfect/waybill_fixtures.py _DEMO_PP_ACCOUNT and
-# _DEMO_PP_CUSTOMER). A world built with this account links every mock manifest.
 MOCK_CLIENT_ACCOUNT = "MOCK01"
 MOCK_CLIENT_NAME = "CGY Logistics"
 
-# The mock's demo hub codes for these two depots (parcel_perfect.DEMO_HUB_CODES).
 _HUB_CAPE_TOWN = "CPT"
 _HUB_JOHANNESBURG = "JNB"
 
@@ -48,9 +45,9 @@ class ManifestWorld:
     driver: Driver
     horse: Vehicle
     trailer: Vehicle
-    cape_town: Precinct      # hub CPT when linked
-    johannesburg: Precinct   # hub JNB when linked
-    durban: Precinct         # never linked: the pick for an unlinked hub (manifest 69 → DUR)
+    cape_town: Precinct
+    johannesburg: Precinct
+    durban: Precinct
 
     def headers(self) -> dict[str, str]:
         return auth_header(

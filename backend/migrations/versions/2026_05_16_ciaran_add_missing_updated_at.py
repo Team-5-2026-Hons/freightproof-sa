@@ -21,7 +21,6 @@ down_revision = "0006"
 branch_labels = None
 depends_on = None
 
-# Only tables where the ORM Mapped class defines updated_at.
 _TABLES = [
     "organizations",
     "trip_templates",
@@ -40,7 +39,6 @@ def upgrade() -> None:
                 nullable=False,
             ),
         )
-        # Backfill existing rows; use created_at where it exists.
         op.execute(f"UPDATE {table} SET updated_at = created_at")
         op.execute(
             f"""

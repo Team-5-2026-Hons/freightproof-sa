@@ -134,9 +134,6 @@ describe('TripDetailView — trip in progress (3.2)', () => {
   })
 
   it('test_the_third_unloading_is_the_tappable_row_once_the_first_two_are_done', () => {
-    // Synthetic 4-stop plan where every stop after the first drops off cargo, so
-    // `unloading` occurs three times (same fixture as before the overhaul): the UI must
-    // resolve the current row by sequence_number, not by phase type.
     const stops: PlanStopInput[] = [
       { trip_stop_id: 'stop-1', sequence: 1, picks_up: true, drops_off: false },
       { trip_stop_id: 'stop-2', sequence: 2, picks_up: false, drops_off: true },

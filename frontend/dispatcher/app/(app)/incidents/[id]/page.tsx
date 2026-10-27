@@ -9,7 +9,6 @@ export default function IncidentDetailPage(): React.JSX.Element {
   const params = useParams<{ id: string }>()
   const router = useRouter()
   const search = useSearchParams()
-  // Opened from a trip (or an exception), Back returns there; otherwise to the incidents list.
   const backHref = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.incidents)
   return <IncidentDetailView incidentId={params.id} backHref={backHref} onNavigate={href => router.push(href)} />
 }

@@ -25,32 +25,22 @@ import { useBack } from '@/lib/navigation/useBack'
 import { cn } from '@/lib/utils'
 import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 
-// Driver-initiated in-transit capture, independent of the phases — proves the cargo is
-// intact, and where, between departure and arrival. A cargo photo only: the selfie proved little the phone's position does not, and asking a
-// driver on a road shoulder for one was friction without evidence value.
 export default function CheckpointPageClient() {
   const router = useRouter()
   const goBack = useBack(ROUTES.inTransit)
-  // At accessibility text sizes the footer flows instead of pinning (see StepLayout).
   const largeText = useAccessibilityTextSize()
   const { trip } = useTrip()
   const { notify } = useToast()
   const { enqueueCheckpoint } = useOfflineQueue()
-  // The driver no longer taps to capture a position here either — it is taken as the
-  // checkpoint is submitted, like every other evidence surface in the app.
   const { capturePosition } = useLocationTrail()
   const [cargoPhotoDataUrl, setCargoPhotoDataUrl] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [isDeviation, setIsDeviation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
-  // The phone itself refused to keep the checkpoint (storage full or disabled). Distinct from
-  // submitError: the server never refused anything, and nothing is stored anywhere yet.
   const [storageError, setStorageError] = useState(false)
   const clientReportIdRef = useRef<string | null>(null)
 
-  // GPS is not a gate: it is captured silently at submit, and a checkpoint with a photo
-  // but no fix is still evidence worth recording. The cargo photo IS the checkpoint.
   const isReady = cargoPhotoDataUrl !== null
 
   async function handleSubmit() {
@@ -58,7 +48,6 @@ export default function CheckpointPageClient() {
     setSubmitting(true)
     setSubmitError(false)
     setStorageError(false)
-    // The custody period at the tap, before the GPS wait, travelling with the evidence.
     const custody = captureCustody(String(trip.id))
 
     const position = await capturePosition()
@@ -81,16 +70,10 @@ export default function CheckpointPageClient() {
       await submitCheckpoint(String(trip.id), evidence)
       router.push(ROUTES.inTransit)
     } catch (err) {
-      // A 4xx (validation failure) will fail identically on retry — leave the driver
-      // here with the inline error so they can fix/retry manually. A network failure
-      // or 5xx is retryable, so queue it (same offline-queue pattern phase submits and
-      // exceptions use) and let the driver move on; it syncs on reconnect.
       const isRetryable = !(err instanceof ApiError) || err.status >= 500
       if (isRetryable) {
         console.error('Failed to log checkpoint — queued for retry', err)
         if (!enqueueCheckpoint(String(trip.id), evidence)) {
-          // Not stored anywhere. Stay here with the photo and note still in state, so a retry
-          // costs the driver one swipe; leaving would lose the only copy of the evidence.
           setStorageError(true)
           return
         }
@@ -101,8 +84,6 @@ export default function CheckpointPageClient() {
         })
         router.push(ROUTES.inTransit)
       } else {
-        // A custody conflict is not a validation error the driver can fix here — the
-        // trip moved on. The checkpoint is kept for review (late evidence), not lost.
         const failure = classifyLiveWriteFailure(err)
         if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
           if (!enqueueCheckpoint(String(trip.id), evidence, failure.attention)) {
@@ -148,7 +129,6 @@ export default function CheckpointPageClient() {
         onBack={goBack}
       />
       <div className="flex flex-1 flex-col gap-6 px-5 pb-6 pt-4">
-        {/* h2: the header above already carries the screen's h1. */}
         <div className="flex flex-col gap-2">
           <h2 className="text-title-1 tracking-tight text-surface-on">Log a checkpoint</h2>
           <p className="text-body text-surface-on-variant">
@@ -165,8 +145,6 @@ export default function CheckpointPageClient() {
         />
 
         <div>
-          {/* An iOS switch row on the page itself, ended by a hairline — the grouped grey
-              cell it used to sit in read as a second card under the photo tile. */}
           <div className="flex min-h-[52px] items-center justify-between gap-4 border-b border-hairline pb-1.5">
             <label htmlFor="route-deviation" className="text-body text-surface-on">
               This is a route deviation
@@ -190,17 +168,12 @@ export default function CheckpointPageClient() {
         )}
 
         {submitError && (
-          // Only on a terminal 4xx — retrying with the same input cannot succeed, so
-          // "check your connection" would be actively misleading here.
           <p className="text-subhead text-error">
             Could not submit. The checkpoint was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
       </div>
 
-      {/* The same pinned glass footer as the evidence steps (StepLayout). The full-width
-          wrapper is load-bearing: the swipe once sat in a shrink-to-fit wrapper that gave
-          its w-full track a width of 0px, and a checkpoint could not be submitted. */}
       <footer className={cn('glass-nav border-t border-hairline px-4 pt-3 pb-[max(env(safe-area-inset-bottom),1.5rem)]', !largeText && 'sticky bottom-0 z-sticky')}>
         <RequirementChecklist requirements={[{ label: 'Cargo photo', met: cargoPhotoDataUrl !== null }]} />
         <div className="flex w-full justify-center">

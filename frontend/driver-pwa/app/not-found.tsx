@@ -13,7 +13,6 @@ import { ROUTES } from '@/lib/constants/routes'
 export default function NotFoundPage() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 p-6">
-      {/* A neutral card, not error.tsx's red one: nothing crashed, the address is just wrong. */}
       <div className="flex w-full flex-col items-center gap-3 rounded-xl bg-surface-container-low px-6 py-8 text-center text-surface-on">
         <SearchX className="h-10 w-10 text-surface-on-variant" strokeWidth={1.5} aria-hidden />
         <h1 className="text-lg font-bold">Page not found</h1>
@@ -22,8 +21,6 @@ export default function NotFoundPage() {
         </p>
       </div>
       <div className="flex w-full flex-col gap-3">
-        {/* Plain anchor (full page load), as on error.tsx: this page can be served for any
-            path, and a hard load of Home is the reliable way back from an unknown one. */}
         <Button asChild size="lg">
           <a href={ROUTES.home}>Go to Home</a>
         </Button>

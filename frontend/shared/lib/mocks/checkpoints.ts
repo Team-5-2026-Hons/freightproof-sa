@@ -3,10 +3,7 @@ import { TRIP_0041_ID, TRIP_0042_ID } from './trips'
 
 const cpId = (v: string): CheckpointId => v as unknown as CheckpointId
 
-// 12 checkpoints across the two in-transit trips — 6 each on the N3 corridor (JHB→DBN).
-
 export const mockCheckpoints: Checkpoint[] = [
-  // ─── TRP-2026-0041 · Sipho Dlamini · JHB → DBN ───────────────────────────
   {
     id: cpId('cp004101-0000-4001-8001-000000000001'),
     trip_id: TRIP_0041_ID,
@@ -69,13 +66,11 @@ export const mockCheckpoints: Checkpoint[] = [
     driver_phone_lat: -28.6140, driver_phone_lng: 29.5890,
     horse_gps_lat: -28.6138, horse_gps_lng: 29.5888,
     selfie_artifact_id: 'art-0041-cp6-selfie', cargo_photo_artifact_id: null,
-    // Off N3 briefly due to road works — logged as deviation, matches route_deviation exception.
     note: 'Diversion via R74 at Van Reenen\'s due to road works. Back on N3 shortly.',
     is_deviation: true, merkle_batch_id: null,
     created_at: '2026-05-09T13:20:00Z',
   },
 
-  // ─── TRP-2026-0042 · Thabo Formby · JHB → DBN (overnight) ───────────────
   {
     id: cpId('cp004201-0000-4001-8001-000000000007'),
     trip_id: TRIP_0042_ID,
@@ -116,7 +111,6 @@ export const mockCheckpoints: Checkpoint[] = [
     driver_phone_lat: -28.2698, driver_phone_lng: 29.1270,
     horse_gps_lat: -28.2695, horse_gps_lng: 29.1268,
     selfie_artifact_id: 'art-0042-cp4-selfie', cargo_photo_artifact_id: 'art-0042-cp4-cargo',
-    // Broken seal discovered at this stop — matches seal_broken_in_transit exception.
     note: 'Harrismith fuel stop. SEAL FP-5678 FOUND BROKEN. Photographed and reported.',
     is_deviation: false, merkle_batch_id: null,
     created_at: '2026-05-09T07:38:00Z',

@@ -11,15 +11,10 @@ import { AssistantPopup } from './AssistantPopup'
 import { ASSISTANT_COPY } from './assistantCopy'
 import { PendingNavigation, pathOf } from './navigation'
 
-/** CSS variables the toasts read (components/ui/Toast.tsx), so they sit above the bubble and beside the
- *  open pop-up instead of under them (spec D6). Set on <html> because toasts render outside this tree. */
 export const BOTTOM_OFFSET_VAR = '--fp-assistant-bottom'
 export const RIGHT_OFFSET_VAR = '--fp-assistant-right'
-// The bubble (56 px) and its gap above the toasts' own 24 px margin.
 const BUBBLE_CLEARANCE = '72px'
-// If a page never arrives (an error, a link to an address that redirects), the pop-up still gets out of the way.
 export const NAVIGATION_FALLBACK_MS = 10_000
-// The pop-up's width (400 px) and the gap beside it.
 const POPUP_CLEARANCE = '424px'
 
 /** The round helper button, bottom-right on every dispatcher page except Analytics (which has its own
@@ -54,12 +49,9 @@ export function AssistantBubble() {
     setOpen(false)
     bubbleRef.current?.focus()
   }, [])
-  // The address an answer's link or button is opening. The pop-up stays, with a spinner on what was clicked,
-  // until the new page is there: closing on the click left a few seconds with no sign anything happened (B38).
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   const [shownPath, setShownPath] = useState(pathname)
   if (pathname !== shownPath) {
-    // Adjusted during render, not in an effect (the react-hooks rule): the new page has arrived.
     setShownPath(pathname)
     if (pendingHref !== null) {
       setPendingHref(null)
@@ -67,7 +59,6 @@ export function AssistantBubble() {
     }
   }
   const onNavigate = useCallback((href: string) => {
-    // Already on that page (only its query changes): there's nothing to wait for.
     if (pathOf(href) === pathname) {
       setOpen(false)
       return
@@ -109,7 +100,6 @@ export function AssistantBubble() {
           'fixed bottom-6 right-6 z-[36] h-14 w-14 items-center justify-center rounded-full bg-primary text-white',
           'shadow-level-6 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2',
           'focus-visible:outline-offset-2 focus-visible:outline-sec motion-reduce:transition-none',
-          // Below md the open pop-up fills the screen and has its own minimise button.
           open ? 'hidden md:flex' : 'flex',
         )}
       >

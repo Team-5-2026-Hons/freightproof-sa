@@ -28,13 +28,9 @@ import { INCIDENT_MAP_HEIGHT, IncidentMap, type PinSelection } from '../map/Inci
 import type { MapWindow } from '../navigation'
 
 const COPY = FLEET_COPY.routes
-// Enough to see the busiest places at a glance; "Show all" opens the rest.
 const TOP_SITES = 10
-// The incident table grows ten rows at a time, so the map stays near the rows.
 const INCIDENT_PAGE_SIZE = 10
 const RATIO_DECIMALS = 2
-// Lane names are long ("Bloemfontein Depot (Hamilton) → Johannesburg Depot (Linbro)"): a wider
-// name column keeps most to two lines, and a taller row keeps each lane's bars and name together.
 const LANE_AXIS_WIDTH = 280
 const LANE_ROW_HEIGHT = 64
 const LANE_GAP = '30%'
@@ -287,10 +283,7 @@ interface PinRow {
 interface IncidentsCardProps {
   incidents: FleetQueryResult<FleetIncidents>
   returnTo: string
-  /** The SAST day the Today window asks for; shown in the basis so the window is unambiguous. */
   today: string
-  /** Named in full rather than `window`: a prop called `window` shadows the browser global
-   *  inside this component, which is a trap for the next edit. */
   mapWindow: MapWindow
   onMapWindowChange: (window: MapWindow) => void
 }
@@ -402,13 +395,9 @@ function IncidentsCard({ incidents, returnTo, today, mapWindow, onMapWindowChang
 }
 
 interface RoutesTabProps {
-  /** Only its start and end are used: this tab has no View by. */
   query: TabQuery
-  /** Where a report opened from the map should send Back: this tab, as it is now. */
   returnTo: string
-  /** Today in SAST, from the page, so the tab and the rest of the page agree on the day. */
   today: string
-  /** The incident map's own window. The sites and lanes charts never follow it. */
   mapWindow: MapWindow
   onMapWindowChange: (window: MapWindow) => void
 }
@@ -424,10 +413,6 @@ export function RoutesTab({ query, returnTo, today, mapWindow, onMapWindowChange
   const routes = useFleetRoutes(period)
   const incidents = useFleetIncidents(incidentPeriod)
 
-  // A report raised anywhere in the organisation may belong on this map, so 'any' trip, as the
-  // review queue does (lib/hooks/useExceptions.ts). Silent, so a report raised on stage appears
-  // without the card dimming; narrowed to exception_raised so ordinary phase traffic doesn't
-  // re-poll it. The map only redraws if the set of pins actually changed; see pinSignature.
   useLiveResource('trip', 'any', incidents.refetchSilent, { kinds: ['exception_raised'] })
 
   return (
@@ -435,8 +420,6 @@ export function RoutesTab({ query, returnTo, today, mapWindow, onMapWindowChange
       <SitesCard routes={routes} />
       <LaneRiskCard routes={routes} />
       <LaneTimesCard routes={routes} />
-      {/* Keyed by the window it is showing: a new one starts the table at ten rows with
-          nothing chosen, so a selected pin can't survive into a set that no longer has it. */}
       <IncidentsCard
         key={`${mapWindow}-${incidentPeriod.start ?? 'all'}-${incidentPeriod.end}`}
         incidents={incidents}

@@ -21,8 +21,6 @@ from app.schemas.audit_pack import AuditPackManifest, EvidenceTier, PackIssue
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _TEMPLATE_NAME = "audit_pack.html.j2"
 
-# Printed labels and one-line meanings for the four tiers — the legend on page one and
-# the badge on every row read from this one table.
 TIER_LABELS: dict[EvidenceTier, tuple[str, str]] = {
     "anchored": ("Anchored", "Hash recorded on the Hedera public ledger; re-verifiable by anyone."),
     "corroborated": ("Corroborated", "Independent sources agreed at the time; not anchored."),
@@ -30,8 +28,6 @@ TIER_LABELS: dict[EvidenceTier, tuple[str, str]] = {
     "declared": ("Declared", "Entered by the operator after the event."),
 }
 
-# What each receipt type commits to, in a claims handler's words rather than the system's. Keys are
-# BlockchainReceiptType values; the web viewer prints the same phrases (client-portal lib/receipt-labels.ts).
 RECEIPT_LABELS: dict[str, str] = {
     "journey_lock": "Trip plan locked when the trip was created",
     "activation": "Driver started the trip",

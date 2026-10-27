@@ -23,8 +23,6 @@ from app.main import app
 from tests.conftest import auth_header, make_token
 
 
-# ── DB override ───────────────────────────────────────────────────────────────
-
 @pytest_asyncio.fixture(autouse=True)
 async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None]:
     """Wire every endpoint in this module to the rolled-back test session."""
@@ -35,8 +33,6 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
     yield
     app.dependency_overrides.pop(get_db, None)
 
-
-# ── Seed fixtures ─────────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def seed_org(db_session: AsyncSession):
@@ -60,8 +56,6 @@ async def seed_org(db_session: AsyncSession):
     await db_session.flush()
     return operator_org, dispatcher_user
 
-
-# ── Test ──────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_create_vehicle_writes_event_and_anchor(
@@ -101,12 +95,9 @@ async def test_create_vehicle_writes_event_and_anchor(
     assert detail_resp.status_code == 200
     body = detail_resp.json()
 
-    # A VehicleEvent of type "created" must exist on the detail record.
     assert len(body["events"]) == 1
     assert body["events"][0]["event_type"] == "created"
 
-    # The VehicleEvent must have a corresponding BlockchainReceipt anchored
-    # against the vehicle_event subject type (not the vehicle itself).
     assert len(body["receipts"]) == 1
     assert body["receipts"][0]["subject_type"] == "vehicle_event"
 

@@ -9,7 +9,6 @@ interface FilterSelectProps<V extends string> {
   value: V
   onChange: (value: V) => void
   options: readonly FilterOption<V>[]
-  /** Visible text is the selected option, so the control needs an explicit name. */
   ariaLabel: string
   className?: string
 }
@@ -22,7 +21,6 @@ export function FilterSelect<V extends string>({ value, onChange, options, ariaL
       <select
         aria-label={ariaLabel}
         value={value}
-        // The option values are the caller's own V, so narrowing the DOM string back is safe.
         onChange={event => onChange(event.target.value as V)}
         className="appearance-none rounded-md border border-outline-v/30 bg-surf-low py-2 pl-3 pr-8 text-[13px] text-on-surf outline-none transition-colors focus:border-sec focus:bg-surf-lowest"
       >

@@ -5,7 +5,6 @@ import { useCallback, useRef, useState } from 'react'
 interface ObservedWidth<T extends HTMLElement> {
   /** Attach to the element being measured. */
   ref: (el: T | null) => void
-  /** The element's content-box width in px, or null until the first measurement. */
   width: number | null
 }
 

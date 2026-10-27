@@ -32,7 +32,6 @@ def page_view_hint(view: PageView, today: date) -> str | None:
         start, end = resolve_preset(preset, today=today, start=view.start, end=view.end)
     except ValueError:
         return None
-    # The page can't draw a range that runs backwards or ends in the future, so it wouldn't be on screen.
     if end > today or (start is not None and start > end):
         return None
     inputs = (

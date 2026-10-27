@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AuthChangeListener } from '@shared/lib/auth/port'
 
-// The module under test also builds the default adapter from the real client at import.
 vi.mock('@/lib/supabase/client', () => ({ supabase: { auth: {} } }))
 
 const { SupabasePasswordAuth } = await import('./SupabasePasswordAuth')
@@ -31,7 +30,6 @@ function fakeClient() {
     auth,
     unsubscribe,
     raise: (event: string, session: unknown) => callback?.(event, session),
-    // The adapter takes a structural subset of the Supabase client.
     client: { auth } as unknown as ConstructorParameters<typeof SupabasePasswordAuth>[0],
   }
 }
@@ -101,7 +99,6 @@ describe('SupabasePasswordAuth.signInWithPassword', () => {
     expect(fake.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'a@b.co', password: 'pw' })
   })
 
-  // The login page displays this error's own message, so it must be the vendor's object.
   it('rejects with the vendor error itself', async () => {
     const fake = fakeClient()
     const vendorError = new Error('Invalid login credentials')
@@ -122,8 +119,6 @@ describe('SupabasePasswordAuth.signOut', () => {
     expect(fake.auth.signOut).toHaveBeenCalledTimes(1)
   })
 
-  // The SDK returns the network error instead of throwing and leaves the stored session, which a
-  // reload would restore: a dispatcher who clicked Log out would be signed straight back in.
   describe('when the vendor sign-out fails', () => {
     const SESSION_KEY = 'sb-testproject-auth-token'
     const VERIFIER_KEY = 'sb-testproject-auth-token-code-verifier'
@@ -146,7 +141,6 @@ describe('SupabasePasswordAuth.signOut', () => {
 
       expect(window.localStorage.getItem(SESSION_KEY)).toBeNull()
       expect(window.localStorage.getItem(VERIFIER_KEY)).toBeNull()
-      // Only the auth SDK's keys: dispatcher preferences are not the session.
       expect(window.localStorage.getItem('fp.forensicOn')).toBe('true')
       expect(logged).toHaveBeenCalledWith(expect.stringContaining('sign-out'), networkError)
     })

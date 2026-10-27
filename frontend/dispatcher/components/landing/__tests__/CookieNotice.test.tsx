@@ -3,15 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { COOKIE_NOTICE_KEY, CookieNotice } from '../CookieNotice'
 
-// The notice becomes visible one animation frame after mount.
 async function flushFrame(): Promise<void> {
   await act(async () => {
     await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)))
   })
 }
 
-// Queried by label rather than role: once hidden, the region drops out of the
-// accessibility tree, which is the point.
 function notice(): HTMLElement {
   const el = document.querySelector<HTMLElement>('[aria-label="Cookie notice"]')
   if (!el) throw new Error('Cookie notice not rendered')

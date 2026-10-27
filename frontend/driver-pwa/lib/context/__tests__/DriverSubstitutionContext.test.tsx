@@ -34,8 +34,6 @@ const incomingPending = pack.incomingPendingNoActiveTrip.pending[0]
 const OUTGOING_ID = incomingPending.outgoing.id
 const INCOMING_ID = incomingPending.incoming.id
 
-// A real driver record with the fixture's id, so the provider resolves the same role the
-// server would for that account.
 function driverWithId(id: string): DriverUser {
   return { ...mockDrivers[0], id: id as DriverUser['id'] }
 }
@@ -69,7 +67,6 @@ interface Harness {
 function renderProvider(user: DriverUser | null, tripValue: Partial<TripState> = { trip: null }): Harness {
   const noteTripHandedOver = vi.fn()
   const refreshQuietly = vi.fn().mockResolvedValue(undefined)
-  // Only the members the provider reads; the rest of TripState is irrelevant here.
   const trip = { ...tripValue, noteTripHandedOver, refreshQuietly } as unknown as TripState
   const tree = (u: DriverUser | null) => (
     <AuthContext.Provider value={authFor(u)}>
@@ -148,7 +145,6 @@ describe('DriverSubstitutionProvider', () => {
     const harness = renderProvider(driverWithId(INCOMING_ID), { trip: currentTrip })
 
     await waitFor(() => expect(screen.getByTestId('pending')).toHaveTextContent(incomingPending.id))
-    // An arrangement is not a transfer: the current trip context is left untouched.
     expect(harness.noteTripHandedOver).not.toHaveBeenCalled()
     expect(harness.refreshQuietly).not.toHaveBeenCalled()
   })
@@ -192,13 +188,6 @@ describe('DriverSubstitutionProvider', () => {
     expect(harness.noteTripHandedOver).not.toHaveBeenCalled()
   })
 
-  // An immediate_v2 transfer's confirmation_policy is incoming_acceptance_v2 — only the
-  // incoming driver confirms, so the outgoing driver's own session never fetched this
-  // request while it was pending and never learned its role. Before this, a completed
-  // notice like that fell into the generic "unknown role" branch above and only refreshed
-  // quietly: the trip vanished with no "handed over" notice. The one fact that still tells
-  // the two apart is whether this driver is CURRENTLY working the exact trip the notice
-  // names — only the outgoing side of an unseen handover is.
   it('test_completion_with_unknown_role_on_the_current_trip_is_treated_as_outgoing', async () => {
     mockFetchNotices.mockResolvedValue([unreadCompleted])
     const currentTrip = { id: unreadCompleted.trip_id } as unknown as TripState['trip']

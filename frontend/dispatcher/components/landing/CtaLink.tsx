@@ -20,10 +20,7 @@ export function CtaLink({ href, variant = 'primary', size = 'md', className, chi
       href={href}
       className={cn(
         'inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold',
-        // Pressed state lands on pointer-down (:active), not on release.
         'transition-[transform,filter,background-color] duration-150 ease-out active:scale-[0.97]',
-        // cn() joins rather than merges classes, so sizes live here, never in className.
-        // sm is nav chrome: fixed px, so a large text setting can't push the bar off-screen.
         size === 'sm' && 'min-h-[44px] gap-[8px] px-[12px] text-[13px] sm:px-[16px] sm:text-[14px] md:min-h-[40px]',
         size === 'md' && 'min-h-[40px] px-[18px] text-[0.875rem]',
         size === 'lg' && 'min-h-[48px] px-[26px] text-[0.9375rem]',

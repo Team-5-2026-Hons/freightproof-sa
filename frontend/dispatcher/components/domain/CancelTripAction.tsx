@@ -9,9 +9,6 @@ import { useToast } from '@/lib/hooks/useToast'
 import { cancelTrip, ApiError } from '@/lib/api/client'
 import type { Trip } from '@shared/lib/types/trip'
 
-// A trip that has already reached either terminal state has no further lifecycle
-// action to take — cancelling a cancelled/closed trip is not a real choice, so the
-// control is hidden rather than left to explain itself via a 409 from the backend.
 const TERMINAL_STATUSES: readonly Trip['status'][] = ['closed', 'cancelled']
 
 export function isTripTerminal(status: Trip['status']): boolean {
@@ -23,8 +20,6 @@ interface Props {
   status: Trip['status']
   open: boolean
   onClose: () => void
-  // Runs after a successful cancel — the caller re-syncs the trip (silent refetch),
-  // since this component owns no trip state itself.
   onCancelled: () => void
 }
 
@@ -47,14 +42,9 @@ export function CancelTripDialog({ tripId, status, open, onClose, onCancelled }:
   const terminal = isTripTerminal(status)
 
   useEffect(() => {
-    // A background refetch can show someone else already cancelled/closed the trip
-    // while this dialog is open — close it so the parent's open state doesn't go stale.
     if (open && terminal) onClose()
   }, [open, terminal, onClose])
 
-  // Reopening should never show the previous attempt's note. Adjusted during render
-  // (React's documented pattern for resetting state on a prop change) rather than in an
-  // effect, which would set state after an extra render instead of before this one paints.
   if (open !== prevOpen) {
     setPrevOpen(open)
     if (!open) setNote('')
@@ -78,10 +68,6 @@ export function CancelTripDialog({ tripId, status, open, onClose, onCancelled }:
       onCancelled()
       onClose()
     } catch (err) {
-      // 404/409 carry the backend's own accurate reason (str(exc) in trip_admin.py) —
-      // e.g. "already cancelled" — which a fixed title here would flatten. 422 cannot
-      // actually happen (submit is disabled on a blank note) but is named honestly
-      // rather than falling into the generic branch if the client and server ever drift.
       const title =
         err instanceof ApiError && (err.status === 404 || err.status === 409) ? err.message
         : err instanceof ApiError && err.status === 422 ? 'A cancellation note is required.'
@@ -107,9 +93,6 @@ export function CancelTripDialog({ tripId, status, open, onClose, onCancelled }:
         </div>
       </div>
 
-      {/* No autoFocus: React applies it by calling .focus() during commit, before Modal's
-          own effect calls dialog.showModal() — a closed <dialog> isn't displayed, so a
-          real browser silently drops that early focus() call. It never worked. */}
       <TextArea
         label="Reason for cancellation"
         placeholder="Why is this trip being cancelled?"

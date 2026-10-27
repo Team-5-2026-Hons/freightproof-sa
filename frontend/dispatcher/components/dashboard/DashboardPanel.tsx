@@ -7,15 +7,11 @@ import { cn } from '@shared/lib/utils/cn'
 
 interface DashboardPanelProps {
   title: string
-  /** The whole backlog, e.g. "64 need review": never the capped number of rows shown, which would
-   *  read as the total being smaller. Null while loading or failed, when a count would be a guess. */
   count: string | null
   noun: string
   viewAllHref: string
-  /** Which "i" explanation sits beside the title. */
   help: DashboardHelpTopic
   children: ReactNode
-  /** Lets a panel take the height left over by its neighbours instead of sizing to its rows. */
   className?: string
 }
 
@@ -36,7 +32,6 @@ export function DashboardPanel({ title, count, noun, viewAllHref, help, children
               </span>
             )}
             <RecordLink href={viewAllHref} className="!min-h-0 text-[12px]">
-              {/* The title beside it names the noun on screen; the full name is kept for assistive tech. */}
               View all<span className="sr-only"> {noun}</span>
             </RecordLink>
           </div>

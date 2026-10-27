@@ -23,13 +23,10 @@ from app.orchestration.incidents.state import ensure_open
 from app.orchestration.trips.administration import terminate_trip
 from app.schemas.incidents import IncidentCreate
 
-# A dispatcher's clock and the server's disagree by seconds, not minutes: anything further in
-# the future than this is a typing mistake, and a report "received" tomorrow is not evidence.
 CLOCK_SKEW_ALLOWANCE = timedelta(minutes=5)
 
 _TERMINAL_TRIP_STATUSES = (TripStatus.CLOSED, TripStatus.CANCELLED)
 
-# What the trip's ledger says when an incident stops it: neutral on purpose (see _stop_trip).
 TRIP_STOPPED_NOTE = "Trip stopped by dispatch."
 
 
@@ -39,13 +36,8 @@ def reference(incident: Incident) -> str:
 
 
 async def _lock_trip(db: AsyncSession, *, trip_id: uuid.UUID, organization_id: uuid.UUID) -> Trip:
-    # Held for the whole report: it serialises incident numbering on this trip and makes the
-    # stop's terminal-status check and write one atomic step, exactly as cancel_trip does.
     trip = (await db.execute(
         select(Trip).where(Trip.id == trip_id, Trip.operator_organization_id == organization_id).with_for_update(of=Trip)
-        # The Trip may already be in the session (stop_trip_from_incident loads it through
-        # lock_incident first). Without this the lock is taken but the stale status is kept,
-        # and a colleague's cancel that landed meanwhile would be cancelled a second time.
         .execution_options(populate_existing=True)
     )).scalar_one_or_none()
     if trip is None:
@@ -123,7 +115,6 @@ async def report_incident(
     ledger = start(db, incident=incident, trip=trip, opened=Entry(
         kind=IncidentUpdateKind.OPENED, user_id=user_id, at=now, note=request.summary, to_value=request.confidence.value,
     ))
-    # The owner is on the ledger from the first moment, not only in the cache.
     append(db, ledger, Entry(kind=IncidentUpdateKind.ASSIGNED, user_id=user_id, at=now, to_value=str(assignee)))
     await db.flush()
 

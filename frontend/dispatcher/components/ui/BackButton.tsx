@@ -3,7 +3,6 @@
 import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
 
-// Pixel size of the arrow — matches the 14px icons the other small secondary buttons use.
 const BACK_ICON_SIZE = 14
 
 interface BackButtonProps {

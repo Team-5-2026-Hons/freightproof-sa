@@ -11,8 +11,6 @@ import type { DriverPosition } from '@/lib/types/location'
 import { MAP_STYLES_QUIET } from '@/lib/tokens'
 
 
-// Mutable through a getter: DriverMap reads GOOGLE_MAPS_API_KEY as a module binding, and
-// the "key absent" and "key present" ladders are two different code paths in one suite.
 let mockApiKey = ''
 vi.mock('@/lib/constants/env', () => ({
   get GOOGLE_MAPS_API_KEY() { return mockApiKey },
@@ -39,9 +37,6 @@ interface FakeCircleOptions {
   radius: number
 }
 
-// Minimal stand-ins for the two Maps JS classes DriverMap constructs. They record the
-// arguments the component passes so the "centred on the phone's own fix" and "follows the
-// driver" behaviours can be asserted without a real Google Maps runtime.
 const mapCtor = vi.fn()
 const circleCtor = vi.fn()
 const setCenter = vi.fn()
@@ -157,7 +152,6 @@ describe('DriverMap fix labelling', () => {
 
   it('labels a fix older than the staleness window as LAST KNOWN, never as current', () => {
     vi.useFakeTimers()
-    // Ten minutes after the fix was taken: the truck has moved and the card must say so.
     vi.setSystemTime(new Date('2026-08-05T09:40:00.000Z'))
 
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
@@ -183,7 +177,6 @@ describe('DriverMap rung 2 — key present, tiles unreachable', () => {
 
     expect(await screen.findByText('Map unavailable offline')).toBeInTheDocument()
     expect(screen.getByText('-26.09421, 28.13422')).toBeInTheDocument()
-    // Never swallowed — a failure the driver sees is also a failure the logs record.
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
   })
@@ -196,7 +189,6 @@ describe('DriverMap rung 2 — key present, tiles unreachable', () => {
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
     expect(await screen.findByText('Map unavailable offline')).toBeInTheDocument()
 
-    // A dead zone clears; the driver should get their map back without leaving the screen.
     mockImportLibrary.mockResolvedValue({ Map: FakeMap, Circle: FakeCircle })
     fireEvent(window, new Event('online'))
 
@@ -243,14 +235,11 @@ describe('DriverMap with a working key', () => {
 
 describe('DriverMap — theme and handoff', () => {
   it('draws the dark basemap when the app is in the dark theme', async () => {
-    // Arrange
     mockApiKey = 'a-real-key'
     document.documentElement.classList.add('dark')
 
-    // Act
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
 
-    // Assert
     await waitFor(() => expect(mapCtor).toHaveBeenCalled())
     const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
     expect(Array.isArray(options.styles)).toBe(true)
@@ -258,52 +247,40 @@ describe('DriverMap — theme and handoff', () => {
   })
 
   it('keeps Google’s light palette but hides points of interest in the light theme', async () => {
-    // Arrange
     mockApiKey = 'a-real-key'
 
-    // Act
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
 
-    // Assert
     await waitFor(() => expect(mapCtor).toHaveBeenCalled())
     const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
     expect(options.styles).toEqual(MAP_STYLES_QUIET)
   })
 
   it('restyles a live map when the theme flips (e.g. the automatic switch at sunset)', async () => {
-    // Arrange
     mockApiKey = 'a-real-key'
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
     await screen.findByRole('link', { name: /open in maps/i })
 
-    // Act
     document.documentElement.classList.add('dark')
 
-    // Assert
     await waitFor(() => expect(mapSetOptions).toHaveBeenCalledWith({ styles: expect.any(Array) }))
   })
 
   it('offers the phone’s map app from the live map, not only from the fallback cards', async () => {
-    // Arrange
     mockApiKey = 'a-real-key'
 
-    // Act
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
 
-    // Assert
     const link = await screen.findByRole('link', { name: /open in maps/i })
     expect(link).toHaveAttribute('href', expect.stringContaining(String(JHB_FIX.lat)))
   })
 
   it('sizes the fallback cards separately from the map strip', () => {
-    // Arrange — no fix, so the no-fix panel renders instead of a map.
 
-    // Act
     const { container } = render(
       <DriverMap position={null} capturedAt={null} className="h-[200px]" fallbackClassName="w-full" />,
     )
 
-    // Assert — the fixed strip height would clip the panel's text and Retry button.
     expect(container.firstElementChild).not.toHaveClass('h-[200px]')
     expect(container.firstElementChild).toHaveClass('w-full')
   })
@@ -312,17 +289,12 @@ describe('DriverMap — theme and handoff', () => {
 describe('DriverMap extra action', () => {
   const navigate = <a href="https://maps.example/dir">Navigate</a>
 
-  // Regression: the caller used to float its own Navigate chip over the map slot, which on a
-  // 360x740 phone sat on top of the card's full-width "Open in Maps" button. On a fallback
-  // card the action has to join the card's flow, after the hand-off button, so the two can
-  // never overlap whatever the card's text does.
   it('test_sets_the_action_in_the_coordinates_card_flow_after_open_in_maps', () => {
     render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} extraAction={navigate} extraActionClassName="bottom-12 right-4" />)
 
     const openInMaps = screen.getByRole('link', { name: /open in maps/i })
     const action = screen.getByRole('link', { name: 'Navigate' })
     expect(openInMaps.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // In the flow, not floated: no absolute ancestor between the action and the card.
     expect(action.closest('.absolute')).toBeNull()
   })
 

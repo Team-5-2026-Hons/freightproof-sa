@@ -51,15 +51,12 @@ function EvidenceImage({ act, caption, lookup }: { act: EvidenceAct; caption: st
     error: lookup.artifactError,
     onRetry: lookup.onRetryArtifacts,
   }
-  // The receiver's attestation and the linehaul PDF are documents; every other role is a photograph.
   return isDocumentRole(act.role) ? <EvidenceDocument {...common} /> : <EvidencePhoto {...common} size="compact" />
 }
 
 function EvidenceActBlock({ act, caption, lookup }: { act: EvidenceAct; caption: string; lookup: EvidenceLookup }) {
   return (
     <div className="flex flex-wrap items-start gap-3 pt-1.5">
-      {/* Regular weight: the title above is the headline, and its state and times are detail
-          that must not compete with it. */}
       <div className="min-w-0">
         <p className="text-meta text-on-surf-v">{evidenceStateLabel(act)}</p>
         {evidenceTimeLines(act).map(line => (

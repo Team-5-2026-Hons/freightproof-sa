@@ -4,8 +4,6 @@ import { useSyncExternalStore, type ReactNode } from 'react'
 import { Modal } from './Modal'
 import { Tabs, type Tab } from './Tabs'
 
-// Below this the timeline and a 400px panel cannot both hold a comfortable measure, so
-// the panel stops being permanent and becomes an on-demand overlay instead.
 const DOCKED_QUERY = '(min-width: 1280px)'
 function subscribe(callback: () => void): () => void {
   const query = window.matchMedia(DOCKED_QUERY)
@@ -26,7 +24,6 @@ interface Props {
   title: string
   /** Overlay only. The docked panel is permanent and has nothing to close. */
   onClose: () => void
-  /** Overlay only: whether the on-demand panel is currently raised. */
   overlayOpen: boolean
   ariaLabel: string
   children: ReactNode
@@ -49,9 +46,6 @@ export function DetailPanel({ tabs, active, onSelect, title, onClose, overlayOpe
       <div className="shrink-0 border-b border-outline-v/30 p-4">
         <Tabs tabs={tabs} active={active} onChange={onSelect} panelId={panelId} ariaLabel={ariaLabel} size="sm" />
       </div>
-      {/* Not a tab stop, and no focus ring: every tab's content has focusable controls, so keyboard scrolling
-          already works. A closing modal can still hand focus back to this scroller (it was the active element
-          when the modal opened), and the global :focus-visible ring would then outline the whole panel. */}
       <div id={panelId} role="tabpanel" aria-labelledby={`tab-${active}`} className="min-h-0 flex-1 overflow-y-auto p-5 focus-visible:outline-none">
         {children}
       </div>

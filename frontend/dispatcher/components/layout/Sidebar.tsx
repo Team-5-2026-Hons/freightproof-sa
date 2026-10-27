@@ -20,8 +20,6 @@ interface NavItem {
   icon: IconName
   activePatterns: string[]
   adminOnly?: boolean
-  /** Lit only on the exact path. `/trips` is a prefix of `/trips/new` and `/trips/[id]`, which
-   *  belong to Create Trip and to whichever list the trip was opened from. */
   exact?: boolean
 }
 
@@ -30,8 +28,6 @@ interface NavGroup {
   items: NavItem[]
 }
 
-// Create Trip is not in NAV_GROUPS: it is the sidebar's one primary action, so it is
-// rendered as a button above the navigation rather than as a row inside it.
 const CREATE_TRIP_ITEM: NavItem = {
   label: 'Create Trip',
   href: ROUTES.tripNew,
@@ -44,7 +40,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Overview',
     items: [
       { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: [ROUTES.home] },
-      // Analytics and parcel search are read-only and organisation-scoped.
       { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
     ],
   },
@@ -54,9 +49,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Active Trips', href: ROUTES.trips, icon: 'route', activePatterns: [ROUTES.trips], exact: true },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
       { label: 'Parcel Search', href: ROUTES.parcels, icon: 'box', activePatterns: [ROUTES.parcels] },
-      // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
-      // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
-      // route too, so the entry stays lit while a dispatcher works one exception.
       { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
       { label: 'Incidents',    href: ROUTES.incidents,  icon: 'siren', activePatterns: ['/incidents'] },
     ],
@@ -69,9 +61,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Deliberately unlabelled. A precinct belongs under neither TRIPS nor FLEET, and
-    // inventing a group name before there is a second resident would be guessing at a
-    // taxonomy. When organisations or partners arrive, give this group a label.
     items: [
       { label: 'Precincts', href: ROUTES.precincts, icon: 'map', activePatterns: ['/precincts'] },
     ],
@@ -92,11 +81,8 @@ function isActive(pathname: string, patterns: string[], exact = false): boolean 
   })
 }
 
-// Shared by every interactive element on the dark surface so keyboard focus looks the same.
 const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-white/40'
 
-// Light-blue fill on the dark surface, the same `sec` container pair the Chip uses for
-// in-progress states. A solid fill, not a leading bar: it reads as a label, not a selection.
 const FORENSIC_BADGE: NavBadge = {
   text: 'Forensic',
   href: ROUTES.settingsSection(SETTINGS_SECTION_IDS.forensic),
@@ -106,15 +92,11 @@ const FORENSIC_BADGE: NavBadge = {
 
 interface NavBadge {
   text: string
-  /** Where the pill goes. A separate link from the row: anchors cannot nest. */
   href: string
-  /** Accessible name of the pill link. */
   label: string
-  /** Accessible name of the row in the icon rail, where the pill shrinks to a dot. */
   collapsedLabel: string
 }
 
-// Room the pill takes at the row's end, so a long label never runs underneath it.
 const BADGE_GUTTER = 'pr-[88px]'
 
 function NavLink({ item, pathname, onClose, collapsed, badge }: {
@@ -122,7 +104,6 @@ function NavLink({ item, pathname, onClose, collapsed, badge }: {
   pathname: string
   onClose?: () => void
   collapsed?: boolean
-  /** Status pill at the row's end; becomes a dot on the icon in the collapsed rail. */
   badge?: NavBadge
 }) {
   const active = isActive(pathname, item.activePatterns, item.exact)
@@ -140,8 +121,6 @@ function NavLink({ item, pathname, onClose, collapsed, badge }: {
           FOCUS_RING,
           collapsed && 'justify-center px-0 h-10',
           badge && !collapsed && BADGE_GUTTER,
-          // Raised pill rather than a recolour: a lighter fill with an inner hairline reads
-          // as "lifted" on the dark surface without introducing a second accent colour.
           active
             ? 'bg-white/[0.10] ring-1 ring-inset ring-white/[0.08] text-white font-medium'
             : 'text-white/60 hover:text-white hover:bg-white/[0.06]',
@@ -153,7 +132,6 @@ function NavLink({ item, pathname, onClose, collapsed, badge }: {
             s={16}
             className={cn('transition-colors', active ? 'text-white' : 'text-white/50 group-hover:text-white/80')}
           />
-          {/* The ring matches the sidebar surface so the dot reads as cut out of the icon. */}
           {badge && collapsed && (
             <span aria-hidden className="absolute -top-1 -right-1 w-[8px] h-[8px] rounded-full bg-sec-c ring-2 ring-primary" />
           )}
@@ -178,8 +156,6 @@ function NavLink({ item, pathname, onClose, collapsed, badge }: {
   )
 }
 
-// The primary action. White-on-dark is the inverse of the app's near-black primary
-// Button, so it reads as the same design language while being the brightest thing here.
 function CreateTripButton({ pathname, onClose, collapsed }: {
   pathname: string
   onClose?: () => void
@@ -230,7 +206,6 @@ function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle:
 
 interface SidebarContentProps {
   onClose?: () => void
-  /** Icon-only rail. Desktop-only — the mobile drawer never collapses. */
   collapsed?: boolean
   /** Renders the collapse/expand control when provided (desktop instance only). */
   onToggleCollapse?: () => void
@@ -240,8 +215,6 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
   const pathname = usePathname()
   const { user } = useAuth()
   const { canViewForensics, forensicOn } = useForensicMode()
-  // Gated on the role as well as the switch: a stale `fp.forensicOn` in a demoted user's
-  // storage must not advertise a mode they can no longer use.
   const forensicBadge = canViewForensics && forensicOn ? FORENSIC_BADGE : undefined
   const visibleGroups = NAV_GROUPS
     .map(group => ({
@@ -251,19 +224,13 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
     .filter(group => group.items.length > 0)
 
   return (
-    // No background of its own: the dark surface and rounded edge belong to the frame in
-    // DispatcherShell (and to the drawer wrapper below), so this column is just content.
     <div
       className={cn(
         'flex flex-col h-full shrink-0 transition-[width] duration-200 motion-reduce:transition-none',
         collapsed ? 'w-[68px]' : 'w-[256px]',
       )}
     >
-      {/* Header — logo mark + wordmark, with the collapse control on the right */}
-      {/* px-3 lines the logo and collapse control up with the Create Trip button's edges below. */}
       <div className={cn('flex items-center gap-3 h-16', collapsed ? 'justify-center' : 'px-3')}>
-        {/* A paper tile, not a translucent one: the mark is an ink shield, which would
-            vanish on the dark sidebar without a light surface behind it. */}
         <div className="w-9 h-9 rounded-lg bg-surf flex items-center justify-center shrink-0">
           <LogoMark size={22} />
         </div>
@@ -291,7 +258,6 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
         )}
       </div>
 
-      {/* In the icon rail there is no room beside the logo, so the expand control sits beneath it. */}
       {collapsed && onToggleCollapse && (
         <div className="flex justify-center pb-2">
           <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />
@@ -302,11 +268,8 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
         <CreateTripButton pathname={pathname} onClose={onClose} collapsed={collapsed} />
       </div>
 
-      {/* Nav groups — separated by spacing, not rules */}
       <nav aria-label="Primary" className="flex-1 px-3 pb-2 overflow-y-auto">
         {visibleGroups.map(group => (
-          // Keyed on the first item's href, not the label: groups may be unlabelled,
-          // and two unlabelled groups would otherwise collide on an `undefined` key.
           <div key={group.label ?? group.items[0].href} className={cn('flex flex-col gap-0.5', collapsed ? 'mt-3' : 'mt-1')}>
             {group.label && !collapsed && (
               <div className="text-[11px] font-[500] text-white/45 px-3 pt-3 pb-1">
@@ -326,7 +289,6 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
         ))}
       </nav>
 
-      {/* Footer — settings, then the profile menu (who is signed in, log out, live status) */}
       <div className="px-3 pb-3 flex flex-col gap-0.5">
         <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} badge={forensicBadge} />
 
@@ -346,12 +308,10 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
 
   return (
     <>
-      {/* Desktop sidebar — always visible at md+, collapsible to an icon rail */}
       <div className="hidden md:block">
         <SidebarContent collapsed={collapsed} onToggleCollapse={toggle} />
       </div>
 
-      {/* Mobile drawer overlay — always full width, never collapses */}
       {mobileOpen && (
         <div className="fixed inset-0 z-overlay md:hidden">
           <div
@@ -359,8 +319,6 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             onClick={onMobileClose}
             aria-hidden
           />
-          {/* The drawer floats outside DispatcherShell's frame, so it carries the same
-              surface, radius and hairline itself. */}
           <div className="relative h-full p-3">
             <div className="h-full bg-primary rounded-xl ring-1 ring-white/10 shadow-level-6 overflow-hidden">
               <SidebarContent onClose={onMobileClose} />

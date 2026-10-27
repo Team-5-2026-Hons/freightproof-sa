@@ -5,9 +5,7 @@ import { compareInstants } from './timeline'
 import type { AuditPackManifest } from './types'
 
 export interface CargoTotals {
-  /** Sum of the declared values, as a decimal string for formatRand; null when none was declared. */
   declaredValue: string | null
-  /** Consignments that carried a declared value: fewer than `consignments` means the sum is partial. */
   valued: number
   consignments: number
   parcels: number
@@ -15,7 +13,6 @@ export interface CargoTotals {
 
 export function cargoTotals(manifest: AuditPackManifest): CargoTotals {
   const valued = manifest.consignments.filter((c) => c.declared_value != null)
-  // Summed in cents so R 0.10 + R 0.20 prints as R 0.30, not R 0.30000000000000004.
   const cents = valued.reduce((total, c) => total + Math.round(Number(c.declared_value) * 100), 0)
   return {
     declaredValue: valued.length > 0 ? (cents / 100).toFixed(2) : null,

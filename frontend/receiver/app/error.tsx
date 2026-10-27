@@ -12,7 +12,6 @@ interface ErrorPageProps {
 
 export default function ErrorPage({ error, reset }: ErrorPageProps) {
   useEffect(() => {
-    // Name and digest only — a message could quote the URL.
     console.warn('[receiver] unexpected render error:', error.name, error.digest)
   }, [error])
 

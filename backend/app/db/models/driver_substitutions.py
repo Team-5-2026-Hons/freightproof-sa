@@ -24,8 +24,6 @@ from sqlalchemy.sql import func
 
 from app.db.models import Base
 
-# Stored as plain strings (repo convention, no native PG enums); these mirror
-# schemas/driver_substitutions.py and are spelled out here because db/ never imports app code.
 REQUEST_STATES = ("pending", "completed", "cancelled")
 CONFIRMATION_ROLES = ("outgoing", "incoming")
 NOTICE_KINDS = ("arranged", "cancelled", "completed")
@@ -48,7 +46,6 @@ class DriverSubstitutionRequest(Base):
 
     __tablename__ = "driver_substitution_requests"
     __table_args__ = (
-        # One live arrangement per trip. Terminal rows are history and may repeat.
         Index(
             "uq_dsub_requests_one_pending_per_trip", "trip_id", unique=True,
             postgresql_where=text("state = 'pending'"),
@@ -71,7 +68,6 @@ class DriverSubstitutionRequest(Base):
     )
     request_format: Mapped[str] = mapped_column(String(20), nullable=False, server_default="planned_v1")
     reservation_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Legacy planning metadata stays intact; immediate requests explicitly have no plan.
     exchange_label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     exchange_latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     exchange_longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
@@ -82,7 +78,6 @@ class DriverSubstitutionRequest(Base):
     arranged_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", name="fk_dsub_requests_arranged_by_user_id"), nullable=False
     )
-    # Advances on every accepted confirmation or terminal change; stale clients refetch.
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     state: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
     replacement_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -131,15 +126,9 @@ class DriverSubstitutionConfirmation(Base):
     latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     accuracy_metres: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    # Typed snapshots of what the driver declared (SealCheck list, covered vehicle ids).
     confirmed_vehicle_ids: Mapped[Any] = mapped_column(JSONB, nullable=False)
     seal_checks: Mapped[Any] = mapped_column(JSONB, nullable=False)
     discrepancy_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # FP-83 C3 CP4: this capture's phone-versus-tracker comparison, the same
-    # ActionLocationAssessment shape a checkpoint stores (built by
-    # evidence.location_assessment.build_capture_assessment, which needs no phase or precinct). A
-    # missing phone fix or tracker outage is recorded explicitly as proximity "unverified" with
-    # its reasons; NULL means the comparison itself could not be built (logged), never "fine".
     action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -266,7 +255,6 @@ class LateDriverEvidence(Base):
         CheckConstraint("custody_sequence >= 0", name="ck_late_evidence_sequence"),
         CheckConstraint(_in_list("kind", LATE_EVIDENCE_KINDS), name="ck_late_evidence_kind"),
         CheckConstraint(_in_list("status", LATE_EVIDENCE_STATUSES), name="ck_late_evidence_status"),
-        # An acknowledged item always says who reviewed it and when; an unreviewed one never does.
         CheckConstraint(
             "(status = 'acknowledged') = (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL)",
             name="ck_late_evidence_review_complete",
@@ -280,10 +268,8 @@ class LateDriverEvidence(Base):
     driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_late_evidence_driver_id"), nullable=False
     )
-    # The custody period the driver CLAIMED for the capture; verified against participation.
     custody_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    # The typed original payload and its hash, kept verbatim for review.
     evidence_json: Mapped[Any] = mapped_column(JSONB, nullable=False)
     payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     original_idempotency_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -361,7 +347,6 @@ class DriverSubstitutionCorrection(Base):
         UUID(as_uuid=True), ForeignKey("blockchain_receipts.id", name="fk_dsub_corrections_receipt_id"),
         nullable=True,
     )
-    # `created_at` is the server-recorded time the contract calls recorded_at.
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -381,8 +366,6 @@ class DriverSubstitutionOperation(Base):
         CheckConstraint(
             "num_nonnulls(actor_driver_id, actor_user_id) = 1", name="ck_dsub_operations_one_actor"
         ),
-        # Two partial indexes because exactly one of the actor columns is ever set, and a
-        # NULL actor would otherwise defeat a composite unique key.
         Index(
             "uq_dsub_operations_driver_action_key", "actor_driver_id", "action", "client_request_id",
             unique=True, postgresql_where=text("actor_driver_id IS NOT NULL"),
@@ -412,7 +395,6 @@ class DriverSubstitutionOperation(Base):
         UUID(as_uuid=True), ForeignKey("late_driver_evidence.id", name="fk_dsub_operations_late_evidence_id"),
         nullable=True,
     )
-    # The typed, safe-to-replay result snapshot for an exact retry.
     result_json: Mapped[Any] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

@@ -8,19 +8,15 @@ const HINT_ID = 'create-trip-disabled-hint'
 export interface SummaryRow {
   label: string
   value: string
-  /** Identifiers, plates, times: tabular figures (DESIGN_SYSTEM.md §5.2). */
   numeric?: boolean
 }
 
 export interface CreateTripSummaryProps {
   rows: readonly SummaryRow[]
-  /** One sentence on what the journey lock will cover. */
   canCreate: boolean
   busy: boolean
-  /** Shown above the CTA after an attempt with invalid fields. */
   errorText: string | null
   onCreate: () => void
-  /** Why the CTA is disabled, when it is. Linked to the button for screen readers. */
   disabledHint?: string | null
 }
 
@@ -33,7 +29,6 @@ export function CreateTripSummary(
       aria-label="Trip summary"
       className="w-full shrink-0 rounded-lg bg-primary p-[22px] shadow-level-5"
     >
-      {/* 60% white, not the old wizard's 40%: 4.5:1 on --primary for 11px text. */}
       <h2 className="mb-[14px] text-[11px] font-[700] uppercase tracking-[0.1em] text-white/60">Trip summary</h2>
       <dl>
         {rows.map(row => (

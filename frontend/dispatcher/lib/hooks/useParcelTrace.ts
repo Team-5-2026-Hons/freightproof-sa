@@ -47,7 +47,6 @@ export function useParcelTrace(): ParcelTraceState {
 
   const failure = useCallback((err: unknown): void => {
     if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
-      // Withdrawal outranks continuity: a revoked account must not retain old evidence.
       setTrace(null); setLookup(null)
       setError('This parcel evidence is unavailable to your account. Sign in again or search for another barcode.')
     } else {

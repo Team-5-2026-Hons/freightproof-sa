@@ -43,7 +43,6 @@ async def get_lane_metrics(
     validate_month_range(start_month, end_month)
 
     view = LaneAnalyticsView
-    # Columns, not entities — see rollup.sum_over_months on the identity map.
     stmt = (
         select(
             view.origin_precinct_id,

@@ -29,15 +29,7 @@ from app.orchestration.consignments.sync import (
     get_assigned_trip_reference,
 )
 
-# Sentinel distinguishing "no org lookup expected" (accnum="" in the local
-# dummy fixtures below, so fetch_and_sync_consignment never queries for an
-# Organization) from "org lookup expected, resolving to this value" (used by
-# tests driving real MOCK_WAYBILLS entries, which carry a non-empty accnum).
 _NO_ORG_CALL = object()
-
-# ---------------------------------------------------------------------------
-# Shared fixture data
-# ---------------------------------------------------------------------------
 
 _ORG_ID = uuid.uuid4()
 _TRIP_ID = uuid.uuid4()
@@ -143,7 +135,6 @@ def _make_db_mock(
     results.append(barcode_result)
 
     db = MagicMock()
-    # execute is a coroutine so it needs AsyncMock; side_effect advances through results in order.
     db.execute = AsyncMock(side_effect=results)
     db.add = MagicMock()
     db.flush = AsyncMock()
@@ -157,10 +148,6 @@ def _make_pp_client_patch(waybill: PPWaybillResponse = _WAYBILL) -> MagicMock:
     factory = MagicMock(return_value=client)
     return factory
 
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -176,20 +163,15 @@ async def test_new_consignment_is_inserted():
             trip_id=_TRIP_ID,
         )
 
-    # A new Consignment should have been added, not an update path.
     assert db.add.called, "db.add must be called for a new consignment"
 
-    # The returned object must be the Consignment that was added.
     added_obj = db.add.call_args_list[0][0][0]
     assert isinstance(added_obj, Consignment)
     assert added_obj.parcel_perfect_reference == _PP_REF
     assert added_obj.parcel_count_expected == 2
     assert added_obj.trip_id == _TRIP_ID
-    # accnum defaults to "" in this file's local waybill fixture, so no
-    # Organization lookup fires and client_organization_id stays None.
     assert added_obj.client_organization_id is None
 
-    # flush must be awaited so the FK is resolved before Parcel inserts.
     db.flush.assert_awaited_once()
 
     assert result.consignment is added_obj
@@ -205,7 +187,6 @@ async def test_existing_consignment_is_updated_not_duplicated():
     existing.pp_raw_json = {}
     existing.parcel_count_expected = 0
 
-    # All barcodes already present — no new Parcel rows should be added.
     fetchall_rows = [("WAY0010001",), ("WAY0010002",)]
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
@@ -216,10 +197,8 @@ async def test_existing_consignment_is_updated_not_duplicated():
             pp_reference=_PP_REF,
         )
 
-    # No new Consignment or Parcel rows should have been added.
     assert not db.add.called, "db.add must NOT be called when all rows already exist"
 
-    # Mutable fields must be refreshed on the existing row.
     assert existing.parcel_count_expected == 2
     assert existing.pp_raw_json != {}, "pp_raw_json must be updated"
 
@@ -235,7 +214,6 @@ async def test_new_parcels_inserted_for_existing_consignment():
     existing.pp_raw_json = {}
     existing.parcel_count_expected = 0
 
-    # Only the first barcode is already in the DB.
     fetchall_rows = [("WAY0010001",)]
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
@@ -246,7 +224,6 @@ async def test_new_parcels_inserted_for_existing_consignment():
             pp_reference=_PP_REF,
         )
 
-    # Exactly one Parcel add call — for the second barcode only.
     assert db.add.call_count == 1, f"Expected 1 db.add call, got {db.add.call_count}"
     added_parcel = db.add.call_args_list[0][0][0]
     assert isinstance(added_parcel, Parcel)
@@ -262,11 +239,10 @@ async def test_trip_id_set_on_existing_consignment_if_none():
 
     existing = MagicMock(spec=Consignment)
     existing.id = uuid.uuid4()
-    existing.trip_id = None  # No trip yet
+    existing.trip_id = None
     existing.pp_raw_json = {}
     existing.parcel_count_expected = 0
 
-    # Both barcodes already present — no new Parcel inserts.
     fetchall_rows = [("WAY0010001",), ("WAY0010002",)]
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch()
@@ -278,7 +254,6 @@ async def test_trip_id_set_on_existing_consignment_if_none():
             trip_id=new_trip_id,
         )
 
-    # trip_id must be assigned to the previously unlinked consignment.
     assert existing.trip_id == new_trip_id
 
 
@@ -298,9 +273,7 @@ async def test_pp_error_propagates():
                 pp_reference=_PP_REF,
             )
 
-    # No DB interaction of any kind should have happened.
     assert not db.add.called, "db.add must not be called when PP raises"
-    # db.execute should not have been called either (PP fails before any DB query).
     assert not db.execute.called, "db.execute must not be called when PP raises"
 
 
@@ -315,7 +288,6 @@ async def test_declared_value_coerced_to_decimal():
     """
     db = _make_db_mock(scalar_one_or_none=None, fetchall_rows=[])
 
-    # Capture every object passed to db.add so we can find the Consignment row.
     added_objects: list[object] = []
     db.add.side_effect = added_objects.append
 
@@ -327,10 +299,6 @@ async def test_declared_value_coerced_to_decimal():
     consignment_row = next(obj for obj in added_objects if isinstance(obj, Consignment))
     assert consignment_row.declared_value == Decimal("1000.00")
 
-
-# ---------------------------------------------------------------------------
-# accnum resolution / unit count / manifest number
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -410,12 +378,8 @@ async def test_refresh_does_not_blank_unit_count():
     existing.pp_raw_json = {}
     existing.parcel_count_expected = 0
     existing.unit_count_expected = 4
-    existing.client_organization_id = uuid.uuid4()  # already resolved — must not be re-queried
+    existing.client_organization_id = uuid.uuid4()
 
-    # All barcodes already present — no new Parcel rows should be added.
-    # No org_lookup_result: an already-resolved client org skips the
-    # Organization query entirely, so the execute chain is exactly
-    # [consignment lookup, barcode lookup].
     fetchall_rows = [("WAY0010001",), ("WAY0010002",), ("WAY0010003",), ("WAY0010004",), ("WAY0010005",)]
     db = _make_db_mock(scalar_one_or_none=existing, fetchall_rows=fetchall_rows)
     pp_factory = _make_pp_client_patch(waybill=MOCK_WAYBILLS["WAY001"])
@@ -424,24 +388,11 @@ async def test_refresh_does_not_blank_unit_count():
         result = await fetch_and_sync_consignment(db=db, pp_reference="WAY001")
 
     assert result.consignment.unit_count_expected == 4
-    # The org lookup must NOT fire for an already-attributed consignment —
-    # only the consignment lookup and the barcode lookup hit the DB.
     assert db.execute.await_count == 2, (
         f"expected 2 db.execute calls (consignment + barcodes), got {db.execute.await_count}"
     )
     assert result.warning is None
 
-
-# ---------------------------------------------------------------------------
-# Cross-trip reuse guard
-#
-# Without this guard, create_trip's own post-sync step (trips/creation.py:
-# `result.consignment.pickup_stop_id = trip_stops[0].id`) silently rewrites an
-# already-anchored trip's consignment onto a second trip's stops the moment the
-# same pp_reference is entered twice - corrupting the first trip's phase-plan
-# basis. This is the seeded MOCKWB000x references becoming resolvable in PP
-# turning a previously-unreachable code path live.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -480,7 +431,6 @@ async def test_reuse_on_a_different_trip_is_rejected():
     assert exc_info.value.pp_reference == _PP_REF
     assert exc_info.value.trip_reference == "FP-20260101-OWNER01"
     assert "FP-20260101-OWNER01" in str(exc_info.value)
-    # Rejected before any mutation - no Consignment/Parcel row is touched.
     assert not db.add.called, "db.add must not be called when reuse is rejected"
     assert not db.flush.called, "db.flush must not be called when reuse is rejected"
 

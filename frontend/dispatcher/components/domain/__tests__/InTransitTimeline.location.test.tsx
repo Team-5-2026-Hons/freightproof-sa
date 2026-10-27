@@ -9,8 +9,6 @@ const ORIGIN = 'Cape Town DC'
 const DESTINATION = 'Paarl Depot'
 const DEPARTED_AT = '2026-01-02T01:00:00Z'
 
-// A completed departure phase that precedes the leg: the only source legDepartureAt
-// is allowed to date the leg from (its own created_at is plan-generation time).
 const departure = makePhase('departure', {
   phase_event_id: 'phase-event-departure' as PhaseEventId,
   sequence_number: 3,
@@ -43,11 +41,6 @@ function makeException(overrides: Partial<TripException> = {}): TripException {
   }
 }
 
-// The journey mini-timeline is the always-visible part of a transit row (TripTimeline
-// renders it as persistentContent), so what it says about departure and arrival must
-// be exactly what the ledger can prove: departure dated from the preceding departure
-// phase, arrival from this leg's own completion, and an honest third state before
-// either has happened.
 describe('InTransitTimeline: journey nodes', () => {
   it('reads "Awaiting departure" and nothing else when no departure phase has completed', () => {
     render(
@@ -127,16 +120,12 @@ describe('InTransitTimeline: journey nodes', () => {
     const marker = screen.getByTestId('transit-exception-marker')
     expect(within(marker).getByText('Panic Button')).toBeInTheDocument()
     expect(within(marker).getByText('Critical')).toBeInTheDocument()
-    // The description, source and review link belong to the full card in the phase's
-    // exception branch; repeating them here would duplicate what that card already shows.
     expect(screen.queryByText('Driver reported feeling unsafe at a roadside stop.')).not.toBeInTheDocument()
     const labels = screen.getAllByText(/Departed|Panic Button|Arrived/).map(node => node.textContent)
     expect(labels[0]).toContain('Departed')
     expect(labels[labels.length - 1]).toContain('Arrived')
   })
 
-  // This leg must never claim a continuous live route or invent a specific future
-  // integration (weighbridges, checkpoints) — the generic absence line is the honest one.
   it('shows the generic honest-absence line rather than naming a specific future integration', () => {
     render(
       <InTransitTimeline
@@ -153,10 +142,6 @@ describe('InTransitTimeline: journey nodes', () => {
   })
 })
 
-// The arrival fix is shown, but the ABSENCE of a destination verdict is the required
-// behaviour: an in-transit leg's stop is its ORIGIN, so drawing a boundary against an
-// arrival fix would compare it to the wrong fence. Kept behind the card's disclosure,
-// separate from the journey above.
 describe('InTransitArrivalLocation: recorded location at arrival', () => {
   it('renders nothing when no fix was recorded', () => {
     const { container } = render(
@@ -183,7 +168,6 @@ describe('InTransitArrivalLocation: recorded location at arrival', () => {
     expect(screen.getByText('No boundary recorded for this phase')).toBeInTheDocument()
   })
 
-  // A stored verdict always wins, even on a transit leg (verdictFor's documented rule).
   it('honours a stored verdict on a transit leg rather than forcing the transit default', () => {
     render(
       <InTransitArrivalLocation

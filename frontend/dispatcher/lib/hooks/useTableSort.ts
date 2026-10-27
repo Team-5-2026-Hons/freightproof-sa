@@ -5,14 +5,12 @@ import type { TableSort } from '@/components/ui/Table'
 import { toggleSort, type Sort, type SortDir } from '@/lib/sort/sort-rows'
 
 interface TableSortOptions<K extends string> {
-  /** The column ids that can sort; a click on anything else is ignored. */
   keys: readonly K[]
   firstDir: (key: K) => SortDir
 }
 
 export interface UseTableSort<K extends string, S extends Sort<K> | undefined> {
   sort: S
-  /** The Table's own shape for the sorted column, or undefined while nothing is sorted. */
   tableSort: TableSort | undefined
   onSort: (columnId: string) => void
 }

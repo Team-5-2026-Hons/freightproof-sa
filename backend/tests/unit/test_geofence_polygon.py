@@ -14,7 +14,6 @@ _BOX = [[-29.7937, 30.9815], [-29.7937, 30.9825], [-29.7947, 30.9825], [-29.7947
 
 
 def _outline_precinct(radius: int = 5000) -> Precinct:
-    # A huge radius on purpose: if the circle were consulted, every fix below would pass.
     return Precinct(
         id=uuid.uuid4(), name="Outline Depot", principal_organization_id=uuid.uuid4(),
         latitude=Decimal("-29.7942"), longitude=Decimal("30.9820"),
@@ -34,7 +33,6 @@ def test_fix_inside_outline_is_confirmed_at_zero_distance():
 
 
 def test_fix_just_outside_outline_is_in_the_tolerance_band():
-    # ~29 m east of the east edge (0.0003° lng at -29.79°).
     verdict = evaluate_geofence(TrackerFix(lat=-29.7942, lng=30.9828), _outline_precinct(), tolerance_metres=_TOLERANCE)
 
     assert verdict.confirmed is True
@@ -43,7 +41,6 @@ def test_fix_just_outside_outline_is_in_the_tolerance_band():
 
 
 def test_fix_beyond_tolerance_is_not_confirmed_even_inside_the_old_radius():
-    # ~97 m east of the edge — well inside the 5 km radius that is no longer the fence.
     verdict = evaluate_geofence(TrackerFix(lat=-29.7942, lng=30.9835), _outline_precinct(), tolerance_metres=_TOLERANCE)
 
     assert verdict.confirmed is False

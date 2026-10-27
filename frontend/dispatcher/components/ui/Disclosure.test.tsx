@@ -38,7 +38,6 @@ describe('Disclosure', () => {
     renderRoute()
     const summary = screen.getByText('Route').closest('summary')!
 
-    // Browsers turn Enter and Space on a summary into a click, which user-event does not model.
     summary.focus()
     expect(summary).toHaveFocus()
     fireEvent.click(summary)
@@ -69,7 +68,6 @@ describe('Disclosure', () => {
 
     await userEvent.click(screen.getByText('Route'))
     expect(onOpenChange).toHaveBeenCalledWith(false)
-    // Controlled: it stays as told, and nothing is remembered on the caller's behalf.
     expect(details().open).toBe(true)
     expect(localStorage.getItem(KEY)).toBeNull()
 

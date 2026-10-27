@@ -21,8 +21,6 @@ from app.db.models.enums import AnchorStatus, AuditPackAccessEventType
 class AuditPack(Base):
     __tablename__ = "audit_packs"
     __table_args__ = (
-        # AP1, AP2… per trip; the unique pair makes two concurrent issues collide in the
-        # database instead of both becoming "AP2".
         UniqueConstraint("trip_id", "pack_version", name="uq_audit_packs_trip_version"),
         Index("uq_audit_packs_token_hash", "token_hash", unique=True),
         Index("ix_audit_packs_trip_id", "trip_id"),
@@ -30,11 +28,9 @@ class AuditPack(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False)
-    # Set for a single-consignment pack; NULL means the whole trip.
     consignment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("consignments.id"), nullable=True
     )
-    # Issuing operator — every dispatcher read is scoped by it.
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
@@ -44,17 +40,11 @@ class AuditPack(Base):
     recipient_name: Mapped[str] = mapped_column(String(200), nullable=False)
     recipient_organization: Mapped[str] = mapped_column(String(200), nullable=False)
     recipient_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
-    # SHA-256 of "<pack id>:<password>" (FP-291b). Set only when recipient_email is: the
-    # password is emailed alongside the share link at issue and never stored raw.
     password_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     password_failed_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
-    # Set once failed attempts hit the cap; cleared automatically once the window passes,
-    # since there is no "ask for a new one" recovery path for a password mailed only once.
     password_locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     include_location_trail: Mapped[bool] = mapped_column(Boolean, nullable=False)
     include_full_driver_id: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    # The frozen snapshot every rendering is produced from. Holds personal data, so it
-    # stays here in af-south-1; only manifest_sha256 (inside the seal) reaches Hedera.
     manifest_version: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     manifest_json: Mapped[Any] = mapped_column(JSONB, nullable=False)
     manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -62,16 +52,11 @@ class AuditPack(Base):
     pdf_storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     pdf_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     pdf_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Fail-open like phase anchors: a Hedera outage must not stop an operator sending
-    # evidence to an insurer, but a failed seal is shown as failed, never as sealed.
     anchor_status: Mapped[AnchorStatus] = mapped_column(String(20), nullable=False)
     blockchain_receipt_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("blockchain_receipts.id"), nullable=True
     )
-    # SHA-256 of the share-link token; the raw token is returned once and never stored.
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    # Set in Python, not by server default: it is part of the anchored seal payload, so
-    # the value hashed must be exactly the value stored.
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -151,8 +136,6 @@ class IncidentDeclaration(Base):
     exception_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exceptions.id"), nullable=True
     )
-    # The investigation this declaration belongs to. Nullable: declarations made before
-    # incidents existed stay trip-scoped, exactly as they were declared.
     incident_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("incidents.id"), nullable=True
     )

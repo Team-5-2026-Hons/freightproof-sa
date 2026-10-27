@@ -48,8 +48,6 @@ export function Incident({ token, manifest, onSelect }: { token: string; manifes
   const incident = manifest.incident
   if (!incident) return null
   const declarations = manifest.declarations ?? []
-  // A hijacking recorded by the dispatcher (a phone call, say) has no critical exception behind it:
-  // it is the operator's report, so it is labelled as one and has nothing to jump to or to review.
   const declaredByOperator = incident.basis === 'investigation'
   return (
     <Card
@@ -171,7 +169,6 @@ export function Vehicles({ manifest }: { manifest: AuditPackManifest }) {
           <Eyebrow as="h4" className="mb-1 mt-4">Record changes during the trip</Eyebrow>
           <ul className="space-y-1 text-body">
             {manifest.record_changes.map((c, i) => (
-              // Index in the key: one record edited twice in the same instant would otherwise collide.
               <li key={`${c.subject_id}-${c.changed_at}-${i}`}>
                 {humanise(c.subject)} · {c.changed_fields.join(', ') || humanise(c.event_type)} · <span className="num">{formatSast(c.changed_at)}</span> <TierBadge tier={c.tier} />
               </li>
@@ -330,8 +327,6 @@ function ConsistencyRow({ label, read, field, viewValue }: { label: string; read
   )
 }
 
-// Compares the fingerprints the ledger-anchored seal commits to with the ones this page was served,
-// so a page whose figures were swapped after sealing shows up even before anyone re-hashes anything.
 function SealSummary({ seal, read }: { seal: PublicPackSeal; read: SealPayloadRead }) {
   if (!seal.seal) {
     return <p className="text-body text-warn">This pack was not sealed on Hedera (status: {humanise(seal.anchor_status)}).</p>
@@ -357,16 +352,13 @@ function SealSummary({ seal, read }: { seal: PublicPackSeal; read: SealPayloadRe
 
 export function Integrity({ manifest, seal }: { manifest: AuditPackManifest; seal: PublicPackSeal }) {
   const [copyState, setCopyState] = useState<{ id: string; copied: boolean } | null>(null)
-  // Memoised: a malformed payload logs a warning, which must not repeat on every render.
   const sealRead = useMemo(() => readSealPayload(seal), [seal])
-  // The reader's own link goes to a known public mirror, never to whatever address the server named.
   const mirror = trustedMirrorBase(seal.hedera_network, seal.mirror_base_url)
   async function copy(id: string, text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text)
       setCopyState({ id, copied: true })
     } catch (error) {
-      // Clipboard access needs a secure page and, on some browsers, a permission.
       console.warn('Could not copy to the clipboard', error)
       setCopyState({ id, copied: false })
     }
@@ -396,8 +388,6 @@ export function Integrity({ manifest, seal }: { manifest: AuditPackManifest; sea
         it was not altered afterwards. It does not prove the events happened as described, or who is at fault.
       </p>
 
-      {/* The receipts themselves are for whoever wants to check without trusting FreightProof: a forensic
-          reviewer, the other side's expert. Complete, but not the first thing a claims handler reads. */}
       <details className="group mt-4 border-t border-outline-v/50 pt-2">
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-body font-semibold text-sec">
           <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
@@ -460,7 +450,6 @@ export function NotShownHere({ manifest }: { manifest: AuditPackManifest }) {
 function investigationEntryText(e: InvestigationEntryRecord): string {
   let text = humanise(e.kind)
   if (e.external_action) text += `: ${humanise(e.external_action)}${e.action_at ? ` at ${formatSast(e.action_at)}` : ''}`
-  // "Assigned → Thandi" and "Opened → open" add nothing the kind does not already say.
   if (e.to_value && e.kind !== 'assigned' && e.kind !== 'opened') text += ` → ${humanise(e.to_value)}`
   if (e.note) text += ` · “${e.note}”`
   return text

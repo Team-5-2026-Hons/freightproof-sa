@@ -6,10 +6,8 @@ import { addFormHref } from '@/lib/fleet/add-form-href'
 import { buildPrefillHref } from '@/lib/trips/prefill'
 import type { AssistantAction, OpenPageAction } from '@shared/lib/types/assistant'
 
-/** The Analytics page opens its chat with this question already typed (B30). */
 export const ANALYTICS_ASK_PARAM = 'ask'
 
-// Per page, the address keys it reads (exceptions: lib/exceptions/view-state.ts; parcels: its page.tsx).
 const PAGE_FILTERS: Partial<Record<OpenPageAction['page'], readonly string[]>> = {
   exceptions: ['severity', 'q'],
   parcels: ['barcode', 'waybill'],
@@ -31,7 +29,6 @@ function pagePath(action: OpenPageAction): string {
   const id = action.record_id
   switch (action.page) {
     case 'dashboard': return ROUTES.home
-    // Live trips are listed on the Dashboard: there is no trips list page.
     case 'trip': return id ? ROUTES.tripDetail(id) : ROUTES.home
     case 'history': return ROUTES.history
     case 'exceptions': return ROUTES.exceptions

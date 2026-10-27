@@ -11,8 +11,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
 
-// Same approach Sidebar.test.tsx uses for useAuth — this suite is about the redirect
-// target after a successful sign-in, not the credential exchange itself.
 vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({
     user: null,
@@ -22,10 +20,6 @@ vi.mock('@/lib/hooks/useAuth', () => ({
   }),
 }))
 
-// LoginPage also imports ProfileUnavailableError directly from AuthContext (for an
-// instanceof check), which otherwise pulls in the real Supabase client and throws
-// without env vars configured for the test runner — see AuthContext.test.tsx for the
-// same issue solved by mocking the client itself instead.
 vi.mock('@/lib/context/AuthContext', () => ({
   ProfileUnavailableError: class ProfileUnavailableError extends Error {},
 }))
@@ -80,8 +74,6 @@ describe('LoginPage return-path redirect', () => {
   })
 
   it('rejects an unsafe saved value and falls back to the default landing page', async () => {
-    // Re-validated on the way out — a stored value is not trusted just because it once
-    // passed validation on the way in.
     localStorage.setItem(RETURN_PATH_KEY, '//evil.com')
     render(<LoginPage />)
 

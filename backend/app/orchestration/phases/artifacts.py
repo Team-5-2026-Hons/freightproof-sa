@@ -62,8 +62,6 @@ async def _assert_artifacts_belong_to_trip(
 
     missing = present - owned.keys()
     if missing:
-        # Sorted so the message is deterministic across runs — this ends up in an
-        # API error body and in test assertions.
         raise ResourceNotFoundError(
             "EvidenceArtifact", ", ".join(sorted(str(m) for m in missing)),
         )
@@ -85,13 +83,9 @@ def _assert_attribution_fits(
     )
     if error is not None:
         raise EvidenceAttributionError(error)
-    # Only the receiver route can produce the confirmation, and it never sets a driver id,
-    # so a driver-made artifact in this field is never the receiver's own.
     if role is EvidenceRole.POD_SIGNATURE and artifact.captured_by_driver_id is not None:
         raise EvidenceAttributionError(
             "A driver's own upload cannot be submitted as the receiver confirmation."
         )
-    # The upload allowlist sniffs the bytes, so mime_type is what the file really is. Checked
-    # per role because attribution alone would let an unattributed photo stand in as the PDF.
     if role is EvidenceRole.LINEHAUL_PDF and artifact.mime_type != PDF:
         raise EvidenceAttributionError("The linehaul PDF must be a PDF file.")

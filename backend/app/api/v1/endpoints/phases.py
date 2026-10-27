@@ -98,9 +98,6 @@ async def next_phase_endpoint(
     "/{phase_event_id}/location-preview",
     response_model=ActionLocationAssessment,
     summary="Compare a fresh phone capture with the vehicle tracker without recording evidence",
-    # Same budget as /complete: the preview writes nothing, but every call is one
-    # outbound Pulsit read on the operator's account, which is exactly the kind of
-    # per-driver fan-out EVIDENCE_WRITE exists to bound.
     dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
 )
 async def preview_phase_location_endpoint(
@@ -127,9 +124,6 @@ async def preview_phase_location_endpoint(
     "/{phase_event_id}/complete",
     response_model=TripDetailResponse,
     summary="Complete a phase (idempotent by idempotency_key)",
-    # Each completion anchors to Hedera. Already idempotent by idempotency_key, so a
-    # retrying client re-reads rather than re-spends — the budget is here for a caller
-    # that varies the key, which idempotency cannot defend against.
     dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
 )
 async def complete_phase_endpoint(
@@ -156,23 +150,12 @@ async def complete_phase_endpoint(
         PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError,
         TripActivationBlockedError, PhaseBlockedError,
     ) as exc:
-        # PhaseTooEarlyError joins the 409 family rather than getting a status of its own:
-        # like the others it means "the request is well-formed, the trip's state says no".
-        # Its detail string is written to be read by the driver, and the PWA surfaces it
-        # verbatim, so the date reaches the person who needs it. TripActivationBlockedError
-        # is here for the same reason, and names the trip standing in the way.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except EvidenceAttributionError as exc:
-        # A cited artifact contradicts its field: a request fault, unlike the sequence
-        # conflicts above, so 422. Raised before any evidence is written.
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except DatabaseUnavailableError:
         raise
     except SQLAlchemyError as exc:
-        # Matches trips.py's create_trip_endpoint exactly — same status constant,
-        # same generic detail string, same logger.exception (not .error) so the
-        # traceback survives: a DB fault here would otherwise fall through to
-        # the framework's bare, unlogged 500.
         logger.exception("Database error during phase completion")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,

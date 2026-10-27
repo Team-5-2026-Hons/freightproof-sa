@@ -33,8 +33,6 @@ class _StubSession:
     def __init__(self, *, raises: Exception | None = None, hangs: bool = False) -> None:
         self._raises = raises
         self._hangs = hangs
-        # Recorded rather than ignored: discarding the connection is what keeps the
-        # endpoint's worst case bounded, so a test can assert it actually happened.
         self.invalidated = False
 
     async def execute(self, statement: Any) -> Any:
@@ -100,8 +98,6 @@ async def _get_health() -> Any:
         return await client.get("/health")
 
 
-# ── Healthy ───────────────────────────────────────────────────────────────────
-
 
 async def test_health_reports_ok_when_both_dependencies_answer():
     _override_db(_StubSession())
@@ -117,8 +113,6 @@ async def test_health_reports_ok_when_both_dependencies_answer():
     assert body["checks"]["redis"]["error"] is None
 
 
-# ── Degraded — the FP-141 acceptance criterion ────────────────────────────────
-
 
 async def test_health_reports_degraded_when_database_is_unreachable():
     _override_db(_StubSession(raises=_db_error()))
@@ -129,7 +123,6 @@ async def test_health_reports_degraded_when_database_is_unreachable():
     body = response.json()
     assert body["status"] == "degraded"
     assert body["checks"]["database"]["status"] == "unavailable"
-    # Redis was fine — a degraded verdict still has to say which dependency broke.
     assert body["checks"]["redis"]["status"] == "ok"
 
 
@@ -203,8 +196,6 @@ async def test_health_discards_the_connection_when_the_database_fails():
     assert session.invalidated is True
 
 
-# ── Timeouts ──────────────────────────────────────────────────────────────────
-
 
 async def test_health_reports_degraded_when_a_dependency_hangs():
     """A hanging dependency is the failure mode the explicit timeouts exist for."""
@@ -229,11 +220,8 @@ async def test_health_probes_run_concurrently(monkeypatch: pytest.MonkeyPatch):
     elapsed = asyncio.get_running_loop().time() - started
 
     assert response.status_code == 503
-    # Well under two ceilings, while still leaving room for a slow CI runner.
     assert elapsed < _TEST_TIMEOUT_SECONDS * 20
 
-
-# ── Version and environment come from config (FP-179) ─────────────────────────
 
 
 async def test_health_reports_version_and_environment_from_settings(

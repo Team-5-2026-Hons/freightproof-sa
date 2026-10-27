@@ -17,23 +17,18 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-// ExceptionSummary reaches the API client, which builds a Supabase client at import time.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// EvidencePhoto's provenance block is forensic-only; this file is about the dispatcher view.
 vi.mock('@/lib/context/ForensicModeContext', () => ({
   useForensicMode: () => ({ canViewForensics: false, forensicOn: false, toggle: vi.fn() }),
 }))
 
-// Most tests here do not look at supporting evidence; the ones that do pass their own map.
 const NO_ARTIFACTS = new Map<string, EvidenceArtifactWithUrl>()
 
-// The card shows who holds a claim relative to the signed-in dispatcher.
 const ME = 'user-me'
-// BatchReviewForm (opened from the panel) toasts through useToast.
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: vi.fn() }) }))
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: ME } }) }))
 
@@ -71,8 +66,6 @@ describe('TripExceptionsPanel filters', () => {
   it('states the size of each filter, so the unselected one is not a blind click', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(10, 2)} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
 
-    // The panel opens filtered to what needs review, so a dispatcher looking at two rows
-    // could not tell whether "All" held another ten or the same two.
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*2$/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^All\s*12$/ })).toBeInTheDocument()
   })
@@ -124,8 +117,6 @@ describe('TripExceptionsPanel filters', () => {
   it('shows a zero rather than dropping the count when nothing is owed', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(12, 0)} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
 
-    // "Twelve recorded, none owed" and "no exceptions at all" are different facts about a
-    // trip, and only one of them is good news.
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^All\s*12$/ })).toBeInTheDocument()
   })
@@ -153,13 +144,11 @@ describe('TripExceptionsPanel filters', () => {
 
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={{ ...trip, exceptions: [linked, tripLevel] }} filter="all" selectedPhaseId={phase.phase_event_id} onFilter={vi.fn()} onClearPhaseFilter={onClearPhaseFilter} onShowInTimeline={onShowInTimeline} returnTo="/trips/x" />)
 
-    // The filter names its phase the way the group headers do, not just "Selected phase".
     expect(screen.getByText(/^Loading · (Origin|Stop|Destination) · /)).toBeInTheDocument()
     expect(screen.getByText('1 of 2 trip exceptions')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^All\s*1$/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show in timeline' }))
-    // The record's own id travels with the phase, so the timeline can reveal that row.
     expect(onShowInTimeline).toHaveBeenCalledWith('linked-loading', phase.phase_event_id)
     fireEvent.click(screen.getByRole('button', { name: /^Show all \d+$/ }))
     expect(onClearPhaseFilter).toHaveBeenCalledOnce()
@@ -223,7 +212,6 @@ describe('TripExceptionsPanel filters', () => {
 
   it('opens the batch form above the list and closes it again', () => {
     const base = tripWith(0, 2)
-    // Pinned explicitly: the fixture's own severity is not what this test is about.
     const exceptions = base.exceptions.map(e => ({ ...e, severity: 'warning' as const, claimed_by_user_id: null }))
 
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={{ ...base, exceptions }} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
@@ -246,7 +234,6 @@ describe('TripExceptionsPanel filters', () => {
 })
 
 
-// The panel is controlled (TripDetailPanel owns the choices), so these need a stateful parent.
 function GroupingHarness({ trip, initialDensity = 'detailed', selectedExceptionId = null, artifactsById = NO_ARTIFACTS, onDensity, onShowInTimeline }: { trip: Trip; initialDensity?: ExceptionDensity; selectedExceptionId?: string | null; artifactsById?: Map<string, EvidenceArtifactWithUrl>; onDensity?: (density: ExceptionDensity) => void; onShowInTimeline?: () => void }) {
   const [grouping, setGrouping] = useState<ExceptionGrouping>('none')
   const [density, setDensity] = useState<ExceptionDensity>(initialDensity)
@@ -304,13 +291,11 @@ it('keeps the frozen batch and typed note when a live claim removes all current 
   fireEvent.change(screen.getByLabelText('Review note (required)'),{target:{value:'Draft for the explicit batch'}})
   view.rerender(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} {...props} trip={{...base,exceptions:[{...row,claimed_by_user_id:'colleague'}]}} />)
   expect(screen.getByLabelText('Review note (required)')).toHaveValue('Draft for the explicit batch')
-  // The form's list is the snapshot it was opened on, even though the live row is no longer eligible.
   expect(screen.getByText('Show all 1')).toBeInTheDocument()
 })
 
 
 describe('selecting one exception', () => {
-  // jsdom has no layout, so scrollIntoView is absent: stub it and read which element asked.
   const scrollIntoView = vi.fn()
   beforeEach(() => {
     scrollIntoView.mockReset()
@@ -329,8 +314,6 @@ describe('selecting one exception', () => {
     expect(within(selected).getByRole('article')).toHaveClass('bg-sec-c/25', EXCEPTION_SELECTION_OUTLINE)
     expect(within(selected).getByRole('article').className).not.toMatch(/(^| )ring-/)
     expect(within(selected).getByRole('article').className).not.toContain('before:')
-    // The caption above each record repeated the card's own phase label and time, so it is gone;
-    // selection is the hairline for the eye and aria-current for assistive tech.
     expect(screen.queryByText(/Selected exception/)).toBeNull()
     expect(screen.queryByText(new RegExp(`Trip ${base.trip_reference} · Raised`))).toBeNull()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
@@ -351,7 +334,6 @@ describe('selecting one exception', () => {
     const view = render(<TripExceptionsPanel {...props} trip={base} />)
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce())
 
-    // A polling refetch hands the panel a new trip object; a reader who has scrolled on must not be yanked back.
     view.rerender(<TripExceptionsPanel {...props} trip={{ ...base, exceptions: [...base.exceptions] }} />)
 
     expect(scrollIntoView).toHaveBeenCalledOnce()
@@ -373,7 +355,6 @@ describe('selecting one exception', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(0, 2)} filter="all" invalidExceptionId="foreign-exception" onFilter={vi.fn()} onClearExceptionSelection={onClearExceptionSelection} returnTo="/trips/x" />)
 
     expect(screen.getByText('This exception is not part of this trip.')).toBeInTheDocument()
-    // A copied link must never look successful: no other record is shown in its place.
     expect(screen.queryByRole('heading', { name: 'Checkpoint Timeout' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show all exceptions' }))
     expect(onClearExceptionSelection).toHaveBeenCalledOnce()
@@ -482,7 +463,6 @@ describe('supporting evidence in the panel footer', () => {
 
     expect(screen.queryByText(/anchor/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /verify integrity/i })).not.toBeInTheDocument()
-    // Nothing else is worth opening, so anchors alone must not add a "Supporting evidence" disclosure.
     expect(screen.queryByText('Supporting evidence')).not.toBeInTheDocument()
   })
 
@@ -614,7 +594,6 @@ describe('compact density', () => {
     expect(within(card()!).getByRole('link', { name: /Review exception/ })).toBeInTheDocument()
     await waitFor(() => expect(card()).toHaveFocus())
     expect(document.getElementById(rowId)).toBeNull()
-    // The card is its own collapse control now, so there is no separate button for it.
     expect(within(card()!).queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument()
   })
 
@@ -719,7 +698,6 @@ describe('sorting records', () => {
     render(<GroupingHarness trip={trip} artifactsById={new Map([['art-early', photo]])} />)
     fireEvent.click(screen.getByRole('button', { name: /reverse order/ }))
 
-    // Recorded later (12:00) but captured first (08:00), so it leads when oldest comes first.
     expect(recordOrder()).toEqual(['photographed', 'plain'])
   })
 

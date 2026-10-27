@@ -25,17 +25,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Supabase Auth manages credentials — hashed_password has no purpose.
     op.drop_column("users", "hashed_password")
 
-    # users.id must equal the Supabase Auth UUID for auth.uid() to resolve.
     op.execute(
         "ALTER TABLE users "
         "ADD CONSTRAINT fk_users_auth_id "
         "FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;"
     )
 
-    # drivers.id follows the same pattern.
     op.execute(
         "ALTER TABLE drivers "
         "ADD CONSTRAINT fk_drivers_auth_id "
@@ -47,7 +44,6 @@ def downgrade() -> None:
     op.execute("ALTER TABLE drivers DROP CONSTRAINT IF EXISTS fk_drivers_auth_id;")
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_users_auth_id;")
 
-    # Restore as nullable — original values are gone, only the column comes back.
     op.add_column(
         "users",
         sa.Column("hashed_password", sa.String(255), nullable=True),

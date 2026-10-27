@@ -153,14 +153,11 @@ def context_for(now: datetime, hints: Sequence[str] = ()) -> str:
 REFUSAL_MESSAGE = "I can't help with that one. Try asking about trips, drivers, trucks, depots or parcels."
 TOOL_CAP_MESSAGE = "That needs more look-ups than I can do in one go. Try asking about one thing at a time."
 CUT_OFF_MESSAGE = "That answer ran too long. Try asking a narrower question."
-# The question hit its time limit (service.QUESTION_DEADLINE_SECONDS): the AI or our records were slow.
 TOO_SLOW_MESSAGE = "That took too long to look up, so I stopped. Try again, or ask about one thing at a time."
-# Sent back to the model, once, when it stated facts without calling a tool.
 FACTS_NEED_A_TOOL = (
     "Your last reply gave figures or details without calling a tool. Every fact must come from a tool "
     "result. Call the right tool and answer from it, or reply without any facts."
 )
-# Shown instead when it does it again: made-up facts never reach the dispatcher.
 NO_SOURCE_MESSAGE = (
     "I couldn't back that answer with our records. Try naming the trip, driver, truck or depot you mean."
 )

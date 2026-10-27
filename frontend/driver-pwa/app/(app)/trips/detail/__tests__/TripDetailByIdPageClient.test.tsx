@@ -15,8 +15,6 @@ vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
 const mockPush = vi.fn()
 const mockSearchParams = { get: vi.fn() }
-// The trip page now keeps the tab bar (decision D3) and resolves place names from the
-// driver's trip list; neither is under test here.
 vi.mock('@/components/layout/BottomNav', () => ({ BottomNav: () => <nav aria-label="Main navigation" /> }))
 vi.mock('@/lib/hooks/useMyTrips', () => ({ useMyTrips: () => ({ trips: [], isLoading: false, loadError: null, reload: () => {} }) }))
 vi.mock('next/navigation', () => ({
@@ -43,15 +41,10 @@ vi.mock('@/lib/api/driver-substitutions', async (importOriginal) => ({
   fetchDriverParticipation: (id: string) => mockFetchDriverParticipation(id),
 }))
 
-// jsdom has no scrollIntoView; TripDetailView's PhaseProgressBar calls it on the current
-// phase's cell. Same stub as ActiveTripPageClient.test.tsx — a jsdom gap, not an app bug.
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
-// Pinned "now": 10:00 in the operator's timezone (UTC+2) on 5 August 2026. Every
-// departure below is expressed relative to this, so the date rules are tested against a
-// fixed calendar rather than whenever the suite happens to run.
 const NOW = new Date('2026-08-05T08:00:00Z')
 const SAME_DAY_08H00 = '2026-08-05T06:00:00Z'
 const SAME_DAY_05H00 = '2026-08-05T03:00:00Z'
@@ -61,8 +54,6 @@ const LAST_WEEK_08H00 = '2026-07-29T06:00:00Z'
 
 const baseTrip = mockTrips.find((t) => (t.id as string) === (TRIP_0041_ID as unknown as string))!
 
-// A trip the dispatcher has assigned but the driver has NOT activated. Its Activation
-// phase is the first unresolved one, so it is what TripDetailView offers as current.
 const createdTrip: Trip = {
   ...baseTrip,
   id: 'trip-created' as Trip['id'],
@@ -76,8 +67,6 @@ const createdTrip: Trip = {
   ),
 }
 
-// One row of GET /trips/me, which is what the activation gate reads. Only the four
-// fields the gate actually looks at need to be real.
 function sibling(
   id: string,
   trip_reference: string,
@@ -96,7 +85,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     vi.setSystemTime(NOW)
     mockSearchParams.get.mockReturnValue('trip-created')
     mockFetchMyTrip.mockResolvedValue(createdTrip)
-    // Default: this trip is the driver's only one, so nothing blocks it.
     mockFetchMyTrips.mockResolvedValue([SELF_ROW])
     mockUseTrip.mockReturnValue({ selectTrip: vi.fn().mockResolvedValue(createdTrip) })
   })
@@ -115,7 +103,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
   it('tells the driver an un-activated trip has not started yet', async () => {
     render(<TripDetailByIdPageClient />)
 
-    // Overhaul 3.3: the upcoming trip page says when it starts and where to begin it.
     expect(await screen.findByText(/Start the trip when you’re at the/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Upcoming trip' })).toBeInTheDocument()
   })
@@ -124,8 +111,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     render(<TripDetailByIdPageClient />)
     await screen.findByText('FP-UPCOMING-1')
 
-    // The full plan sits behind "All steps" (collapsed) — the old full-plan listing belonged to the mock trips/[id]
-    // route — on a real trip it buried the one actionable card below the fold.
     expect(screen.queryByRole('list', { name: 'Trip phases' })).not.toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Start Trip' })).toBeInTheDocument()
   })
@@ -134,13 +119,10 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     const selectTrip = vi.fn().mockResolvedValue(createdTrip)
     mockUseTrip.mockReturnValue({ selectTrip })
     render(<TripDetailByIdPageClient />)
-    // Card gets role="button" when given an onClick, which is what isolates the CTA.
     const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     fireEvent.click(phaseCta)
 
-    // Selection first, navigation second — the step pages read the trip from context, so
-    // navigating before selecting would submit evidence against the wrong trip.
     await waitFor(() => expect(selectTrip).toHaveBeenCalledWith('trip-created'))
     await waitFor(() => expect(mockPush).toHaveBeenCalled())
   })
@@ -182,8 +164,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
   })
 
   it('allows a trip whose departure day has already passed', async () => {
-    // Late activation is deliberately never blocked — a delayed trip still needs its
-    // evidence captured. Mirrors phase_service.is_before_scheduled_day.
     const selectTrip = vi.fn().mockResolvedValue(createdTrip)
     mockUseTrip.mockReturnValue({ selectTrip })
     mockFetchMyTrip.mockResolvedValue({ ...createdTrip, planned_departure_at: LAST_WEEK_08H00 })
@@ -248,8 +228,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
   })
 
   it('still renders the trip when the sibling list fails to load', async () => {
-    // The gate is an explanation, not the enforcement point — the server refuses
-    // regardless, so a failed list must not blank the screen.
     mockFetchMyTrips.mockRejectedValue(new Error('offline'))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -279,8 +257,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
   })
 
   it('keeps the header and a back control when the trip fails to load', async () => {
-    // The bare error <main> had neither: the message hugged the top edge and the only
-    // way off the screen was the button inside it.
     mockFetchMyTrip.mockRejectedValue(new Error('offline'))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -303,8 +279,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     expect(mockFetchMyTrip).not.toHaveBeenCalled()
   })
 
-  // FP-83 T1: a known former participant gets TRIP_HANDED_OVER from the current-assignment
-  // read and sees their own restricted record instead — never the next driver's live trip.
   describe('a trip this driver handed over', () => {
     const history = substitutionFixturePack.formerParticipantHistory.history
 
@@ -327,7 +301,6 @@ describe('trips/detail TripDetailByIdPageClient', () => {
 
       expect(await screen.findByRole('heading', { name: 'Your record' })).toBeInTheDocument()
       expect(mockFetchDriverParticipation).toHaveBeenCalledWith(history.trip_id)
-      // The real trip status, stated as the trip's — not presented as this driver's work.
       expect(screen.getByText(/Trip status now: Active/)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Start|Continue Driving/ })).not.toBeInTheDocument()
     })

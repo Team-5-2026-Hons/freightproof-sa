@@ -7,13 +7,10 @@ import { GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
 import { useChartHeight } from '../ChartZoom'
 import { AXIS_TICK, BAR_MAX_SIZE, CHART_HEIGHT, CURSOR_OPACITY, GAP_WIDTH, ROUNDED_TOP } from './chartStyle'
 
-/** Room for the middle axis's tick numbers, between the left half's columns and the axis line. */
 export const MIDDLE_AXIS_WIDTH = 32
-// The shared count axis aims for about this many intervals, each rounded to 1, 2 or 5 × 10ⁿ.
 const TARGET_TICK_INTERVALS = 4
 const NICE_STEPS = [1, 2, 5, 10] as const
 const DECIMAL_BASE = 10
-// Equal top and bottom margins on both halves, so their baselines and gridlines line up.
 const LEFT_HALF_MARGIN = { top: 8, right: 0, bottom: 0, left: 8 } as const
 const RIGHT_HALF_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 } as const
 
@@ -29,7 +26,6 @@ export function countTicks(max: number): number[] {
   const raw = max / TARGET_TICK_INTERVALS
   const magnitude = DECIMAL_BASE ** Math.floor(Math.log10(raw))
   const nice = NICE_STEPS.find((step) => step * magnitude >= raw) ?? DECIMAL_BASE
-  // Counts are whole trips: never a step below 1.
   const step = Math.max(1, nice * magnitude)
   const top = Math.ceil(max / step) * step
   return Array.from({ length: Math.round(top / step) + 1 }, (_, index) => index * step)
@@ -42,7 +38,6 @@ interface HalfProps<Row> {
   value: (row: Row) => number
   color: string
   ticks: number[]
-  /** Only the right half draws the axis: on its left edge, which is the middle of the chart. */
   showAxis: boolean
   renderTooltip: (row: Row) => ReactNode
   height: number
@@ -62,7 +57,6 @@ function Half<Row>({ rows, rowKey, categoryLabel, value, color, ticks, showAxis,
           dataKey={KEY} tickFormatter={(key: string) => labels.get(key) ?? key} tick={AXIS_TICK}
           tickLine={false} axisLine={{ stroke: GRID_COLOR }} interval={0}
         />
-        {/* Both halves get the same domain and ticks; the left one hides its copy. */}
         <YAxis
           hide={!showAxis} domain={[0, top]} ticks={ticks} allowDecimals={false} width={MIDDLE_AXIS_WIDTH}
           tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: TICK_COLOR }}
@@ -84,18 +78,14 @@ function Half<Row>({ rows, rowKey, categoryLabel, value, color, ticks, showAxis,
 }
 
 interface SplitColumnsProps<Row> {
-  /** Drawn left of the middle axis, in the order given (furthest from it first). */
   left: readonly Row[]
-  /** Drawn right of the middle axis, in the order given (nearest to it first). */
   right: readonly Row[]
   rowKey: (row: Row) => string
   categoryLabel: (row: Row) => string
   value: (row: Row) => number
   leftColor: string
   rightColor: string
-  /** The count axis's heading, written level above the middle axis. */
   yLabel: string
-  /** Under the middle axis, e.g. "On plan". */
   centreLabel: string
   leftCaption: string
   rightCaption: string
@@ -110,10 +100,8 @@ export function SplitColumns<Row>({
   left, right, rowKey, categoryLabel, value, leftColor, rightColor, yLabel, centreLabel,
   leftCaption, rightCaption, renderTooltip, height: normalHeight = CHART_HEIGHT,
 }: SplitColumnsProps<Row>) {
-  // Taller inside the zoom modal; both halves share it, so they keep one baseline.
   const height = useChartHeight(normalHeight)
   const ticks = countTicks(Math.max(0, ...left.map(value), ...right.map(value)))
-  // The axis line is the right half's plot edge: half-way across, plus the tick numbers' width.
   const onAxis = { left: `calc(50% + ${MIDDLE_AXIS_WIDTH}px)` }
   const shared = { rowKey, categoryLabel, value, ticks, renderTooltip, height }
 

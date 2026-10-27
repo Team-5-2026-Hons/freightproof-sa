@@ -44,9 +44,6 @@ def _parse_consensus_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        # Hedera/Java returns 9 digits of nanoseconds (e.g. 2021-06-23T10:13:30.123456789Z)
-        # Python's fromisoformat only supports 6 digits (microseconds).
-        # We replace the Z and slice off the last 3 digits of the fractional seconds if there are 9.
         val = value.replace("Z", "+00:00")
         if "." in val and "+" in val:
             time_part, tz_part = val.split("+")
@@ -160,8 +157,6 @@ async def lookup_receipts(
     if (data_hash is None) == (hedera_tx_id is None):
         raise ValueError("exactly one of data_hash or hedera_tx_id must be provided")
 
-    # Filter visibility in SQL, not with one extra round trip per matching receipt.
-    # EXISTS also keeps hidden/orphaned subjects out without multiplying results.
     query = (
         select(BlockchainReceipt)
         .where(or_(

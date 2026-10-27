@@ -18,8 +18,6 @@ from app.orchestration.phases.driver_position import _record_driver_position
 from app.db.models.enums import PhaseType
 from app.schemas.phases import InTransitCompleteRequest
 
-# A real handset capture (Linbro Park) and a staged precinct centre (Cape Town docks),
-# far enough apart that a test asserting the wrong one cannot accidentally pass.
 REPORTED_LAT, REPORTED_LNG = -26.0942, 28.1342
 STAGED_LAT, STAGED_LNG = Decimal("-33.9188610"), Decimal("18.4233000")
 
@@ -37,8 +35,6 @@ def _event() -> PhaseEvent:
 
 
 def _payload(**overrides: object) -> InTransitCompleteRequest:
-    # InTransitCompleteRequest is the thinnest variant — the base plus its phase_type —
-    # and its phone fix is optional, so the same helper covers the no-fix cases.
     fields: dict[str, object] = {
         "phase_type": PhaseType.IN_TRANSIT,
         "idempotency_key": str(uuid.uuid4()),
@@ -74,7 +70,6 @@ async def test_a_staged_position_replaces_the_capture_and_is_stamped_simulated()
 
     assert event.driver_phone_lat == STAGED_LAT
     assert event.driver_phone_lng == STAGED_LNG
-    # The whole safeguard: the row says the coordinates were not the handset's.
     assert event.driver_position_source == DriverPositionSource.SIMULATED.value
 
 
@@ -82,8 +77,6 @@ async def test_a_staged_position_is_recorded_even_when_the_handset_had_no_fix() 
     event = _event()
     _stage(STAGED_LAT, STAGED_LNG)
 
-    # A demo room with GPS denied: staging must still produce a position, or the point
-    # of staging is lost exactly where it is needed most.
     await _record_driver_position(
         event, _payload(driver_phone_lat=None, driver_phone_lng=None),
     )
@@ -101,8 +94,6 @@ async def test_no_fix_and_no_staging_records_nothing_and_claims_nothing() -> Non
 
     assert event.driver_phone_lat is None
     assert event.driver_phone_lng is None
-    # NOT 'device': nothing was recorded, so there is no provenance to assert. A stamp
-    # here would claim a verified real capture where there is no capture at all.
     assert event.driver_position_source is None
 
 
@@ -114,8 +105,6 @@ async def test_a_replayed_submission_without_a_fix_cannot_erase_a_stored_one() -
         event, _payload(driver_phone_lat=None, driver_phone_lng=None),
     )
 
-    # The pre-existing rule this change must not break: an offline replay whose original
-    # capture succeeded must not blank the stored pair on retry.
     assert event.driver_phone_lat == Decimal(str(REPORTED_LAT))
     assert event.driver_position_source == DriverPositionSource.DEVICE.value
 
@@ -142,8 +131,6 @@ async def test_a_failing_provider_never_breaks_a_submission() -> None:
 
     demo_position.configure_demo_position_provider(provider)
 
-    # Demo scaffolding may not turn a real phase submission into an error, so the
-    # failure is swallowed and the driver's own capture stands.
     await _record_driver_position(event, _payload())
 
     assert event.driver_phone_lat == Decimal(str(REPORTED_LAT))
@@ -162,8 +149,6 @@ async def test_the_provider_is_asked_about_this_events_own_trip() -> None:
 
     await _record_driver_position(event, _payload())
 
-    # Staging is per trip: asking about the wrong one would leak one demo's staged
-    # position into another trip's evidence.
     assert asked == [event.trip_id]
 
 

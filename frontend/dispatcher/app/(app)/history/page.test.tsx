@@ -132,7 +132,6 @@ describe('Trip History page', () => {
 
     expect(screen.getByText('137 closed trips')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Closed' })).toBeInTheDocument()
-    // 14:30Z is 16:30 SAST; the year is shown because closed trips span years.
     expect(screen.getByText('05 Sep 2026')).toBeInTheDocument()
     expect(screen.getByText('16:30 SAST')).toBeInTheDocument()
     expect(screen.queryByText('01 Sep 2026')).not.toBeInTheDocument()
@@ -188,7 +187,6 @@ describe('Trip History page', () => {
       renderPage()
       expect(screen.getByText('No trip history')).toBeInTheDocument()
 
-      // 22:30Z is 00:30 SAST on the 7th. Any later render builds the query afresh.
       vi.setSystemTime(new Date('2026-09-06T22:30:00Z'))
       fireEvent.change(screen.getByDisplayValue('All routes'), { target: { value: 'origin-1' } })
       fireEvent.change(screen.getByDisplayValue('Cape Town · Depot'), { target: { value: '' } })
@@ -244,7 +242,6 @@ describe('Trip History page', () => {
     renderPage()
 
     expect(screen.getByText('Page 2')).toBeInTheDocument()
-    // The table keeps its own always-mounted status region, so find this one by its text.
     const notice = screen.getByText('New trip history available')
     expect(notice).toHaveAttribute('aria-live', 'polite')
     fireEvent.click(screen.getByRole('button', { name: /new trip history available/i }))
@@ -272,9 +269,6 @@ describe('Trip History page', () => {
 
 describe('History exceptions column', () => {
   it('never tells a dispatcher a trip has no exceptions', () => {
-    // needs_review_count counts NEEDS_REVIEW rows only. A trip whose exceptions have all
-    // been reviewed reaches zero here while its record still holds them, so the row used
-    // to state "No exceptions" about a trip that opens to show two.
     mockedUseTripHistory.mockReturnValue(historyState({ items: [makeTrip({ needs_review_count: 0 })], totalItems: 1 }))
 
     renderPage()

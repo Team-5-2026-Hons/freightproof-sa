@@ -7,19 +7,12 @@ import type { AuthState } from '@/lib/types/user'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { mockTrips } from '@shared/lib/mocks/trips'
 
-// These tests run in demo mode (NEXT_PUBLIC_DEMO_MODE unset in vitest), so
-// TripProvider resolves the mock trip for mockDrivers[0] and logException
-// appends locally — the exact path the in-transit hub's exception list (5b)
-// depends on: a session-logged exception must land in ctx.exceptions.
-
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: vi.fn() }),
 }))
 
 const demoDriver = mockDrivers[0]
 
-// Mirror TripProvider's own active-trip selection so the expected baseline
-// exception count comes from the fixture, not a hardcoded number.
 const activeTrip = mockTrips.find(
   (t) => t.driver?.id === demoDriver.id && !['closed', 'cancelled'].includes(t.status),
 )
@@ -35,14 +28,9 @@ const authValue: AuthState = {
   signOut: vi.fn(),
 }
 
-// The phase Workstream 1's optimistic advance is exercised against: the first row the
-// ledger still considers open, taken from the fixture rather than hardcoded so a change
-// to the mock plan can't quietly make this test assert nothing.
 const openPhase = activeTrip.phases.find((p) => p.status === 'pending' || p.status === 'in_progress')
 if (!openPhase) throw new Error('Fixture drift: mockDrivers[0]\'s active trip has no open phase')
 
-// Trailer analytics: the demo trip is an interlink, so "Trailer" needs a plate — the
-// last trailer is the one the driver names below. Taken from the fixture, not hardcoded.
 if (activeTrip.trailers.length < 2) throw new Error('Fixture drift: mockDrivers[0]\'s active trip is not an interlink')
 const namedTrailer = activeTrip.trailers[activeTrip.trailers.length - 1]
 
@@ -52,15 +40,8 @@ function Probe() {
   const last = ctx.exceptions[ctx.exceptions.length - 1]
   return (
     <div>
-      {/* Mirrors TripContext.real.test.tsx's own Probe: the ONLY reliable signal that
-          TripProvider's async trip load (a Promise.resolve().then() microtask, even in
-          demo mode — see TripContext.tsx's mount effect) has actually landed. The
-          buttons below are static and mount immediately regardless of load state, so
-          waiting on their mere presence is not enough — see renderAndWaitForTrip. */}
       <span data-testid="trip-loaded">{ctx.trip ? 'yes' : 'no'}</span>
       <span data-testid="exception-count">{ctx.exceptions.length}</span>
-      {/* JSON.stringify keeps null ("null") distinguishable from undefined ("") so the
-          GPS tests below can tell "explicitly no fix" apart from "field missing". */}
       <span data-testid="last-gps">{last ? JSON.stringify([last.gps_lat, last.gps_lng]) : ''}</span>
       <span data-testid="last-vehicle">{last ? JSON.stringify(last.vehicle_id) : ''}</span>
       <span data-testid="open-phase-status">
@@ -111,20 +92,6 @@ function Probe() {
   )
 }
 
-// Root cause of the intermittent "demo logException carries the GPS pair" failure:
-// TripProvider seeds `trip` asynchronously (a microtask, even in demo mode — see
-// TripContext.tsx's mount effect), but Probe's buttons render unconditionally from
-// the very first paint, before that microtask has necessarily run. The old
-// `await waitFor(() => screen.getByText('log-panic-with-gps'))` only proved the
-// STATIC button existed — true on every render, load state notwithstanding — so a
-// click could race ahead of the trip load. logException's demo branch starts with
-// `if (!trip) return`, so a premature click silently no-ops: no exception is
-// appended, and the GPS assertion fails against an empty list. Under the full suite
-// (more concurrent microtask/scheduler activity in the same worker) that race lands
-// unfavourably often enough to be visible; in isolation it usually doesn't. The fix
-// is to wait on a signal that actually reflects `ctx.trip` being set — exactly what
-// TripContext.real.test.tsx's renderAndWaitForTrip already does correctly — rather
-// than a retry, a skip, or a longer timeout.
 async function renderAndWaitForTrip() {
   render(
     <AuthContext.Provider value={authValue}>
@@ -158,11 +125,6 @@ describe('TripContext session exceptions (5b)', () => {
     expect(screen.getByText('Pallet crushed at rest stop')).toBeInTheDocument()
   })
 
-  // GPS-drop regression (demo branch): the panic page passes gpsLat/gpsLng into
-  // logException — the demo record must carry them so demo mode exercises the same
-  // shape the real backend now persists. The real-mode raiseException-body assertion
-  // lives in TripContext.real.test.tsx (IS_DEMO_MODE is a module-level mock, so
-  // demo and real branches need separate files — same split as AuthContext).
   it('demo logException carries the GPS pair into the local exception record', async () => {
     await renderAndWaitForTrip()
 
@@ -183,8 +145,6 @@ describe('TripContext session exceptions (5b)', () => {
     expect(screen.getByTestId('last-gps')).toHaveTextContent(JSON.stringify([null, null]))
   })
 
-  // Trailer analytics: demo mode has no server to work out the vehicle, so its local
-  // record must carry the same vehicle_id the server would store.
   it('demo logException records the named trailer as the breakdown vehicle', async () => {
     await renderAndWaitForTrip()
 
@@ -216,9 +176,6 @@ describe('TripContext session exceptions (5b)', () => {
   })
 })
 
-// Workstream 1. The driver swipes, lands on Home, and the submission runs in the
-// background — so between the swipe and the backend's answer the plan has to read as
-// though the phase were done, or Home would re-offer the step they just finished.
 describe('TripContext optimistic phase advance', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -233,7 +190,6 @@ describe('TripContext optimistic phase advance', () => {
     })
 
     expect(screen.getByTestId('open-phase-status')).toHaveTextContent('completed')
-    // The marker is exposed alongside it so a screen can say "recording", not "recorded".
     expect(screen.getByTestId('syncing-ids')).toHaveTextContent(openPhase.phase_event_id)
   })
 
@@ -249,8 +205,6 @@ describe('TripContext optimistic phase advance', () => {
       fireEvent.click(screen.getByText('clear-syncing'))
     })
 
-    // Unresolved again, so the step is re-offered and the driver can retry with their
-    // draft — the terminal-failure path in PhaseStepPageClient depends on exactly this.
     expect(screen.getByTestId('open-phase-status')).toHaveTextContent(openPhase.status)
     expect(screen.getByTestId('syncing-ids')).toHaveTextContent('')
   })

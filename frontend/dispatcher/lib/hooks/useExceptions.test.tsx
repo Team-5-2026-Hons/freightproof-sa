@@ -10,8 +10,6 @@ vi.mock('@/lib/api/client', () => ({
   api: { get: vi.fn() },
 }))
 
-// The hook subscribes to the live channel; the provider is not mounted in these tests
-// and its absence must not be what the assertions are measuring.
 vi.mock('@/lib/realtime/useLiveResource', () => ({
   useLiveResource: vi.fn(),
 }))
@@ -64,10 +62,6 @@ describe('useExceptionQueue', () => {
   })
 
   it('surfaces a fetch failure instead of returning an empty list', async () => {
-    // The defect this shape exists to prevent. An exception queue that failed to load
-    // is indistinguishable from one that is genuinely empty, and "no exceptions" is the
-    // most reassuring thing this screen can say — saying it because a request failed is
-    // the worst error the page can make.
     mockedGet.mockRejectedValue(new Error('Network unreachable'))
 
     const { result } = renderHook(() => useExceptionQueue())

@@ -26,8 +26,6 @@ export function Pagination({
   onPrevious,
   onNext,
 }: PaginationProps) {
-  // A zero-item page has no "first" item to anchor a range on — render "0 of N" rather than
-  // a misleading "1–0 of N".
   const rangeStart = itemCount === 0 ? 0 : (page - 1) * pageSize + 1
   const rangeEnd = itemCount === 0 ? 0 : (page - 1) * pageSize + itemCount
 

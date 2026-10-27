@@ -17,7 +17,6 @@ def test_figures_from_the_tools_pass() -> None:
 def test_honest_restatements_pass() -> None:
     sources = ['{"rate": 0.5, "median_early_minutes": 599.26, "cost": 305780.5, "whole_hours": 114}']
 
-    # 0.5 as 50%; 599 minutes as about 10 hours; R 305 780.50 rounded to R 305 781; 114 hours as 4 days.
     answer = "50% on time, about 10 hours early (599 minutes), R 305 781, waiting 4 days."
 
     assert unmatched_numbers(answer, sources) == []
@@ -32,12 +31,8 @@ def test_an_invented_figure_is_caught() -> None:
 
 
 def test_cannot_catch_a_real_figure_used_for_the_wrong_thing() -> None:
-    # The 20 Oct miss: 33 is a real value (the warning total), so the check can't tell it was quoted as
-    # the problem total. That is what the totals block and the eval are for, not this check.
     assert unmatched_numbers("There were 33 problems.", [_PROBLEMS]) == []
 
-
-# ── Thousands written with spaces or commas, in sources as in answers (eval, 22 Oct) ─────────────────────────────
 
 
 def test_numbers_in_reads_every_way_a_sentence_writes_an_amount() -> None:
@@ -51,7 +46,6 @@ def test_numbers_inside_words_are_still_not_figures() -> None:
 
 
 def test_an_amount_written_with_spaced_thousands_in_a_source_is_known() -> None:
-    # e05: the guide says "about R 20 000"; the answer quoting it was taken for an invented figure.
     guide = "calibrated so Bruce's Johannesburg to Durban run, about R 20 000, comes out right"
 
     assert unmatched_numbers("It was calibrated on Bruce's R 20 000 run.", [guide]) == []

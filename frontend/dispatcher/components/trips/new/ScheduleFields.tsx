@@ -8,7 +8,6 @@ const LOCALE = 'en-ZA'
 
 export interface ScheduleFieldsProps {
   overrides: ScheduleOverrides
-  /** The source's own times as input values; '' where it has none (always '' for an empty leg). */
   source: TimeInputs
   onChange: (overrides: ScheduleOverrides) => void
   errors: FieldErrors
@@ -53,8 +52,6 @@ function TimeField({ label, required, override, source, onChange, error }: TimeF
   const inputId = useId()
   const errorId = useId()
   const shown = override ?? source
-  // "From manifest" while the field shows the manifest's own value. Once edited, a way back
-  // that restores null, so the manifest's exact time is what gets locked (D2).
   const fromSource = source !== '' && shown === source
   const edited = source !== '' && !fromSource
   const parts = shown ? splitLocal(shown) : null
@@ -72,8 +69,6 @@ function TimeField({ label, required, override, source, onChange, error }: TimeF
         className={fieldClass(Boolean(error))}
       />
       {error && <FieldError id={errorId}>{error}</FieldError>}
-      {/* Under the field, not beside the label: two columns leave the label row too narrow
-          for a badge, and a wrapped "From manifest" pushed the inputs out of line. */}
       {(parts || fromSource || edited) && (
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-on-surf-v">
           {parts && !error && (
@@ -91,8 +86,6 @@ function TimeField({ label, required, override, source, onChange, error }: TimeF
   )
 }
 
-// The moment in words beside the single combined input, so the pick is unambiguous at a
-// glance. The rest of the app has no split date and time pattern, so this keeps one input.
 function splitLocal(value: string): { date: string; time: string } {
   const d = new Date(value)
   return {

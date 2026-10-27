@@ -21,15 +21,10 @@ export function DepartureDetail({ artifactLoading, artifactError, onRetryArtifac
   return (
     <PhaseDetailCard>
 
-      {/* Each departure carries its OWN seal, so a cross-dock trip visibly shows a
-          different seal per leg. Never hoist this to the trip. */}
       <Section title="Seal">
         <div className="col-span-2">
           <div className="text-[10px] text-on-surf-v mb-[3px]">Seal number</div>
           {phase.seal_number ? (
-            // Reuses the sidebar's seal badge exactly, translated off the legacy `bg-primary`/
-            // `text-white` and an undefined radius variable onto their shorthand equivalents (same hex,
-            // real radius scale) — see DepartureDetail report for the mapping.
             <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-on-surf text-surf-lowest rounded-sm px-[10px] py-[3px]">
               {phase.seal_number}
             </span>

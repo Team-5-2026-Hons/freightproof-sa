@@ -45,13 +45,9 @@ from tests.conftest import FakeMockStateStore, auth_header, make_jwks, make_toke
 
 _MOVE_URL = "/api/v1/dev/phone/move"
 
-# Two real, far-apart precincts, so a test that resolved the wrong end of the plan
-# cannot pass by coincidence.
 _ORIGIN_LAT, _ORIGIN_LNG = "-33.9249000", "18.4241000"
 _DEST_LAT, _DEST_LNG = "-26.2041000", "28.0473000"
 
-
-# ── Router registration: the guard matrix (no database required) ──────────────
 
 
 def _reload_with(*, panel: bool, mock: bool, environment: str = "development") -> list[str]:
@@ -93,8 +89,6 @@ def test_route_present_in_production_when_both_guards_pass() -> None:
     """
     assert _reload_with(panel=True, mock=True, environment="production") == [_MOVE_URL]
 
-
-# ── Fixtures for the behaviour tests (database required) ──────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -207,8 +201,6 @@ async def _move(client: AsyncClient, seeded, placement: str, trip_stop_id: str |
     return await client.post(_MOVE_URL, json=body, headers=auth_header(_token(seeded)))
 
 
-# ── Behaviour ─────────────────────────────────────────────────────────────────
-
 
 async def test_at_origin_places_the_phone_at_the_first_stops_precinct(phone_client, seeded) -> None:
     response = await _move(phone_client, seeded, PHONE_AT_ORIGIN)
@@ -218,8 +210,6 @@ async def test_at_origin_places_the_phone_at_the_first_stops_precinct(phone_clie
     assert body["staged"] is True
     assert body["precinct_name"] == "Cape Town Depot"
     assert body["trip_stop_id"] == str(seeded["first"].id)
-    # Says in the response what the ledger will say, so a presenter cannot be under the
-    # impression a staged walk is recorded as a real capture.
     assert body["recorded_as"] == "simulated"
 
 
@@ -228,7 +218,6 @@ async def test_at_destination_places_the_phone_at_the_last_stops_precinct(phone_
 
     assert response.status_code == 200
     body = response.json()
-    # The LAST stop of the plan, not the first and not the trip header's own column.
     assert body["precinct_name"] == "Johannesburg Depot"
     assert body["trip_stop_id"] == str(seeded["last"].id)
 
@@ -238,8 +227,6 @@ async def test_the_staged_pair_is_the_precinct_centre(phone_client, seeded, stor
 
     staged = await demo_phone_module.staged_position(seeded["trip"].id, store=store)
 
-    # Exactly the precinct centre, so a phone and a truck placed at one stop agree
-    # rather than nearly agree.
     assert staged is not None
     assert str(staged[0]) == _ORIGIN_LAT
     assert str(staged[1]) == _ORIGIN_LNG
@@ -281,9 +268,6 @@ async def test_an_unknown_placement_is_a_422(phone_client, seeded) -> None:
 
 
 async def test_a_foreign_trip_is_a_404(phone_client, seeded) -> None:
-    # A REAL dispatcher, in a different organisation — the case org scoping exists for.
-    # A token for a user who does not exist is rejected at auth (401) before scoping is
-    # ever consulted, so it would prove nothing here.
     other_org_token = make_token(
         sub=str(seeded["outsider"].id), role="dispatcher", org_id=str(seeded["other_org"].id),
     )
@@ -294,8 +278,6 @@ async def test_a_foreign_trip_is_a_404(phone_client, seeded) -> None:
         headers=auth_header(other_org_token),
     )
 
-    # Scoped to the caller's organisation: a valid dispatcher token elsewhere must not be
-    # able to stage a position on this operator's trip, nor learn that it exists.
     assert response.status_code == 404
 
 
@@ -310,8 +292,6 @@ async def test_a_driver_token_cannot_place_a_phone(phone_client, seeded) -> None
         headers=auth_header(driver_token),
     )
 
-    # The control belongs to whoever is running the demo, not to the handset being
-    # demoed — a driver must not be able to choose what their own phase records.
     assert response.status_code in (401, 403)
 
 
@@ -319,7 +299,5 @@ async def test_restaging_is_idempotent(phone_client, seeded, store) -> None:
     first = await _move(phone_client, seeded, PHONE_AT_ORIGIN)
     second = await _move(phone_client, seeded, PHONE_AT_ORIGIN)
 
-    # Re-pressing the same panel option is how a presenter recovers from a mis-click, so
-    # it must be boring.
     assert first.json() == second.json()
     assert await demo_phone_module.staged_position(seeded["trip"].id, store=store) is not None

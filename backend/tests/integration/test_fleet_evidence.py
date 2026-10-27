@@ -110,8 +110,6 @@ async def _seed_fortnight(db: AsyncSession, operator: Operator, stops: list[Prec
     await add_token_attempt(db, stranger.trip, attempted_at=at_sast(_day(2), 9), rejection_reason=HandoverTokenRejectionReason.UNKNOWN)
 
 
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
-
 
 async def test_fleet_evidence_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_EVIDENCE, params=_params())
@@ -141,8 +139,6 @@ async def test_fleet_evidence_rejects_a_missing_grain(client: AsyncClient, opera
     assert response.status_code == 422
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_evidence_for_an_org_without_trips_is_empty_but_complete(
     client: AsyncClient, operator: Operator,
@@ -169,7 +165,6 @@ async def test_fleet_evidence_tracker_ignores_in_transit_and_overridden_steps(
     week0, week1 = response.json()["tracker"]
     assert (week0["confirmed_count"], week0["mismatch_count"], week0["unwitnessed_count"]) == (3, 1, 1)
     assert week0["agreement_rate"] == pytest.approx(0.75)
-    # B: four stop steps with no reading (unloading overridden, so out); C: five.
     assert (week1["confirmed_count"], week1["mismatch_count"], week1["unwitnessed_count"]) == (0, 0, 9)
     assert week1["agreement_rate"] is None
 

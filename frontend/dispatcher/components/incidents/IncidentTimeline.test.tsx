@@ -32,7 +32,6 @@ describe('IncidentTimeline', () => {
 
     const run = screen.getByText('3 parcels named as affected').closest('li')!
     expect(within(run).getByText(/Ana/)).toBeInTheDocument()
-    // Earliest and latest stay visible without opening it.
     expect(within(run).getByText(/12:00 SAST.*12:09 SAST/)).toBeInTheDocument()
   })
 

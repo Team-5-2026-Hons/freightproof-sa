@@ -34,9 +34,6 @@ _COLUMN = "resolution_method"
 
 
 def upgrade() -> None:
-    # Nullable with no server_default and no backfill: every exception resolved before
-    # this column existed genuinely has no recorded method, and stamping one on would
-    # write invented contact history onto an evidence record.
     op.add_column(_TABLE, sa.Column(_COLUMN, sa.String(length=20), nullable=True))
 
 

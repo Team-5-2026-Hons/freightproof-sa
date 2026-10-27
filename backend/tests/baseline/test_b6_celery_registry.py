@@ -18,8 +18,6 @@ test_recover_phase_anchor_picks_up_an_overdue_override_and_anchors_it, so it is 
 
 from app.tasks import celery
 
-# Celery registers its own housekeeping tasks (celery.chord, celery.backend_cleanup, ...).
-# They are the library's, not ours, and their set changes with the Celery version.
 _CELERY_BUILTIN_PREFIX = "celery."
 
 EXPECTED_APPLICATION_TASKS = frozenset({

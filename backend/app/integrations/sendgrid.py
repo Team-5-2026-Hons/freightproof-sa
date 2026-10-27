@@ -39,7 +39,6 @@ async def send_plain_text_email(*, to_address: str, subject: str, body: str) -> 
         "from": {"email": settings.SENDGRID_FROM_EMAIL, "name": "FreightProof"},
         "subject": subject,
         "content": [{"type": "text/plain", "value": body}],
-        # Click tracking rewrites links through SendGrid's domain; nothing here should be tracked.
         "tracking_settings": {"click_tracking": {"enable": False}, "open_tracking": {"enable": False}},
     }
     url = settings.SENDGRID_API_URL.rstrip("/") + _MAIL_SEND_PATH
@@ -53,7 +52,5 @@ async def send_plain_text_email(*, to_address: str, subject: str, body: str) -> 
         raise EmailUnavailableError(f"SendGrid unreachable: {exc!r}") from exc
 
     if response.status_code != httpx.codes.ACCEPTED:
-        # SendGrid's error body names the problem (unverified sender, bad key) without
-        # echoing the recipient, so it is safe and useful in the log.
         logger.error("SendGrid refused an email: HTTP %s %s", response.status_code, response.text[:300])
         raise EmailUnavailableError(f"SendGrid returned HTTP {response.status_code}")

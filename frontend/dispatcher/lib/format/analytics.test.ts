@@ -90,12 +90,10 @@ describe('fmtOptionalCount', () => {
   })
 
   it('shows a real zero as 0', () => {
-    // Back-to-back incident trips give a genuine zero-length streak.
     expect(fmtOptionalCount(0)).toBe('0')
   })
 })
 
-// Intl's en-ZA groups thousands with a no-break space; normalise it so the expectations read plainly.
 const plain = (text: string): string => text.replace(/\u00a0/g, ' ')
 
 describe('fmtRand', () => {
@@ -131,7 +129,6 @@ describe('fmtRandRate', () => {
 })
 
 describe('fmtAxisAmount', () => {
-  // 21 Oct: "160000" on the Delay cost axis ran into the "Rand" heading beside it.
   it('shortens thousands and millions so an axis number stays about four characters', () => {
     expect(fmtAxisAmount(160000)).toBe('160k')
     expect(fmtAxisAmount(50000)).toBe('50k')

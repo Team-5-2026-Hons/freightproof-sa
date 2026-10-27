@@ -21,10 +21,8 @@ from app.orchestration.assistant.tools_roster import ROSTER_TOOLS
 from app.orchestration.assistant.tools_route import ROUTE_TOOLS
 from app.orchestration.assistant.tools_trips import TRIP_TOOLS
 
-# A fixed order: the tool list is part of the model's cached prompt prefix.
 TOOLS: tuple[AssistantTool, ...] = (*TRIP_TOOLS, *INCIDENT_TOOLS, *CREW_TOOLS, *HISTORY_TOOLS, *FLEET_TOOLS, *DOCUMENT_TOOLS, *ROSTER_TOOLS, *ROUTE_TOOLS, *PARCEL_TOOLS, *ACTION_TOOLS)
 TOOLS_BY_NAME: dict[str, AssistantTool] = {tool.name: tool for tool in TOOLS}
-# Enough to name each wrong field; a model that got more wrong than this should start again.
 MAX_REPORTED_INPUT_ERRORS = 5
 
 

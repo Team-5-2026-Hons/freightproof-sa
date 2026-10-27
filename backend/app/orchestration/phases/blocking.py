@@ -19,17 +19,11 @@ from app.db.models.enums import PhaseType
 from app.db.models.trips import Consignment
 from app.integrations.scan_feed import ScanDirection, ScanSessionQuery, get_scan_feed
 
-# String rather than bool so a second gate (telemetry, customs) can be added later
-# without changing the field's type on the wire.
 BLOCKED_ON_SCAN = "warehouse_scan"
 
-# Any phase absent from this map is never blocked. Public: dev_triggers.py imports
-# it directly to report which phase gates which stop's scan.
 GATED_PHASES: dict[PhaseType, ScanDirection] = {
     PhaseType.LOADING: ScanDirection.OUT,
     PhaseType.CONFIRMATION: ScanDirection.IN,
-    # IN, not OUT: blocked_on_by_stop keys IN off Consignment.delivery_stop_id,
-    # the right stop for a drop-off.
     PhaseType.UNLOADING: ScanDirection.IN,
 }
 
@@ -54,8 +48,6 @@ async def blocked_on_by_stop(
 
     feed = get_scan_feed()
 
-    # Batch all queries rather than resolving inside the loop, to avoid a feed
-    # round trip per consignment per gated phase on every trip-detail render.
     targets: list[tuple[PhaseType, uuid.UUID]] = []
     queries: list[ScanSessionQuery] = []
 
@@ -63,7 +55,7 @@ async def blocked_on_by_stop(
         for reference, pickup_stop_id, delivery_stop_id in consignments:
             stop_id = pickup_stop_id if direction is ScanDirection.OUT else delivery_stop_id
             if stop_id is None:
-                continue  # FP-112 partitioning not populated — nothing to gate
+                continue
 
             targets.append((phase_type, stop_id))
             queries.append(ScanSessionQuery(
@@ -77,7 +69,6 @@ async def blocked_on_by_stop(
     blocked: dict[tuple[PhaseType, uuid.UUID], str | None] = {}
     for key, closed in zip(targets, closed_flags, strict=True):
         if blocked.get(key) == BLOCKED_ON_SCAN:
-            # A stop serving two waybills stays blocked while EITHER session is open.
             continue
         blocked[key] = None if closed else BLOCKED_ON_SCAN
 

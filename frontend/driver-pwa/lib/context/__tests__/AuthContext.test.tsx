@@ -10,10 +10,6 @@ import { MOCK_DRIVER } from '@/lib/auth/DemoDriverProfileSource'
 import { currentActorId, __resetCustodyContextForTests } from '@/lib/session/custody-context'
 
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: true }))
-// The idle timer itself (listeners, a real setTimeout, cross-tab sync) is wiring these
-// tests aren't about — see useIdleTimeout.ts, which is tested separately via idle.ts.
-// Mocking it also lets a test fire the expiry handler directly instead of waiting out the
-// real ten-minute window.
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
 
 const mockedUseIdleTimeout = vi.mocked(useIdleTimeout)
@@ -90,7 +86,6 @@ function latestIdleExpiryHandler(): (() => void) | undefined {
 
 describe('AuthContext (demo mode)', () => {
   beforeEach(() => {
-    // The demo session flag persists across provider mounts — isolate tests.
     sessionStorage.clear()
     localStorage.clear()
     mockedUseIdleTimeout.mockClear()
@@ -113,10 +108,6 @@ describe('AuthContext (demo mode)', () => {
   it('requestOtp resolves without throwing', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
-    // Awaiting act() directly (not via expect().resolves) — wrapping React's
-    // act thenable in another promise chain leaves the act scope open and
-    // breaks every renderHook that runs after this test. A rejection here
-    // still fails the test, so "resolves without throwing" is preserved.
     await act(async () => {
       await result.current.requestOtp('+27821234567')
     })
@@ -132,17 +123,11 @@ describe('AuthContext (demo mode)', () => {
     expect(sessionStorage.getItem(DEMO_SESSION_KEY)).toBe('true')
   })
 
-  // Restoration goes through the auth port, so it settles a microtask after mount rather
-  // than inside the mount effect. These wait for isLoading to clear, which is the signal
-  // guarded routes themselves wait on; AuthContext.restore.test.tsx proves that the login
-  // view is never shown while it is pending.
   it('a fresh mount with the session flag set hydrates the demo user without signIn', async () => {
     sessionStorage.setItem(DEMO_SESSION_KEY, 'true')
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
-    // User is restored and loading has resolved — guarded routes must not
-    // bounce a refreshed demo session back to /login.
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.user).not.toBeNull()
   })
@@ -173,8 +158,6 @@ describe('return path around idle expiry vs manual sign-out', () => {
     sessionStorage.clear()
     localStorage.clear()
     mockedUseIdleTimeout.mockClear()
-    // A page with a query string — the id rides in one, per driver-pwa's `output: export`
-    // route scheme, so the round trip has to preserve it.
     window.history.pushState({}, '', '/trips/detail?id=abc-123')
   })
 
@@ -193,8 +176,6 @@ describe('return path around idle expiry vs manual sign-out', () => {
 
     await act(async () => {
       onExpire?.()
-      // performSignOut has no real await in demo mode, but flush anyway so this doesn't
-      // silently start relying on that.
       await Promise.resolve()
     })
 
@@ -205,7 +186,6 @@ describe('return path around idle expiry vs manual sign-out', () => {
   it('manual sign-out clears a previously saved return path instead of setting one', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
     await signInAsDriver(result)
-    // Simulate a path left over from an earlier idle expiry this same browser saw.
     localStorage.setItem(RETURN_PATH_KEY, '/trips/detail?id=abc-123')
 
     await act(async () => {

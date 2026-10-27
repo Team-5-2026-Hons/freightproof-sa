@@ -22,8 +22,6 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "driver_sessions",
-        # driver_id is the primary key: a schema that can hold two rows for one driver
-        # would permit exactly the state this table exists to prevent.
         sa.Column("driver_id", UUID(as_uuid=True), sa.ForeignKey("drivers.id"), primary_key=True, nullable=False),
         sa.Column("session_id", sa.String(255), nullable=False),
         sa.Column("issued_at", sa.DateTime(timezone=True), nullable=False),

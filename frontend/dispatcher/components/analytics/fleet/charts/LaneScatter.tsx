@@ -18,7 +18,6 @@ import {
   yAxisHeading,
 } from './chartStyle'
 
-// An average needs at least two dots to split them into anything.
 const MIN_DOTS_FOR_AVERAGES = 2
 
 interface LaneScatterProps<Row> {
@@ -30,7 +29,6 @@ interface LaneScatterProps<Row> {
   xLabel: string
   yLabel: string
   color: string
-  /** Written in the top-right corner, e.g. "Busy and risky". */
   cornerLabel: string
   height?: number
 }
@@ -60,7 +58,6 @@ function mean(values: readonly number[]): number {
 export function LaneScatter<Row>({
   rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, cornerLabel, height: normalHeight = CHART_HEIGHT,
 }: LaneScatterProps<Row>) {
-  // Taller inside the zoom modal, which also spreads crowded dot names apart.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const points = rows.map((row) => ({ row, x: x(row), y: y(row) }))
@@ -70,7 +67,6 @@ export function LaneScatter<Row>({
   const data: ScatterDatum[] = points.map((point) => ({ [KEY]: rowKey(point.row), x: point.x, y: point.y }))
 
   return (
-    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
     <div className="relative h-full">
       <ResponsiveContainer width="100%" height="100%" minHeight={height}>
         <ScatterChart margin={CHART_MARGIN}>
@@ -83,13 +79,11 @@ export function LaneScatter<Row>({
             type="number" dataKey="y" tick={AXIS_TICK} tickLine={false} axisLine={false}
             width={Y_AXIS_WIDTH} label={yAxisHeading(yLabel)}
           />
-          {/* Solid hairlines, one step darker than the grid: dashes would read as a target. */}
           {averageX !== null && <ReferenceLine x={averageX} stroke={TICK_COLOR} />}
           {averageY !== null && <ReferenceLine y={averageY} stroke={TICK_COLOR} />}
           <Tooltip
             cursor={false}
             content={({ active, payload }) => {
-              // The hovered point's own datum: its key finds the typed row.
               const datum = payload?.[0]?.payload as Partial<ScatterDatum> | undefined
               const key = datum?.[KEY]
               const row = active && typeof key === 'string' ? byKey.get(key) : undefined

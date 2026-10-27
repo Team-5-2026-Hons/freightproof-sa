@@ -32,8 +32,6 @@ from app.integrations.mock_state import MockStateStore, build_key, get_mock_stat
 
 logger = logging.getLogger(__name__)
 
-# Separates these keys from the staged scan/PP/tracker state in the same namespace, so a
-# scoped flush can address them and nothing collides.
 _KIND = "demo_phone"
 
 _LAT_FIELD = "lat"
@@ -65,14 +63,9 @@ async def stage_phone_position(
     presenter recovers from a mis-click.
     """
     if not demo_phone_enabled():
-        # Caller-visible silence is fine here: the only callers are dev routes that do
-        # not exist unless the same flags are on. Logged so a flag flipped mid-session
-        # does not look like a storage failure.
         logger.warning("Ignoring staged phone position for trip=%s: demo phone staging is off", trip_id)
         return
 
-    # str(), not float(): these coordinates are substituted into a request that lands in
-    # a Numeric(10, 7) column, and a float round-trip would shift the last digit.
     await (store or get_mock_state_store()).set_json(
         _key(trip_id), {_LAT_FIELD: str(lat), _LNG_FIELD: str(lng)},
     )

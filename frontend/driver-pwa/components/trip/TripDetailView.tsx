@@ -23,14 +23,10 @@ export interface TripDetailViewProps {
   onBack: () => void
   onInTransitHub: () => void
   onSelectPhase: (phase: PhaseDescriptor) => void
-  /** Open the "All steps" list on arrival rather than leaving it collapsed. */
   showAllPhases: boolean
-  /** Page-level context above the content (activation gate, "Starting trip"). */
   notice?: ReactNode
 }
 
-// What the start of a trip will ask for, in the driver's words. Only the
-// phases before the drive: everything after it happens at the destination, a day away.
 const WHAT_YOU_RECORD: Partial<Record<PhaseType, { title: string; detail: string }>> = {
   activation: { title: 'Start trip at the gate', detail: 'One swipe, location recorded' },
   loading: { title: 'Photo of the linehaul sheet', detail: 'After the warehouse loads you' },
@@ -227,8 +223,6 @@ export function TripDetailView({ trip, onBack, onInTransitHub, onSelectPhase, sh
     .slice(0, MAX_NEXT_NAMES)
   const where = current === null ? null : phaseLocation(phases, current)
 
-  // A held trip must offer nothing — any submit while on hold 409s — and that outranks
-  // driving too: a driver on hold has been told to stop.
   const action = onHold ? undefined
     : driving ? <Button size="pill" className="shadow-level-5" onClick={onInTransitHub}>Continue Driving</Button>
     : current !== null ? (

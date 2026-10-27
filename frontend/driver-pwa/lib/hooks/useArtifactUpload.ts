@@ -34,19 +34,12 @@ export interface ArtifactUploadState {
 }
 
 export function useArtifactUpload(tripId: string, phaseEventId: string): ArtifactUploadState {
-  // Guards a resolved upload from writing into an unmounted step's draft: the driver can
-  // photograph and immediately navigate back, and a late setState on a dead component is
-  // a React warning at best and a write into the wrong phase's draft at worst.
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
   }, [])
 
-  // Counts uploads started per role. Requests resolve in whatever order the network
-  // delivers them, so a retake's upload can land before the first photo's; a request is
-  // only honoured while its number is still the latest for its role. Per role, not
-  // global, because a step may capture two different slots independently.
   const latestRequest = useRef<Partial<Record<EvidenceRole, number>>>({})
 
   const uploadNow = useCallback(
@@ -56,22 +49,17 @@ export function useArtifactUpload(tripId: string, phaseEventId: string): Artifac
       capturedAt: string,
       role: EvidenceRole,
     ): Promise<string | null> => {
-      // Demo mode has no backend to upload to; the submit path short-circuits there too.
       if (IS_DEMO_MODE) return null
       const requestNumber = (latestRequest.current[role] ?? 0) + 1
       latestRequest.current[role] = requestNumber
       try {
         const artifact = await uploadArtifact({
           tripId, artifactType, dataUrl, capturedAt, attribution: { phaseEventId, role },
-          // Upload starts at capture, so this is the capture's own custody period.
           custodySequence: captureCustody(tripId).custodySequence,
         })
         const isSuperseded = latestRequest.current[role] !== requestNumber
         return mounted.current && !isSuperseded ? artifact.id : null
       } catch (err: unknown) {
-        // Logged, never surfaced: the driver captured their photo successfully, and the
-        // submit path will re-upload it. Telling them an upload failed would be asking
-        // them to act on something that is already handled.
         console.warn('Early artifact upload failed — will upload at submit instead', err)
         return null
       }

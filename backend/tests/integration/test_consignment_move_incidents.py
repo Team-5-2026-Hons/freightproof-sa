@@ -32,7 +32,6 @@ from tests.integration._pp_manifest_world import (
 )
 
 _WAYBILL = "MFTWB8102"
-# Long enough to clear the minimum trip duration; the exact length is irrelevant here.
 _TRIP_LENGTH = timedelta(hours=10)
 
 
@@ -93,7 +92,6 @@ async def test_waybill_cited_by_an_incident_is_refused_by_name(db_session: Async
     assert exc.value.incident_references == ("INC1",)
     for expected in (_WAYBILL, "INC1", hijacked.trip_reference, "cannot be used on a new trip"):
         assert expected in str(exc.value)
-    # Nothing was deleted or moved: the record the incident points at is intact.
     assert await db_session.scalar(
         select(func.count()).select_from(Parcel).where(Parcel.consignment_id == consignment.id)
     ) == 1
@@ -133,7 +131,6 @@ async def test_preview_blocks_and_names_the_incident(client: AsyncClient, db_ses
 async def test_create_returns_409_that_names_the_incident(client: AsyncClient, db_session: AsyncSession) -> None:
     world = await build_manifest_world(db_session)
     hijacked, _ = await _hijacked_trip(db_session, world)
-    # Read before the request: the failed create rolls the session back and expires the trip.
     hijacked_reference = hijacked.trip_reference
     previewed = await preview(client, world, MANIFEST_HAPPY_PATH)
 

@@ -2,12 +2,9 @@ import { cn } from '@/lib/utils'
 
 export interface RouteStop {
   id: string
-  /** Time context above the name ("Departed 10:02", "Due 19:30"). */
   eyebrow?: string
   name: string
-  /** Place under the name ("Linbro Park, Johannesburg"). */
   detail?: string
-  /** The truck has been here — drawn filled; stops still ahead are hollow. */
   reached: boolean
 }
 

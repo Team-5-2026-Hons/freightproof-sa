@@ -26,8 +26,6 @@ from app.db.models.sessions import DriverSession, UserSession
 
 logger = logging.getLogger(__name__)
 
-# Matched exactly by the driver app to distinguish "signed in elsewhere" from
-# an ordinary expired/invalid token.
 SESSION_SUPERSEDED_DETAIL = "Signed in on another device."
 
 
@@ -39,20 +37,10 @@ def _superseded() -> HTTPException:
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-# Distinct from SESSION_SUPERSEDED_DETAIL: "idle" and "invalid" are different
-# facts and the apps say different things about them.
 SESSION_IDLE_DETAIL = "Signed out after a period of inactivity."
 
-# Row retention after going idle. Must stay well beyond the idle timeout: if a
-# row were deleted as soon as it went idle, a replayed long-idle token would
-# find no row and be treated as a fresh sign-in, undoing the idle check. A
-# week outlives any access token that could still be presented.
 SESSION_RECORD_RETENTION_DAYS = 7
 
-# How stale last_seen_at may get before a request bothers rewriting it. Every
-# request from one user hits the same row, so stamping on every request buys
-# nothing; skipping only makes a refusal fire up to this much EARLIER than
-# the true idle deadline, never later.
 SESSION_ACTIVITY_WRITE_INTERVAL_SECONDS = 60
 
 
@@ -107,9 +95,6 @@ async def enforce_single_device(
     result = await db.execute(select(DriverSession).where(DriverSession.driver_id == driver_id))
     current = result.scalar_one_or_none()
 
-    # Only a strictly newer session may take over, else two live devices would
-    # trade the claim back and forth. This read is advisory only — the upsert
-    # below re-tests the rule atomically against a possible race.
     if current is not None and current.session_id != session_id and issued_at <= current.issued_at:
         raise _superseded()
 
@@ -118,7 +103,6 @@ async def enforce_single_device(
         and current.session_id == session_id
         and _recently_stamped(current.last_seen_at)
     ):
-        # Already holds the claim and was stamped moments ago; skip the write.
         return
 
     now = datetime.now(UTC)
@@ -128,10 +112,6 @@ async def enforce_single_device(
         issued_at=issued_at,
         last_seen_at=now,
     )
-    # One upsert covers claim / restamp / takeover atomically, since several
-    # driver requests can race a plain read-then-INSERT into a duplicate-key
-    # 500. WHERE re-encodes the single-device rule: same session_id restamps,
-    # strictly newer issued_at takes over, anything else updates 0 rows.
     claim_result = await db.execute(
         claim.on_conflict_do_update(
             index_elements=[DriverSession.driver_id],
@@ -148,25 +128,13 @@ async def enforce_single_device(
         ).returning(DriverSession.driver_id)
     )
     if claim_result.scalar_one_or_none() is None:
-        # WHERE refused the update: another handset claimed with an equal/newer
-        # token between the read above and this write.
         raise _superseded()
 
     if current is not None and current.session_id != session_id:
         logger.info("Driver %s signed in on a new device — previous session superseded", driver_id)
 
-    # Committed on its own, not left to the request's transaction: every
-    # request from one user writes THE SAME row, so an uncommitted stamp
-    # holds a lock other in-flight requests block on. Safe only because no
-    # dependency ahead of this one takes a DB session — if one ever does,
-    # its work would be committed here as a side effect. This is a property
-    # of the current code, not something enforced; do not "fix" it by
-    # checking db.new/db.dirty first, since autoflush already moved any
-    # pending work into the transaction by the time that check would run.
     await db.commit()
 
-
-# ── Idle timeout ──────────────────────────────────────────────────────────────
 
 
 def _idle_cutoff() -> datetime:
@@ -202,8 +170,6 @@ async def enforce_driver_idle_timeout(
     result = await db.execute(select(DriverSession).where(DriverSession.driver_id == driver_id))
     current = result.scalar_one_or_none()
 
-    # No activity history for this session — fall back to the token's issue
-    # time (a replayed token from a dormant handset is not seconds-old).
     if current is None or current.session_id != session_id:
         if issued_at < _idle_cutoff():
             logger.info("Driver %s refused: unrecognised session issued %s", driver_id, issued_at)
@@ -242,14 +208,9 @@ async def enforce_user_idle_timeout(
         logger.info("Dispatcher %s signed out for inactivity (last seen %s)", user_id, current.last_seen_at)
         raise _idle_expired()
     elif _recently_stamped(current.last_seen_at):
-        # Skip the write below; must run after the idle check above, not before.
         return
 
     now = datetime.now(UTC)
-    # Upsert rather than insert-or-mutate: several requests can race in with
-    # the same brand-new session_id (a sign-in fans out to multiple calls),
-    # and a plain INSERT would give the losers a duplicate-key 500.
-    # updated_at is set explicitly since onupdate doesn't fire for DO UPDATE.
     await db.execute(
         pg_insert(UserSession)
         .values(
@@ -265,8 +226,6 @@ async def enforce_user_idle_timeout(
     )
 
     if current is None:
-        # Opportunistic retention sweep for this user's own rows, run only on
-        # a new session so the table doesn't grow forever without a cron job.
         await db.execute(
             delete(UserSession).where(
                 UserSession.user_id == user_id,
@@ -275,6 +234,4 @@ async def enforce_user_idle_timeout(
             )
         )
 
-    # Committed on its own for the same row-lock-contention reason as
-    # enforce_single_device — see the comment there; the same constraint applies.
     await db.commit()

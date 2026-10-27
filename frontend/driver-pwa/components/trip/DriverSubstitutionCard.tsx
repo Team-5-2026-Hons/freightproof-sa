@@ -28,10 +28,6 @@ import { StatusBanner, type StatusTone } from '@/components/ui/StatusBanner'
 export interface DriverSubstitutionCardProps {
   request: SubstitutionRequestRead
   role: SubstitutionRole
-  /**
-   * Already-loaded collection context. A cancelled notice passes the snapshot it fetched;
-   * a pending card leaves this out and loads it on demand, so the list poll stays light.
-   */
   context?: DriverSubstitutionContextRead
 }
 
@@ -63,8 +59,6 @@ function CollectionDetails({ context }: { context: DriverSubstitutionContextRead
         ) : (
           <ol className="list-decimal pl-5 text-subhead text-surface-on">
             {context.remaining_stops.map((stop, index) => (
-              // Labelled by position when the precinct is not in the local lookup —
-              // never an id fragment the driver cannot act on.
               <li key={stop.id}>{knownPrecinctName(stop.precinct_id) ?? `Stop ${index + 1}`}</li>
             ))}
           </ol>
@@ -97,8 +91,6 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
   const counterpart = counterpartOf(request, role)
   const isPending = request.state === 'pending'
   const blocker = request.completion_blocked_by
-  // The server's permitted actions decide whether a check can be recorded now (T2); the
-  // card only links to the driver's own capture screen, it never confirms anything itself.
   const canRecord = isPending
     && request.permitted_actions.includes(role === 'outgoing' ? 'confirm_outgoing' : 'confirm_incoming')
   const alreadyRecorded = hasConfirmed(request, role)
@@ -177,8 +169,6 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
         </Button>
       )}
 
-      {/* Live collection context only while the arrangement is pending: a cancelled or
-          replaced snapshot must not lead the driver into the trip's later progress. */}
       {isPending && (
         <>
           <Button variant="secondary" size="sm" className="mt-2" aria-expanded={detailsOpen} onClick={() => void toggleDetails()}>

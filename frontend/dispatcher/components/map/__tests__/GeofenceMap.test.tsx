@@ -73,7 +73,6 @@ describe('attachTileFailureTracking', () => {
     const onExceeded = vi.fn()
 
     attachTileFailureTracking(layer, onExceeded)
-    // Repeatedly approach the threshold, but never reach it without a success between.
     for (let round = 0; round < 5; round++) {
       fire('tileerror', TILE_ERROR_FALLBACK_THRESHOLD - 1)
       fire('tileload')

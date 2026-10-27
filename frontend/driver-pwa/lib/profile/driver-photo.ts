@@ -2,13 +2,6 @@
 
 import { useCallback, useSyncExternalStore } from 'react'
 
-// The driver's profile photo lives on this phone only. The
-// Driver record has no photo column, and a face is personal data under POPIA: keeping it
-// on the device means it never leaves the phone, needs no migration and no upload. The
-// cost — it doesn't follow the driver to a new phone — is acceptable for an avatar.
-//
-// Keyed by driver id, so on a shared phone one driver never sees another's photo, and
-// cleared on sign-out (see app/(app)/profile/page.tsx).
 const KEY_PREFIX = 'fp:driver-photo:'
 
 const listeners = new Set<() => void>()
@@ -53,7 +46,6 @@ export function clearDriverPhoto(driverId: string): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
-  // Another tab of the PWA changing the photo arrives as a storage event.
   const onStorage = (event: StorageEvent) => {
     if (event.key?.startsWith(KEY_PREFIX)) listener()
   }

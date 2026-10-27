@@ -49,7 +49,6 @@ from app.schemas.assistant import BookedCrew, BookingRow, BookingsCard, CrewGrou
 from app.schemas.availability import BusyEntry
 
 UNTIL_CLOSED = "until the trip is closed"
-# Names per kind a chat answer can usefully list; the totals still count everyone.
 MAX_CREW_ROWS = 40
 
 

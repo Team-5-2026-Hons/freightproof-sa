@@ -76,7 +76,6 @@ async def test_completion_freezes_a_pending_commitment_and_queues_nothing_before
     assert row.event_hash == compute_payload_hash(row.payload_json)
     assert row.payload_json["sequence_number"] == 1 and row.payload_json["previous_event_hash"] is None
     assert set(row.payload_json["captures"]) == {"outgoing", "incoming"}
-    # The test transaction never commits, so the after-commit dispatch never fires.
     anchor_record_task.delay.assert_not_called()  # type: ignore[attr-defined]
 
 
@@ -103,7 +102,6 @@ async def test_a_hedera_outage_leaves_failed_debt_without_reversing_custody(db_s
     assert row.anchor_status == AnchorStatus.FAILED.value
     custody = await get_current_custody(db_session, trip=await get_row(db_session, Trip, trip_id))
     assert custody.substitution_id == row.id
-    # The sweep picks the debt up once Hedera is back.
     hedera.fail = False
     row.updated_at = NOW - timedelta(hours=1)
     await db_session.flush()
@@ -184,8 +182,6 @@ async def test_a_correction_is_independently_anchored(db_session: AsyncSession, 
     assert verified.status is VerifyStatus.VERIFIED
 
 
-# ── verification ─────────────────────────────────────────────────────────────
-
 
 async def test_an_anchored_handover_verifies_and_an_edited_row_does_not(
     db_session: AsyncSession, hedera: FakeHedera, monkeypatch: pytest.MonkeyPatch,
@@ -201,8 +197,6 @@ async def test_an_anchored_handover_verifies_and_an_edited_row_does_not(
     assert ok.status is VerifyStatus.VERIFIED
     assert edited.status is VerifyStatus.DB_MISMATCH
 
-
-# ── custody-chain integrity ──────────────────────────────────────────────────
 
 
 async def test_chain_integrity_is_pending_then_verified(db_session: AsyncSession, hedera: FakeHedera):

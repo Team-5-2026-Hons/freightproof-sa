@@ -25,7 +25,6 @@ class MockResizeObserver {
   }
 
   observe(): void {
-    // Entry shape is irrelevant: Swipe.tsx reads clientWidth from its own closure, not the entry.
     this.callback([] as unknown as ResizeObserverEntry[], this as unknown as ResizeObserver)
   }
 
@@ -40,8 +39,6 @@ if (typeof window.ResizeObserver === 'undefined') {
 if (typeof window.PointerEvent === 'undefined') {
   class PointerEventPolyfill extends MouseEvent {
     readonly pointerId: number
-    // Swipe.tsx ignores any pointer that is not primary (a second finger). Defaults to
-    // false when not given, like the real constructor.
     readonly isPrimary: boolean
 
     constructor(type: string, params: PointerEventInit = {}) {

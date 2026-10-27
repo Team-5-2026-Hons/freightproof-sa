@@ -13,10 +13,6 @@ import type {
   SubstitutionRequestRead,
 } from '@shared/lib/types/driver-substitution'
 
-// FP-83 dispatcher routes (docs/contracts/driver-substitution-v1.md "Dispatcher endpoints").
-// Every mutation carries a client_request_id the caller creates once per intentional action, so
-// a transport retry with the same body is an exact replay server-side: safe to mark idempotent.
-
 const base = (tripId: string) => `/api/v1/trips/${tripId}/driver-substitutions`
 
 export function arrangeSubstitution(tripId: string, body: ArrangeSubstitutionRequest | ArrangeImmediateSubstitutionRequest): Promise<SubstitutionRequestRead> {

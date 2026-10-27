@@ -8,9 +8,6 @@ interface TripPickerProps {
   onChange: (tripId: string) => void
 }
 
-// Trip picker label: reference, driver, route, phase — enough to pick the right
-// trip without opening it first. Every part degrades independently rather than
-// hiding the option, since a demo trip may lack a driver or have only one stop.
 export function tripOptionLabel(trip: DevTripSummary): string {
   const driver = trip.driver_full_name ?? 'no driver'
   const origin = trip.stops[0]?.precinct_name

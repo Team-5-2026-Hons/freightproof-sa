@@ -67,8 +67,6 @@ async def register_my_push_token(
     await register_push_token(db, driver_id=current_driver.id, payload=payload)
 
 
-# Fleet mutations write an event row and may anchor to Hedera — not free writes, and the
-# create path also provisions a Supabase Auth account.
 @router.post("", response_model=DriverRead, status_code=201,
              dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def create_driver_endpoint(

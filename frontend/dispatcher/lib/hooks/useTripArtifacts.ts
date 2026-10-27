@@ -6,9 +6,6 @@ import { useTripResource } from './useTripResource'
 
 export interface UseTripArtifactsResult {
   artifacts: EvidenceArtifactWithUrl[]
-  // Lookup by artifact id, because that is how phases reference their evidence:
-  // PhaseDescriptor carries seal_photo_artifact_id and four siblings, and the list
-  // itself carries no phase attribution.
   byId: Map<string, EvidenceArtifactWithUrl>
   isLoading: boolean
   isValidating: boolean

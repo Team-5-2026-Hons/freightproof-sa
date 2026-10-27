@@ -61,22 +61,16 @@ from app.schemas.organisations import PrecinctCreateBody
 from app.schemas.people import DriverCreateBody
 from app.schemas.vehicles import VehicleCreateBody
 
-# Same env var scripts/seed_dispatcher.py already uses — no new config key.
 _PASSWORD_ENV_VAR = "DISPATCHER_SEED_PASSWORD"
 _DRIVER_PHONE_ENV_VAR = "SEED_DRIVER_PHONE"
 _E164_PATTERN = re.compile(r"^\+\d{10,15}$")
 
-# Organizations carry no auth FK, so their ids stay fixed: the frontend .env files
-# reference the client org id directly. Values match the previous script so nothing
-# downstream has to be re-pointed.
 _OPERATOR_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 _CLIENT_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
 
 _DISPATCHER_EMAIL = "demo-dispatcher@freightproof.co.za"
 _DISPATCHER_NAME = "Demo Dispatcher"
 
-# Relative, not fixed, dates: a hardcoded expiry would quietly turn every seeded
-# licence into an "expired" warning a few months after the seed was written.
 _TODAY = date.today()
 
 
@@ -97,7 +91,7 @@ class _SeedVehicle:
     make: str
     model: str
     year: int
-    vin_number: str  # fictional, 17 alphanumerics as the schema requires
+    vin_number: str
     licence_disc_valid_days: int
     gross_vehicle_mass_kg: int
     length_m: int
@@ -112,9 +106,6 @@ class _SeedPrecinct:
     pp_hub_code: str
 
 
-# Four, not two: scripts/seed_trips.py gives each demo trip its own driver, so the
-# dispatcher's trip list distinguishes trips by who is driving rather than showing
-# the same name four times. Also gives the creation wizard a real dropdown.
 _DRIVERS = [
     _SeedDriver("Sipho Dlamini", "8001015009087", "+27821234567", "DRV-001", 730),
     _SeedDriver("Thabo Mokoena", "7505105008083", "+27829876543", "DRV-002", 540),
@@ -122,11 +113,6 @@ _DRIVERS = [
     _SeedDriver("Riaan van Wyk", "7902285015086", "+27825550118", "DRV-004", 365),
 ]
 
-# One horse and one trailer per demo trip. Distinct pulsit_device_ids matter beyond
-# cosmetics: TripTrailer snapshots the device id at creation, so trips sharing one
-# trailer would all carry an identical snapshot and the evidence chain would never
-# demonstrate that the snapshot is per-trip. Horses are 6x4 truck-tractors; trailers
-# are tri-axle tautliners, the usual linehaul combination on these corridors.
 _VEHICLES = [
     _SeedVehicle("CA 123-456", VehicleType.HORSE, "PLT-HORSE-001",
                  "Mercedes-Benz", "Actros 2645LS", 2021, "WDB9634031L000001", 240, 27000, 7),
@@ -144,16 +130,6 @@ _VEHICLES = [
                  "Henred Fruehauf", "Tri-axle tautliner", 2018, "AHMTA3000JT000007", 120, 34000, 13),
 ]
 
-# Three, not two: the cross-dock demo trip needs a middle stop.
-#
-# The coordinates are the city-centre points the demo geography was built on, NOT the
-# depot streets in `address`. They must stay equal to the mock tracker's parked
-# position (integrations/pulsit.py MOCK_DEVICE_POSITIONS) and the truck simulator's
-# anchor (core/demo_waypoints.py DEMO_ANCHOR_*). Moving a precinct alone would put
-# every mock truck ~9 km outside its own 200 m geofence and raise GPS_MISMATCH on
-# every phase. Relocating to the real streets (OSM: Epping -33.9346318, 18.5250024;
-# Reid St -29.1066487, 26.2094468; Linbro -26.0699276, 28.1146035) is one coordinated
-# change across all three files and their tests.
 _PRECINCTS = [
     _SeedPrecinct("Cape Town Depot (Epping)", "12 Gunners Circle, Epping Industria, Cape Town",
                   Decimal("-33.9249"), Decimal("18.4241"), "CPT"),
@@ -183,8 +159,6 @@ def _resolve_drivers() -> list[_SeedDriver]:
 
 
 def _require_hedera() -> None:
-    # Checked before anything is written: a failure after the first Supabase Auth
-    # account exists leaves that account orphaned and forces a manual clean-up.
     missing = [
         name for name, value in (
             ("HEDERA_ACCOUNT_ID", settings.HEDERA_ACCOUNT_ID),
@@ -224,8 +198,6 @@ async def _seed_dispatcher(db: AsyncSession, password: str) -> uuid.UUID:
             f"{_DISPATCHER_EMAIL} exists in Supabase Auth but has no public users row. "
             "Delete it in the Supabase dashboard (Authentication -> Users) and re-run."
         )
-    # users.id MUST equal the auth UUID or auth.uid() never resolves to this row and
-    # every RLS policy keyed on it silently returns nothing (migration 0002).
     db.add(User(id=auth_id, organization_id=_OPERATOR_ORG_ID,
                 email=_DISPATCHER_EMAIL, full_name=_DISPATCHER_NAME, is_active=True))
     await db.commit()
@@ -280,9 +252,6 @@ async def _seed_precincts(db: AsyncSession, dispatcher_id: uuid.UUID) -> None:
         )
         precinct = (await db.execute(query)).scalar_one_or_none()
         if precinct is None:
-            # Owned by the client (the principal whose depots these are). is_shared=True:
-            # the client's depots must stay visible to the operator dispatcher under
-            # per-org precinct scoping.
             body = PrecinctCreateBody(
                 name=spec.name, address=spec.address,
                 latitude=float(spec.latitude), longitude=float(spec.longitude), is_shared=True,
@@ -292,9 +261,6 @@ async def _seed_precincts(db: AsyncSession, dispatcher_id: uuid.UUID) -> None:
             print(f"  precinct     {spec.name} — anchored")
             precinct = (await db.execute(query)).scalar_one()
         if precinct.pp_hub_code != spec.pp_hub_code:
-            # Reference data for the PP mock, not evidence: set directly, not through
-            # create_precinct, so precinct anchoring is unchanged (FP-281 §7.2). Also
-            # runs on a database seeded before hub codes existed.
             precinct.pp_hub_code = spec.pp_hub_code
             await db.commit()
             print(f"  precinct     {spec.name} — hub {spec.pp_hub_code}")

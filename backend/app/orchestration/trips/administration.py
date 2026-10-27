@@ -24,12 +24,8 @@ from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 
 
-# Machine-findable marker for the acting dispatcher on a cancellation's ledger entry.
-# A stable prefix, not free prose, so the actor stays greppable (and parseable by a
-# future migration that moves it into a real raised_by_user_id column).
 _CANCELLED_BY_PREFIX = "Cancelled by user "
 
-# Why a pending driver handover was ended when its trip was cancelled.
 TRIP_CANCELLED_REASON = "Trip cancelled"
 
 
@@ -48,8 +44,6 @@ async def cancel_trip(
     Raises ResourceNotFoundError (404) if the trip doesn't exist or belongs to a
     different org, and TripStateError (409) if it is already CLOSED or CANCELLED.
     """
-    # Serialize the terminal-state check so a racing retry observes the first
-    # cancellation instead of writing a second ledger row and realtime alert.
     result = await db.execute(
         select(Trip).where(
             Trip.id == trip_id, Trip.operator_organization_id == operator_organization_id,
@@ -79,31 +73,8 @@ async def terminate_trip(db: AsyncSession, *, trip: Trip, user_id: uuid.UUID, no
     closed_at = datetime.now(UTC)
     trip.status = TripStatus.CANCELLED
     trip.closed_at = closed_at
-    # A pending driver handover cannot outlive its trip: cancel it, free the incoming driver's
-    # reservation and notify both drivers in this same transaction (FP-83).
     await cancel_pending_for_terminal_trip(db, trip=trip, reason=TRIP_CANCELLED_REASON)
 
-    # Phase rows are deliberately left untouched — they stay whatever they were
-    # (most still PENDING), which is the honest record of a plan abandoned partway
-    # through. Cancelling is not completing, so nothing here marks them resolved.
-    #
-    # recompute_position() is deliberately NOT called either: it derives the
-    # position of a plan that is no longer being walked, and its close-branch
-    # would overwrite this CANCELLED write with CLOSED — a trap a future reader
-    # chasing "why isn't the trip cancelled any more" would otherwise walk into.
-
-    # The human intervention lands on the ledger, not just in an audit column.
-    #
-    # The acting dispatcher is carried in the description rather than a column
-    # because TripException has no raised_by_user_id — only reviewed_by_user_id.
-    # override_phase escapes this via PhaseEvent.dispatcher_override_user_id, but a
-    # cancellation has no phase row to hang an actor on, and an anonymous "this trip
-    # was abandoned" record is exactly the kind of unattributable evidence this
-    # platform exists to avoid. Deliberate no-migration stopgap: the proper fix is a
-    # raised_by_user_id column, which is a schema change and its own task.
-    # Reviewed by its author at creation (FP-280) — see review_policy.
-    # Both the note's own authored-review event and the cancellation event are frozen here,
-    # from the exact persisted note (never inferred later from its description prefix).
     await register_exception(db, TripException(
         trip_id=trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
         source=ExceptionSource.DISPATCHER, severity=ExceptionSeverity.WARNING,
@@ -120,6 +91,4 @@ async def terminate_trip(db: AsyncSession, *, trip: Trip, user_id: uuid.UUID, no
         ),
     )
 
-    # Published on commit — the dispatcher's list must drop this trip from
-    # Active on the same refetch trip_closed already triggers.
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CLOSED))

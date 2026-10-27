@@ -9,7 +9,6 @@ describe('delayMinutes', () => {
   })
 
   it('is negative when the actual is before the plan', () => {
-    // The real fixture: a trip that ran eight days before it was scheduled to.
     expect(delayMinutes(PLANNED, '2026-08-04T19:32:00Z')).toBe(-8 * 24 * 60)
   })
 

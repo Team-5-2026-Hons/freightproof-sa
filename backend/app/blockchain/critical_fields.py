@@ -16,8 +16,6 @@ VEHICLE_CRITICAL_FIELDS: frozenset[str] = frozenset({
     "is_active",
 })
 
-# Non-critical vehicle attributes — recorded in the event log for dispatcher visibility
-# but never anchored to Hedera (no fee, no on-chain noise for cosmetic edits).
 VEHICLE_COSMETIC_FIELDS: frozenset[str] = frozenset({
     "make",
     "model",
@@ -32,25 +30,14 @@ DRIVER_CRITICAL_FIELDS: frozenset[str] = frozenset({
     "is_active",
 })
 
-# A precinct's position and radius are the inputs to FP-68's geofence verdict, so a
-# change to either changes what every future handshake at this facility MEANS. That is
-# the definition of critical here.
-#
-# is_shared is critical too, on the same grounds Vehicle treats is_active as critical:
-# it is an access-control change rather than an evidence change, and an unanchored
-# silent widening of who can see a facility is exactly the audit gap anchoring exists
-# to close.
 PRECINCT_CRITICAL_FIELDS: frozenset[str] = frozenset({
     "latitude",
     "longitude",
     "geofence_radius_metres",
-    # The outline, when set, IS the fence — every corner is as critical as the radius.
     "geofence_polygon",
     "is_shared",
 })
 
-# Labels for humans. Recorded in the event log for dispatcher visibility, never
-# anchored — renaming a depot changes no verdict and should not cost a Hedera fee.
 PRECINCT_COSMETIC_FIELDS: frozenset[str] = frozenset({
     "name",
     "address",

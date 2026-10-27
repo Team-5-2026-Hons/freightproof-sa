@@ -29,7 +29,6 @@ VEHICLE_ID = "22222222-2222-4222-8222-222222222222"
 USER_ID = "33333333-3333-4333-8333-333333333333"
 TIMESTAMP = "2026-01-01T00:00:00+00:00"
 
-# Written out, not computed, so a change to the hashing rule cannot also move the expectation.
 CREATE_HASH = "984ac1a00cc661c54d3af8b5b62bbdf2f348e6fc50e7fa5bd0bbff5630f798d5"
 CREATE_EMPTY_HASH = "dc8d8abef0ac75e38c23804e94f5944283968cbe533dda0b9a5a9d043394364d"
 UPDATE_DEVICE_HASH = "d6fedcccd654e3540baabcef88c501b7cadfe2ecd1a5f6edad298605bd0ec0dd"

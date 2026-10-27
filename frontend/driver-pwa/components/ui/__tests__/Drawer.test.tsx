@@ -2,9 +2,6 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Drawer } from '../Drawer'
 
-// The panel keeps children mounted and slides off-canvas via CSS transform, so the
-// only reliable handle on the panel element is walking up from the (always-mounted)
-// children: children → content wrapper → panel root.
 function getPanel(): HTMLElement {
   const content = screen.getByText('Panel body')
   const panel = content.parentElement?.parentElement
@@ -14,7 +11,6 @@ function getPanel(): HTMLElement {
 
 describe('Drawer accessibility-tree hygiene', () => {
   it('test_an_open_sheet_is_a_modal_dialog_named_by_its_title', () => {
-    // Without this a screen reader was never told a sheet had opened over the page.
     render(
       <Drawer open onClose={vi.fn()} side="bottom" title="Appearance">
         <p>Panel body</p>
@@ -56,7 +52,6 @@ describe('Drawer accessibility-tree hygiene', () => {
       </Drawer>,
     )
 
-    // The Profile sheets rely on the drawer never unmounting its children.
     expect(screen.getByText('Panel body')).toBeInTheDocument()
   })
 
@@ -82,16 +77,12 @@ describe('Drawer accessibility-tree hygiene', () => {
 
     const close = screen.getByRole('button', { name: 'Close drawer' })
 
-    // Audit fix: was w-8 h-8 (32px), under the app's documented 44px touch-target
-    // minimum (Button/IconButton/Switch). w-11 h-11 with -m-1.5 keeps the layout box
-    // at its original 32px while the tappable area meets the minimum.
     expect(close.className).toContain('w-11')
     expect(close.className).toContain('h-11')
     expect(close.className).toContain('-m-1.5')
   })
 })
 
-// jsdom has no PointerEvent; this carries clientY so the drag maths actually run.
 class PointerEventPolyfill extends MouseEvent {
   public readonly pointerId: number
   constructor(type: string, params: PointerEventInit = {}) {
@@ -106,9 +97,6 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
   let nowSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
-    // Pin the clock: the sheet derives release velocity from performance.now() between
-    // pointer events, so on a loaded machine a slow gap between the synthetic events read
-    // as a flick and the short-drag case dismissed. A frozen clock means "no flick".
     nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000)
     // @ts-expect-error — installing a polyfill onto the jsdom window
     window.PointerEvent = PointerEventPolyfill
@@ -116,8 +104,6 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
     HTMLElement.prototype.setPointerCapture = vi.fn()
     HTMLElement.prototype.releasePointerCapture = vi.fn()
     HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
-    // Reduce Motion: the sheet lands on its target at once, so the decision is what's
-    // asserted rather than spring frames.
     window.matchMedia = vi.fn((query: string) => ({
       matches: query === '(prefers-reduced-motion: reduce)',
       media: query,
@@ -135,7 +121,6 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
   })
 
   function dragHandle(): HTMLElement {
-    // The grabber + title strip is the drag handle; the title sits inside it.
     return screen.getByRole('heading', { name: 'Profile' }).parentElement!.parentElement!
   }
 
@@ -148,49 +133,39 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
   })
 
   it('dismisses when dragged down past half its height', () => {
-    // Arrange
     const onClose = vi.fn()
     render(<Drawer open onClose={onClose} side="bottom" title="Profile"><p>Panel body</p></Drawer>)
 
-    // Act — 60% of the sheet's height, slowly (no flick).
     fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
     fireEvent.pointerMove(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.6, pointerId: 1 })
     fireEvent.pointerUp(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.6, pointerId: 1 })
 
-    // Assert
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('springs back instead of closing on a short drag', () => {
-    // Arrange
     const onClose = vi.fn()
     render(<Drawer open onClose={onClose} side="bottom" title="Profile"><p>Panel body</p></Drawer>)
 
-    // Act — 20% of its height.
     fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
     fireEvent.pointerMove(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.2, pointerId: 1 })
     fireEvent.pointerUp(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.2, pointerId: 1 })
 
-    // Assert
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('stays open when the system cancels a drag that was past the dismiss point', () => {
-    // Arrange
     const onClose = vi.fn()
     render(<Drawer open onClose={onClose} side="bottom" title="Profile"><p>Panel body</p></Drawer>)
 
-    // Act — 60% down would dismiss on a release; here the OS takes the touch instead.
     fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
     fireEvent.pointerMove(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.6, pointerId: 1 })
     fireEvent.pointerCancel(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.6, pointerId: 1 })
 
-    // Assert
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('test_follows_the_finger_without_re_rendering_the_sheet_on_every_move', () => {
-    // Arrange
     let childRenders = 0
     function Counted() {
       childRenders += 1
@@ -201,25 +176,20 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
     fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
     const rendersAfterGrab = childRenders
 
-    // Act
     for (const dy of [10, 20, 30, 40, 50]) fireEvent.pointerMove(dragHandle(), { clientY: 100 + dy, pointerId: 1 })
 
-    // Assert
     expect(panel.style.transform).toBe('translateY(50px)')
     expect(childRenders).toBe(rendersAfterGrab)
   })
 
   it('test_hands_the_position_back_to_the_classes_after_release', () => {
-    // Arrange
     render(<Drawer open onClose={vi.fn()} side="bottom" title="Profile"><p>Panel body</p></Drawer>)
     const panel = screen.getByRole('dialog')
 
-    // Act — a short drag that springs back (instantly, under Reduce Motion).
     fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
     fireEvent.pointerMove(dragHandle(), { clientY: 140, pointerId: 1 })
     fireEvent.pointerUp(dragHandle(), { clientY: 140, pointerId: 1 })
 
-    // Assert
     expect(panel.style.transform).toBe('')
     expect(panel.className).toContain('translate-y-0')
   })
@@ -234,9 +204,6 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
   })
 })
 
-// Regressions found by driving the real app (Playwright, Oct 2026): the X inside the
-// drag strip never closed a sheet, and the "scroll lock" wrote overflow:hidden onto
-// <body>, which locked nothing on the trip page and was left behind on a stuck sheet.
 describe('Drawer close button and scroll lock (profile scroll bug)', () => {
   beforeEach(() => {
     // @ts-expect-error — installing a polyfill onto the jsdom window
@@ -247,18 +214,14 @@ describe('Drawer close button and scroll lock (profile scroll bug)', () => {
   })
 
   it('test_tapping_the_close_button_does_not_start_a_drag_and_closes_the_sheet', () => {
-    // Arrange
     const onClose = vi.fn()
     render(<Drawer open onClose={onClose} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
     const close = screen.getByRole('button', { name: 'Close drawer' })
 
-    // Act — the sequence a finger produces on the X: pointerdown bubbles through the drag
-    // strip, then the click lands on the button.
     fireEvent.pointerDown(close, { clientY: 120, pointerId: 1 })
     fireEvent.pointerUp(close, { clientY: 120, pointerId: 1 })
     fireEvent.click(close)
 
-    // Assert — no pointer capture (which would have re-targeted the click to the strip).
     expect(HTMLElement.prototype.setPointerCapture).not.toHaveBeenCalled()
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -283,8 +246,6 @@ describe('Drawer close button and scroll lock (profile scroll bug)', () => {
   })
 
   it('test_a_touch_moving_on_a_short_sheet_never_scrolls_the_page_behind_it', () => {
-    // jsdom lays nothing out, so the panel reads as not overflowing — exactly the short
-    // sheet whose gesture the browser would otherwise hand to the page.
     render(<Drawer open onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
     const move = new Event('touchmove', { bubbles: true, cancelable: true })
 
@@ -303,7 +264,6 @@ describe('Drawer close button and scroll lock (profile scroll bug)', () => {
 
 describe('Drawer focus management', () => {
   it('test_focus_moves_to_the_close_button_on_open_and_returns_on_close', () => {
-    // Arrange — the row that opened the sheet holds focus.
     const { rerender } = render(
       <>
         <button type="button">Appearance row</button>
@@ -313,7 +273,6 @@ describe('Drawer focus management', () => {
     const opener = screen.getByRole('button', { name: 'Appearance row' })
     opener.focus()
 
-    // Act
     rerender(
       <>
         <button type="button">Appearance row</button>
@@ -321,7 +280,6 @@ describe('Drawer focus management', () => {
       </>,
     )
 
-    // Assert
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close drawer' }))
 
     rerender(

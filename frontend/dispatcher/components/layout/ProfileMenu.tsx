@@ -10,9 +10,7 @@ import { SETTINGS_SECTION_IDS } from '@/lib/settings/section-query'
 import { initialsOf, roleLabel } from '@/lib/format/dispatcher-identity'
 import { cn } from '@shared/lib/utils/cn'
 
-// Same ring as the rest of the dark sidebar surface, so keyboard focus looks the same everywhere.
 const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-white/40'
-// The menu itself is a light card floating over the dark rail, so its rows use the light tokens.
 const MENU_ITEM = 'flex w-full items-center gap-2.5 rounded-md px-3 h-9 text-[13px] text-left text-on-surf transition-colors hover:bg-surf-low outline-none focus-visible:ring-2 focus-visible:ring-sec'
 
 interface Props {
@@ -37,7 +35,6 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
   const displayName = user?.full_name ?? 'Dispatcher'
 
   useEffect(() => {
-    // Listen only while open, so the sidebar carries no document listeners at rest.
     if (!open) return
 
     function onPointerDown(event: MouseEvent): void {
@@ -52,7 +49,6 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
 
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
-    // Keyboard users open the menu to act on it, so focus moves in.
     firstItemRef.current?.focus()
     return () => {
       document.removeEventListener('mousedown', onPointerDown)
@@ -67,9 +63,6 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
 
   function logOut(): void {
     setOpen(false)
-    // The session is cleared locally even when the auth port call fails (AuthContext logs
-    // that), so there is nothing for the dispatcher to retry. This only keeps any other
-    // failure from becoming an unhandled rejection.
     signOut().catch((error: unknown) => console.error('ProfileMenu: sign-out failed', error))
   }
 
@@ -80,8 +73,6 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
           id={menuId}
           role="menu"
           aria-label="Account"
-          // Fixed width from the row's left edge: the 68px rail is too narrow to hold it, so
-          // in the collapsed rail it overlays the page instead of being squeezed.
           className="absolute bottom-full left-0 z-overlay mb-2 w-56 rounded-lg bg-surf-lowest p-1.5 shadow-level-5"
         >
           <Link
@@ -130,8 +121,6 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
             >
               {initialsOf(user?.full_name)}
             </span>
-            {/* Collapsed rail has no room for a "Live" row, so the status becomes a
-                presence dot on the avatar: a dispatcher can still see the stream is alive. */}
             {collapsed && <LiveBadge compact className="absolute -bottom-0.5 -right-0.5" />}
           </span>
           {!collapsed && (
@@ -141,7 +130,6 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
             </span>
           )}
         </button>
-        {/* Own line, below the identity, rather than competing with the name for width. */}
         {!collapsed && <div className="px-2"><LiveBadge /></div>}
       </div>
     </div>

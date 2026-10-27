@@ -7,8 +7,6 @@ describe('formatDate', () => {
   })
 
   it('test_does_not_shift_a_date_only_value_across_midnight', () => {
-    // A licence expiry is a calendar date, not an instant: "2027-01-01" must never read
-    // as 31 Dec 2026 on a phone west of UTC.
     expect(formatDate('2027-01-01')).toBe('1 Jan 2027')
   })
 })

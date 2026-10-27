@@ -9,9 +9,7 @@ export const NONCE_HEADER = 'x-nonce'
 
 interface CspInput {
   nonce: string
-  /** The FreightProof API origin, the only cross-origin endpoint this page calls. */
   apiOrigin: string
-  /** next dev evaluates modules with eval() for fast refresh; production never does. */
   isDev: boolean
 }
 
@@ -19,10 +17,7 @@ export function buildCsp({ nonce, apiOrigin, isDev }: CspInput): string {
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
     'script-src': ["'self'", `'nonce-${nonce}'`, ...(isDev ? ["'unsafe-eval'"] : [])],
-    // 'unsafe-inline' for styles only: server-rendered React style props arrive as style
-    // attributes, which a nonce cannot cover. Styles cannot run code or read the token.
     'style-src': ["'self'", "'unsafe-inline'"],
-    // blob:/data: carry the receiver's own signature image, drawn in the page.
     'img-src': ["'self'", 'blob:', 'data:'],
     'font-src': ["'self'"],
     'connect-src': ["'self'", apiOrigin],

@@ -12,8 +12,6 @@ function SearchRoute(): JSX.Element {
   const { user } = useAuth()
   const barcode = params.get('barcode') ?? ''
   const waybill = params.get('waybill') ?? ''
-  // Only the account identity remounts the feature: the form must keep its DOM node (and focus) across
-  // queries, while ParcelSearch keys its results by query to withdraw stale evidence.
   return <ParcelSearch key={`${user?.id}:${user?.organization_id}`} initialBarcode={barcode} initialWaybill={waybill} />
 }
 

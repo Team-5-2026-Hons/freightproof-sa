@@ -15,7 +15,6 @@ export type ChangeRow = {
   value: string
 }
 
-// Friendly labels for known field keys (vehicle, driver + precinct critical/snapshot fields).
 const FIELD_LABELS: Record<string, string> = {
   registration: 'Registration',
   vehicle_type: 'Vehicle type',
@@ -38,8 +37,6 @@ const FIELD_LABELS: Record<string, string> = {
   is_shared: 'Shared with other organisations',
 }
 
-// Keys holding a list of [lat, lng] corners. Hundreds of raw coordinates tell a reader
-// nothing; the corner count does, and the anchored payload keeps every coordinate.
 const OUTLINE_KEYS = new Set(['geofence_polygon'])
 
 function formatOutline(value: unknown): string {
@@ -47,10 +44,8 @@ function formatOutline(value: unknown): string {
   return Array.isArray(value) ? `${value.length} corners` : formatPrimitive(value)
 }
 
-// Keys that are bookkeeping/meta, never real changed-field values.
 const META_KEYS = new Set(['_no_critical_change', '_patch'])
 
-// Keys whose value is a hash, not a human-meaningful value — never render the raw hash.
 const HASH_ONLY_KEYS = new Set(['license_number_sha256'])
 
 function humanizeKey(key: string): string {
@@ -66,8 +61,6 @@ function labelFor(key: string): string {
   return FIELD_LABELS[key] ?? humanizeKey(key)
 }
 
-// Only is_active is a status; every other flag (is_shared, ...) is a plain yes/no, so
-// "Shared with other organisations: Active" cannot appear.
 const STATUS_BOOLEAN_KEYS = new Set(['is_active'])
 
 function formatPrimitive(value: unknown, key?: string): string {
@@ -77,7 +70,6 @@ function formatPrimitive(value: unknown, key?: string): string {
     return value ? 'Yes' : 'No'
   }
   if (typeof value === 'string' || typeof value === 'number') return String(value)
-  // Defensive fallback for anything unexpected (arrays, nested objects, etc).
   try {
     return JSON.stringify(value)
   } catch {
@@ -102,10 +94,6 @@ function isFromToShape(value: unknown): value is { from: unknown; to: unknown } 
 export function describeChange(changedFields: Record<string, unknown>): ChangeRow[] {
   if (!changedFields || typeof changedFields !== 'object') return []
 
-  // Cosmetic update: { _no_critical_change: true, _patch: { field: newValue, ... } }.
-  // _patch holds the new values for every non-PII field that was sent in the PATCH
-  // (phone_number and license_number are stripped server-side before storage).
-  // Render the individual fields so the dispatcher can see exactly what changed.
   if (changedFields._no_critical_change === true) {
     const patch = changedFields._patch
     if (typeof patch === 'object' && patch !== null) {
@@ -115,7 +103,6 @@ export function describeChange(changedFields: Record<string, unknown>): ChangeRo
       }
       if (rows.length > 0) return rows
     }
-    // Fallback: patch was empty or missing (no non-PII fields changed).
     return [{ label: 'Change type', value: 'Details updated' }]
   }
 
@@ -124,8 +111,6 @@ export function describeChange(changedFields: Record<string, unknown>): ChangeRo
   for (const [key, value] of Object.entries(changedFields)) {
     if (META_KEYS.has(key)) continue
 
-    // license_number_sha256 (and any future hash-only key): never show hash-to-hash,
-    // it conveys nothing meaningful even though it isn't PII itself.
     if (HASH_ONLY_KEYS.has(key)) {
       rows.push({ label: labelFor(key), value: 'Updated' })
       continue

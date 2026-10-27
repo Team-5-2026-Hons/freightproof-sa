@@ -183,8 +183,6 @@ async def test_raise_and_review_events_are_distinct_and_each_verifies(db_session
     assert results == [VerifyStatus.VERIFIED, VerifyStatus.VERIFIED]
 
 
-# ── Batch ─────────────────────────────────────────────────────────────────────
-
 async def _batch(db, world: World, ids: list[uuid.UUID], user_id: uuid.UUID | None = None):
     return await review_exceptions_batch(
         db, trip_id=world.trip_id, exception_ids=ids, user_id=user_id or world.user.id,

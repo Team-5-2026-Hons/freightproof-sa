@@ -16,7 +16,6 @@ export function PhaseAnchorSection({ phase }: { phase: PhaseDescriptor }) {
           ⚠ Anchor failed, receipt still owed
         </div>
       )}
-      {/* The phase's own SHA-256, anchored value a reviewer recomputes against the chain. */}
       <ForensicOnly>
         <CopyField label="Event hash (SHA-256)" value={phase.event_hash} mono span />
       </ForensicOnly>

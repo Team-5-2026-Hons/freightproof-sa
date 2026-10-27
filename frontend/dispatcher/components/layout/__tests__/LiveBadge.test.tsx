@@ -4,7 +4,6 @@ import { LiveBadge } from '@/components/layout/LiveBadge'
 import { useRealtimeStatus } from '@/lib/realtime/RealtimeProvider'
 import type { RealtimeStatus } from '@/lib/realtime/types'
 
-// The real provider's module graph reaches the Supabase client, which throws without env vars.
 vi.mock('@/lib/realtime/RealtimeProvider', () => ({ useRealtimeStatus: vi.fn() }))
 
 function renderBadge(status: RealtimeStatus, compact = false) {
@@ -22,8 +21,6 @@ describe('LiveBadge', () => {
   ])('names_the_stream_not_the_data_when_%s', (status, detail) => {
     renderBadge(status)
 
-    // Only the live-update stream is reported: a data request can still fail while it is up, and the
-    // screens that load data say so themselves.
     expect(screen.getByRole('status')).toHaveAttribute('title', detail)
     expect(screen.getByRole('status')).toHaveTextContent(detail)
   })

@@ -14,8 +14,6 @@ vi.mock('@/lib/api/phases', () => ({ submitPhase }))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Mount/account listeners can retry in the background. They see the same offline
-  // failure until this test explicitly makes the server's receipt available.
   submitPhase.mockReset().mockRejectedValue(new ApiError(0, 'Still offline'))
   localStorage.clear()
   __setIndexedDbForTests(createFakeIndexedDb())
@@ -71,8 +69,6 @@ it.each(['network', 'custody', 'account'] as const)('keeps the original wire key
 })
 
 it('does not report queued when the phone refuses to store the retry', async () => {
-  // Storage full or disabled: enqueuePhase stores nothing and says so. Reporting "queued" here
-  // would keep the optimistic advance and promise a replay that was never scheduled.
   const enqueuePhase = vi.fn(() => false)
   let finish!: (outcome: PhaseSubmissionOutcome) => void
   const outcome = new Promise<PhaseSubmissionOutcome>(resolve => { finish = resolve })

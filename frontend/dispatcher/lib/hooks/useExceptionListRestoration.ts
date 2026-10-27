@@ -31,12 +31,9 @@ interface ExpandedState {
 
 export interface ExceptionListRestorationOptions {
   userId: string | null
-  /** The list's own URL, query included, so each filtered view restores independently. */
   origin: string
   container: RefObject<HTMLDivElement | null>
-  /** True once the rows are on screen and scroll can be restored. */
   ready: boolean
-  /** False while auth is still loading: a null user then means "unknown", not "signed out". */
   identityReady?: boolean
 }
 
@@ -61,8 +58,6 @@ export function useExceptionListRestoration({
   const key = userId ? `${PREFIX}${userId}:${origin}` : null
   const pending = useRef<Saved | null>(null)
 
-  // Reset by key while rendering, as useClaimChanges derives its state, so another user's or
-  // another view's expansion is never shown for even one committed frame.
   const [expandedState, setExpandedState] = useState<ExpandedState>({ key, groups: {} })
   if (expandedState.key !== key) setExpandedState({ key, groups: {} })
 
@@ -95,11 +90,9 @@ export function useExceptionListRestoration({
       if (!isSaved(value)) return
 
       pending.current = value
-      // sessionStorage is external and absent during the static export, so the saved expansion can only be
-      // read after mount; reading it during render would also differ between server and client.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpanded(value.expanded)
-    } catch { /* Unavailable storage degrades only restoration, never navigation. */ }
+    } catch { }
   }, [key, userId, identityReady, setExpanded])
 
   useEffect(() => {
@@ -133,7 +126,7 @@ export function useExceptionListRestoration({
     const snapshot: Saved = { scrollTop: container.current?.scrollTop ?? 0, focusedId, expanded }
     try {
       sessionStorage.setItem(key, JSON.stringify(snapshot))
-    } catch { /* Browser privacy settings can reject storage; the link still works. */ }
+    } catch { }
   }, [key, container, expanded, identityReady])
 
   return { save, expanded, setExpanded }

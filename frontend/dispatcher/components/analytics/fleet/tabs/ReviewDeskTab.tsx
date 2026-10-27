@@ -198,8 +198,6 @@ interface OutcomeRow {
 
 type Outcome = ReviewOutcomeCount['outcome']
 
-// Colour follows the outcome, never its size or rank: the five validated series slots, in the
-// outcomes' fixed order, so "Data discrepancy" is the same colour every period.
 const OUTCOME_COLORS: Record<Outcome, string> = {
   no_action_required: SERIES_COLORS[0],
   handled_externally: SERIES_COLORS[1],

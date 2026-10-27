@@ -13,7 +13,6 @@ export function PhaseOverrideSection({ phase }: { phase: PhaseDescriptor }) {
         ⚠ A dispatcher bypassed this phase&apos;s checks
       </div>
       <Field label="Note" value={phase.dispatcher_override_note} span />
-      {/* The id, not a name — the trip payload carries no user directory to resolve it against. */}
       <Field label="Authorised by (user id)" value={phase.dispatcher_override_user_id} mono span />
     </Section>
   )

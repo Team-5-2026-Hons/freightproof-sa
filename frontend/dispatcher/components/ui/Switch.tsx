@@ -9,8 +9,6 @@ interface SwitchProps {
   className?: string
 }
 
-// Reusable on/off switch — visual style matches the existing "Active" toggle on the
-// vehicle/driver edit pages, but adds the role/aria-checked semantics that one lacks.
 export function Switch({ checked, onCheckedChange, ariaLabel, className }: SwitchProps) {
   return (
     <button

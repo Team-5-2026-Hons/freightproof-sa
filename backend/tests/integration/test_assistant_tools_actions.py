@@ -172,7 +172,6 @@ async def test_manifest_already_on_a_live_trip_gets_no_button(seed: dict, db_ses
         db_session, operator, stops=[seed["origin"], seed["dest"]], status=TripStatus.ACTIVE, steps=not_started(),
         start=NOW - timedelta(hours=1),
     )
-    # A manifest key is all three parts or none (ck_trips_pp_manifest_all_or_none).
     live.trip.pp_manifest_issuer_account, live.trip.pp_manifest_origin_hub, live.trip.pp_manifest_number = "ACC001", "CPT", 81
     await db_session.flush()
 

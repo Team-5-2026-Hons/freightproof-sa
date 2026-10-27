@@ -29,24 +29,19 @@ export interface PhaseCardInput {
   phase: PhaseDescriptor
   precincts: Precinct[]
   artifacts: readonly EvidenceArtifactWithUrl[]
-  /** Already de-duplicated and scoped to this phase. */
   exceptions: readonly TripException[]
   receipt: BlockchainReceipt | undefined
   nowMs: number
-  /** in_transit only: the leg's incidents and driver transfers, in time order (positionTripEvents). */
   tripEvents?: readonly TripTimelineEvent[]
 }
 
 export interface PhaseCardModel {
   isActive: boolean
-  /** The trip is live: not dormant (`created`), closed or cancelled. */
   running: boolean
   acts: PhaseAct[]
   checks: PhaseCheck[]
   checkedZone: CheckedZone
   verdict: PhaseVerdict | null
-  /** Whether the card has anything to open: a resolved phase, the live phase of a running
-   *  trip, or an unresolved phase that nonetheless holds rows (a cancelled trip's uploads). */
   hasBody: boolean
 }
 
@@ -59,8 +54,6 @@ function isRunning(trip: Trip): boolean {
 }
 
 function checkedZoneFor(phase: PhaseDescriptor, resolved: boolean, live: boolean): CheckedZone {
-  // An in_transit leg carries a standing note while it is happening and after, but nothing
-  // to "await": its seal is first inspected at Arrival.
   if (phase.phase_type === 'in_transit') return resolved || live ? 'checks' : 'none'
   if (resolved) return 'checks'
   return live ? 'awaiting' : 'none'
@@ -68,8 +61,6 @@ function checkedZoneFor(phase: PhaseDescriptor, resolved: boolean, live: boolean
 
 function checksFor(input: PhaseCardInput, resolved: boolean): PhaseCheck[] {
   const { trip, phase, precincts } = input
-  // buildPhaseChecks cannot see trip status; its live lines would otherwise appear on a
-  // cancelled trip's unfinished phase.
   if (trip.status === 'cancelled' && !resolved) return []
   const isLoading = phase.phase_type === 'loading'
   const isUnloading = phase.phase_type === 'unloading'

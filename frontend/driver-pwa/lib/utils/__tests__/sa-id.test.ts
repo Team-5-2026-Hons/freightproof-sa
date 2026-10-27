@@ -29,9 +29,6 @@ describe('looksLikeSaIdNumber', () => {
   })
 
   it('does no checksum validation — a shape-valid but invalid ID still passes', () => {
-    // All zeroes is a well-formed 13 digits and a Luhn-invalid SA ID. It must pass,
-    // because this function's answer may only drive an advisory hint. If someone adds a
-    // checksum here, this test is the tripwire.
     expect(looksLikeSaIdNumber('0000000000000')).toBe(true)
   })
 })

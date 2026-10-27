@@ -8,8 +8,6 @@ import type { VehicleType } from '@shared/lib/types/vehicle'
 import { ANALYTICS_COPY } from './copy'
 import { VehicleAnalyticsSummary } from './VehicleAnalyticsSummary'
 
-// The hooks' fetching, range keying and stale-reply handling are covered by
-// useAnalytics.test.tsx. Here they are stubbed so each test sets the state it needs.
 vi.mock('@/lib/hooks/useAnalytics', () => ({
   useVehicleAnalytics: vi.fn(),
   useVehicleStreaks: vi.fn(),
@@ -126,7 +124,6 @@ describe('VehicleAnalyticsSummary — loading and errors', () => {
   it('keeps the month range control on screen after a failure', () => {
     renderSummary({ rows: [], error: 'Request failed' })
 
-    // From month, From year, To month, To year.
     expect(screen.getAllByRole('combobox')).toHaveLength(4)
   })
 })
@@ -154,7 +151,6 @@ describe('VehicleAnalyticsSummary — selected months', () => {
     expect(valueOf('Info')).toBe('1')
     expect(valueOf('Warning')).toBe('2')
     expect(valueOf('Critical')).toBe('0')
-    // mechanical_exceptions_count (3) is their sum and must not appear anywhere.
     expect(screen.queryByText('3')).not.toBeInTheDocument()
   })
 
@@ -183,7 +179,6 @@ describe('VehicleAnalyticsSummary — selected months', () => {
   })
 
   it('shows a dash, not "no breakdowns", after a single breakdown with no gap yet', () => {
-    // The vehicle's first-ever breakdown has no earlier one to measure a gap from.
     renderSummary({ rows: [makeVehicle({
       mechanical_exceptions_count: 1, mechanical_info_count: 0, mechanical_warning_count: 1,
       mechanical_critical_count: 0, mechanical_gap_count: 0, mean_minutes_between_mechanical: null,
@@ -252,8 +247,6 @@ describe('VehicleAnalyticsSummary — no closed trips in the range', () => {
   })
 })
 
-// Trailer analytics: a trailer's breakdowns count only from when drivers began naming the
-// vehicle, so its earlier trips read as clean — and the page has to say so.
 describe('VehicleAnalyticsSummary — trailer note', () => {
   it("tells a trailer's reader why its earlier trips read as clean", () => {
     renderSummary({}, {}, 'trailer')

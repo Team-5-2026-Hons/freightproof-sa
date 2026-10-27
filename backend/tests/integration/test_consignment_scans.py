@@ -32,8 +32,6 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     return fake
 
 
-# `seeded` now lives in tests/conftest.py, shared with test_phases_gate.py.
-
 
 async def test_full_scan_out_stamps_every_parcel(db_session, store, seeded):
     await MockScanFeed().stage_scans(
@@ -233,8 +231,6 @@ async def test_a_new_discrepancy_is_recorded_again_after_the_first_is_reviewed(
     first.review_status = ExceptionReviewStatus.REVIEWED
     await db_session.flush()
 
-    # Same staged feed, unchanged — proves the recurrence is recorded because the
-    # prior row was reviewed, not because anything about the discrepancy itself changed.
     await ingest_scans(
         db_session, trip_id=seeded["trip"].id, trip_stop_id=seeded["stop"].id,
         direction=ScanDirection.OUT,

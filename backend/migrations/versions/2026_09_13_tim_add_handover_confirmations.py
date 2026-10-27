@@ -37,7 +37,6 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "tim_handover_confirm"
 down_revision = "tom_trailer_vehicle_analytics"
 branch_labels = None
@@ -49,8 +48,6 @@ def upgrade() -> None:
         "handover_capability_tokens",
         sa.Column("opened_at", sa.DateTime(timezone=True), nullable=True),
     )
-    # SHA-256 hex of the browser-binding secret — 64 characters, same convention as
-    # token_hash on this table. Never the secret itself, for the same reason.
     op.add_column(
         "handover_capability_tokens",
         sa.Column("session_secret_hash", sa.String(64), nullable=True),
@@ -92,9 +89,6 @@ def upgrade() -> None:
         "handover_confirmations",
         ["phase_event_id"],
     )
-    # The driver's handover step polls this by trip while waiting for the receiver to
-    # scan, every few seconds for as long as the handover takes. Without this index that
-    # poll is a sequential scan each time.
     op.create_index("ix_handover_confirmations_trip_id", "handover_confirmations", ["trip_id"])
 
 

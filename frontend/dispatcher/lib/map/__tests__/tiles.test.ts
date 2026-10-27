@@ -10,13 +10,9 @@ import {
   zoomForRadius,
 } from '../tiles'
 
-// Two known South African precincts, verified against an independent slippy-map
-// tile calculator so a projection sign/rounding error can't sneak past a
-// self-consistent test.
 const BLOEMFONTEIN = { lat: -29.0852, lng: 26.1596 }
 const DURBAN = { lat: -29.7942, lng: 30.982 }
 
-// Card width used by the precinct list card that this module backs the thumbnail for.
 const CARD_WIDTH_PX = 280
 
 describe('tileCoordinates', () => {
@@ -154,10 +150,6 @@ describe('tileGrid', () => {
     return { left, top, right, bottom }
   }
 
-  // The regression this function exists for: a fixed 2x2 block is offset by the centre's
-  // fractional position inside its own tile, so for most coordinates it left a blank
-  // strip down the side of the thumbnail. Bloemfontein, Johannesburg and Durban all
-  // failed that way at their derived zooms; Cape Town happened not to.
   it.each([
     ['Bloemfontein', BLOEMFONTEIN.lat, BLOEMFONTEIN.lng, 200],
     ['Durban', DURBAN.lat, DURBAN.lng, 300],
@@ -176,8 +168,6 @@ describe('tileGrid', () => {
   })
 
   it('covers the viewport at every fractional tile offset, not just lucky ones', () => {
-    // Sweep longitude across a whole tile at z16 so every possible fractional x offset
-    // is exercised — the case the old fixed-block version got wrong.
     const zoom = 16
     const degreesPerTile = 360 / 2 ** zoom
 
@@ -196,9 +186,6 @@ describe('tileGrid', () => {
     const tiles = tileGrid(BLOEMFONTEIN.lat, BLOEMFONTEIN.lng, zoom, WIDTH_PX, HEIGHT_PX)
     const { x, y } = tileCoordinates(BLOEMFONTEIN.lat, BLOEMFONTEIN.lng, zoom)
 
-    // The tile the point falls in, positioned by its own fractional offset, must place
-    // that point at the box's centre — to within the half-pixel the origin rounding
-    // (which exists to avoid seams between tiles) can move it.
     const centreTile = tiles.find((t) => t.x === Math.floor(x) && t.y === Math.floor(y))
     expect(centreTile).toBeDefined()
     expect(centreTile!.left + (x - Math.floor(x)) * TILE_SIZE_PX).toBeCloseTo(WIDTH_PX / 2, 0)
@@ -223,7 +210,6 @@ describe('tileGrid', () => {
       expect(tile.x).toBeGreaterThanOrEqual(0)
       expect(tile.x).toBeLessThan(2 ** zoom)
     })
-    // The wrap actually happened: tiles from both edges of the world are present.
     expect(tiles.some((t) => t.x === 2 ** zoom - 1)).toBe(true)
   })
 
@@ -252,20 +238,13 @@ describe('tileGrid', () => {
 })
 
 describe('geofence framing fits the thumbnail band', () => {
-  // The band StaticGeofenceThumbnail draws into: fluid width, fixed height.
   const THUMBNAIL_HEIGHT_PX = 150
   const VERTICAL_BUDGET_PX = THUMBNAIL_HEIGHT_PX / 2
 
-  // Card widths the responsive grid actually produces (grid-cols-1 / sm:2 / xl:3),
-  // and the full span of radii the schema permits.
   const CARD_WIDTHS = [280, 342, 420, 590, 760]
   const RADII_METRES = [50, 100, 200, 350, 500, 1000, 2000, 5000]
   const SA_LATITUDES = [-33.9, -26.2, -22.0]
 
-  // This lives here, on the pure functions, rather than in the component test on
-  // purpose: jsdom has no ResizeObserver, so the component never leaves its default
-  // 280px width and a component-level assertion cannot see the wide-card case at all.
-  // The regression it guards was invisible for exactly that reason.
   it('never draws a circle taller than the band, at any card width or radius', () => {
     const clipped: string[] = []
 
@@ -288,8 +267,6 @@ describe('geofence framing fits the thumbnail band', () => {
   })
 
   it('framing on width alone would clip — the bug this guards against', () => {
-    // Pins the reason for Math.min(): the previous framing clipped at the DEFAULT
-    // width and DEFAULT radius, so this is not a wide-screen edge case.
     const zoom = zoomForRadius(200, -26.2, 280)
 
     expect(200 / metresPerPixel(-26.2, zoom)).toBeGreaterThan(VERTICAL_BUDGET_PX)

@@ -18,7 +18,6 @@ interface Props {
   token: string
   seal: PublicPackSeal
   records: AnchoredRecord[]
-  // Reported so the rest of the page (the PDF check) can say whether the seal itself was confirmed.
   onSealCheck?: (result: AnchorCheckResult) => void
 }
 
@@ -27,16 +26,12 @@ type Checks = Record<string, AnchorCheckResult>
 interface Target {
   key: string
   label: string
-  // null for a pack issued without a seal receipt: there is nothing to check, which is itself the result.
   anchor: AnchorToCheck | null
 }
 
-// A uuid receipt id can never equal this, so the seal row never collides with a record row.
 const SEAL_KEY = 'seal'
-// The mirror node is a shared public service: a pack with dozens of records must not open dozens of connections at once.
 const MAX_CONCURRENT_CHECKS = 4
 const NOT_SEALED: AnchorCheckResult = { state: 'no_receipt' }
-// States where the pack contradicts itself or the ledger, as opposed to merely not being confirmed.
 const FAILING_STATES: ReadonlySet<AnchorCheckState> = new Set(['hash_mismatch', 'ledger_mismatch', 'topic_mismatch'])
 
 const SERVER_TEXT: Record<LiveVerification['seal_status'], string> = {
@@ -47,8 +42,6 @@ const SERVER_TEXT: Record<LiveVerification['seal_status'], string> = {
   error: 'could not be checked',
 }
 
-// What to tell the reader about each way a live record can fail to verify. Each has its own
-// wording and tone: a changed record is a finding, a failed check is only an unfinished one.
 const RECORD_PROBLEM: Record<Exclude<LiveCheckStatus, 'verified'>, { tone: string; text: (n: number) => string }> = {
   db_mismatch: {
     tone: 'font-semibold text-err',
@@ -79,23 +72,19 @@ function consensusText(value: string | undefined): string {
 export function VerificationPanel({ token, seal, records, onSealCheck }: Props) {
   const [checks, setChecks] = useState<Checks>({})
   const [server, setServer] = useState<LiveVerification | 'checking' | 'failed' | null>(null)
-  // Each run takes the next id; a result from any other id is stale and dropped.
   const runId = useRef(0)
   const onSealCheckRef = useRef(onSealCheck)
   useEffect(() => {
     onSealCheckRef.current = onSealCheck
   }, [onSealCheck])
 
-  // Never the server's own mirror address: see trustedMirrorBase.
   const mirrorBase = useMemo(() => trustedMirrorBase(seal.hedera_network, seal.mirror_base_url), [seal.hedera_network, seal.mirror_base_url])
 
-  // The seal row is always first, sealed or not: a pack with no seal must say so, not look verified.
   const targets = useMemo<Target[]>(() => [
     { key: SEAL_KEY, label: `Pack seal · ${seal.pack_label}`, anchor: seal.seal },
     ...records.map((r) => ({ key: r.receipt_id, label: `${humanise(r.receipt_type)} · ${humanise(r.subject_type)}`, anchor: r })),
   ], [seal.seal, seal.pack_label, records])
 
-  // Results arrive one by one; a target with no result yet renders as "Checking…".
   const runChecks = useCallback(async (keys: ReadonlySet<string>) => {
     const run = ++runId.current
     const queue = targets.filter((t) => keys.has(t.key))
@@ -107,7 +96,6 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
         try {
           result = target.anchor ? await verifyAnchoredRecord(target.anchor, mirrorBase) : NOT_SEALED
         } catch (error) {
-          // verifyAnchoredRecord is meant to be total; if it ever is not, the row must not hang on "Checking…".
           console.warn('Browser check failed unexpectedly', error)
           result = { state: 'unavailable' }
         }
@@ -122,12 +110,10 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
   useEffect(() => {
     void runChecks(new Set(targets.map((t) => t.key)))
     return () => {
-      // Unmounting, or the pack changing, supersedes whatever is still in flight.
       runId.current += 1
     }
   }, [runChecks, targets])
 
-  // Re-checks only what is not already confirmed: a verified row has nothing to gain from a second request.
   const unverifiedKeys = targets.filter((t) => checks[t.key]?.state !== 'verified').map((t) => t.key)
   function rerunBrowserChecks(): void {
     const keys = new Set(unverifiedKeys)
@@ -166,8 +152,6 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
       ? 'no other anchored records'
       : `${recordsVerified} of ${pluralise(records.length, 'record')} verified in your browser`
 
-  // The verdict a claims handler reads; the tally under it is for whoever wants the count. Failure is named
-  // first, even mid-check, and "unchanged" needs the same evidence as green: the seal and every record.
   const plainHeadline = sealFailed || recordsFailed > 0
     ? 'Something in this pack does not match the public ledger'
     : !settled
@@ -178,7 +162,6 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
           ? 'This pack was not sealed on the public ledger'
           : 'Not confirmed against the public ledger yet'
 
-  // Green is reserved for a verified seal AND every record verified; anything less must not look like success.
   const tone = sealFailed || recordsFailed > 0
     ? 'border-err bg-err-c'
     : allVerified ? 'border-ok bg-ok-c/25' : settled ? 'border-warn bg-surf-low' : 'border-outline-v bg-surf-low'
@@ -199,7 +182,6 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
       <p className="mt-1 text-body text-muted">
         Your browser checks this pack&apos;s seal and each anchored record against the public Hedera ledger itself.
       </p>
-      {/* The per-record rows are the proof, not the story: folded away until something fails, then shown. */}
       <details open={sealFailed || recordsFailed > 0} className="group mt-3">
         <summary className="no-print flex min-h-11 cursor-pointer list-none items-center gap-2 text-body font-semibold text-sec">
           <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>

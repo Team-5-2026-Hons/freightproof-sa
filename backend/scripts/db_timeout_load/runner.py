@@ -32,7 +32,6 @@ async def healthy_wave(harness: Harness, concurrency: int, count: int) -> Wave:
 
 async def run_cycle(harness: Harness, name: str, concurrency: int, count: int) -> Report:
     harness.scenario = name
-    # Read both bounds now: recovery() switches the harness back to the healthy scenario.
     envelope = harness.budgets.envelope(name)
     watchdog = harness.request_watchdog
     relay_errors_before = len(harness.proxy.errors)
@@ -52,8 +51,6 @@ async def run_cycle(harness: Harness, name: str, concurrency: int, count: int) -
     tasks = await harness.settled_tasks()
     if not harness.settled(tasks):
         failures.append("Tasks or fault-relay connections did not settle")
-    # The pool can never report more than its capacity, so zero checked-out connections
-    # plus settled relay sockets is the leak check; peak_checked_out is informational.
     if before_recovery["final_checked_out"] != 0 or pool["final_checked_out"] != 0:
         failures.append("Pool leaked checked-out connections")
     relay_errors = harness.proxy.errors[relay_errors_before:]
@@ -98,7 +95,6 @@ async def execute(args: argparse.Namespace, report: Report, save: Callable[[], N
         async with world.control.connect() as db:
             report["postgresql"] = str(await db.scalar(text("SHOW server_version")))
         for name in selected:
-            # A fresh engine and pool per scenario, kept alive through all its repetitions.
             async with open_harness(world, database, budgets) as harness:
                 warm, duration = await harness.wave(world.reads(), 1, len(world.reads()))
                 warmups[name] = summarize(warm, duration)
@@ -107,7 +103,6 @@ async def execute(args: argparse.Namespace, report: Report, save: Callable[[], N
                 for repetition in range(1, args.repetitions + 1):
                     levels = HEALTHY_CONCURRENCY_LEVELS if name == HEALTHY else (FAULT_CONCURRENCY,)
                     for concurrency in levels:
-                        # Recorded first, so a runner error names the cycle it interrupted.
                         report["in_progress"] = {"scenario": name, "repetition": repetition, "concurrency": concurrency}
                         result = await run_cycle(harness, name, concurrency, args.requests)
                         result["repetition"] = repetition
@@ -115,6 +110,5 @@ async def execute(args: argparse.Namespace, report: Report, save: Callable[[], N
                         del report["in_progress"]
                         status = "FAIL" if result["failures"] else "PASS"
                         print(f"{name} repetition={repetition} concurrency={concurrency}: {status}", flush=True)
-                        # Persist partial evidence too: interruption must not erase failed waves.
                         save()
     return all(not result["failures"] for result in results)

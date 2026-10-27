@@ -12,10 +12,7 @@ import { withReturnTo } from '@/lib/navigation/returnTo'
 
 export const BARCODE_MAX_LENGTH = 100
 
-// A journey's section headings must sit below whatever heading introduces it, so the level is chosen by the
-// caller (3 under the page sections, 5 inside an earlier-association row whose reference is an h4).
 export type HeadingLevel = 3 | 4 | 5 | 6
-// Declared at module level (not chosen per render) so React keeps one component identity for it.
 export function Heading({ level, ...props }: { level: HeadingLevel } & ComponentPropsWithoutRef<'h3'>): ReactElement {
   return createElement(`h${level}`, props)
 }
@@ -27,16 +24,12 @@ export const LOCATION_LABELS: Record<ParcelTracePhase['location_verdict'], strin
   not_recorded: 'Location not recorded for this step',
 }
 
-// Unknown stays unknown: the backend cannot always say whether a phase concerns this consignment, and
-// folding that into "trip context" would assert a relationship the evidence does not support.
 export const RELEVANCE_LABELS: Record<ParcelTracePhase['relevance'], string> = {
   consignment: 'This consignment',
   trip_context: 'Other trip context',
   unknown: 'Relevance unknown',
 }
 
-// The backend sets scope trip_context when an exception has no consignment (projection.py:111): it concerns the
-// whole trip, not another consignment's handling, so it must not borrow the phase relevance wording.
 export const EXCEPTION_SCOPE_LABELS: Record<ParcelTraceException['scope'], string> = {
   consignment: RELEVANCE_LABELS.consignment,
   trip_context: 'Whole trip',
@@ -60,7 +53,6 @@ export function awaitsReview(exception: ParcelTraceException): boolean {
 }
 
 export function progressChipType(progress: ParcelProgress): ChipType {
-  // Cancellation is coloured by statusBadge from the shared trip status meta, so it never reaches here.
   if (progress.has_overrides) return 'exception'
   return progress.position === 'after_delivery' ? 'complete' : 'transit'
 }
@@ -78,7 +70,6 @@ export function progressLabel(progress: ParcelProgress, phases: readonly ParcelT
 }
 
 export function tripEvidenceLink(tripId: string, returnTo: string, phaseId?: string): string {
-  // Append the fragment LAST: returnTo is a query parameter, never part of the hash.
   const target = withReturnTo(ROUTES.tripDetail(tripId), returnTo)
   return phaseId ? `${target}#phase-${encodeURIComponent(phaseId)}` : target
 }
@@ -90,10 +81,6 @@ export function locationLabel(journey: ParcelJourney): string {
   if (fix.precinct_confirmed === false && fix.precinct_name) return `Vehicle recorded outside ${fix.precinct_name} tolerance`
   return 'Position recorded, facility unverified'
 }
-
-// --- Recorded-state helpers ------------------------------------------------------------------------
-// Pure derivations from the trace DTO. Nothing here fetches, sorts by time or infers an outcome: a phase is
-// "recorded" because the ledger says so, and the wording states what was recorded, never what happened to the parcel.
 
 const RECORDED_PHASE_STATUSES: readonly ParcelTracePhase['status'][] = ['completed', 'exception', 'overridden']
 
@@ -135,7 +122,6 @@ export interface ExceptionTypeGroup {
   label: string
   count: number
   needsReview: number
-  /** "GPS mismatch ×3 · 2 need review"; the review part is omitted when nothing awaits review. */
   summary: string
 }
 
@@ -155,7 +141,6 @@ function scanOutText(scans: readonly ParcelScanObservation[], lead: string, none
   const times = scans.map(scan => scan.scan_out_at).filter((time): time is string => time !== null)
   if (times.length === 0) return none
   const earliest = [...times].sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
-  // Records that agree read as one scan-out; records that differ are counted rather than one being quietly preferred.
   return new Set(times).size === 1
     ? `${lead} ${fmtDateTime(earliest)}`
     : `${lead} on ${countLabel(times.length, 'parcel record')}, earliest ${fmtDateTime(earliest)}`
@@ -165,10 +150,6 @@ function scanOutText(scans: readonly ParcelScanObservation[], lead: string, none
 export function scanSummary(scans: readonly ParcelScanObservation[]): string {
   return scans.length === 0 ? 'No retained scan record' : scanOutText(scans, 'Scan-out', 'No scan-out recorded')
 }
-
-// --- Parcel-first timeline -------------------------------------------------------------------------
-// The page tells the dispatcher what was recorded for THIS parcel, in plain steps. Same rules as above: ledger order,
-// no sorting by time, and wording that states a record exists, never what happened to the parcel.
 
 const TIME_NOT_RECORDED = 'Time not recorded'
 const TRIP_WIDE_RECORD = 'Trip-wide record'
@@ -181,9 +162,7 @@ const UNRECORDED_PLACE = 'an unrecorded place'
 const ORIGIN_SCAN_ITEM = 'origin scan-out'
 const SEAL_CHECK_ITEM = 'seal check'
 export const DESTINATION_SCAN_ITEM = 'destination scan'
-/** Verdicts worth a pill when a step has no exceptions; confirmed and not_recorded say nothing that needs flagging. */
 const FLAGGED_LOCATION_VERDICTS: readonly ParcelTracePhase['location_verdict'][] = ['mismatch', 'unwitnessed']
-/** Seal windows whose inspection has not produced a verdict, so "seal check" belongs in the not-recorded list. */
 const OPEN_SEAL_STATUSES: readonly ParcelSealWindow['status'][] = ['pending', 'unverified']
 
 export interface ParcelStep {
@@ -191,14 +170,11 @@ export interface ParcelStep {
   key: string
   title: string
   subline: string
-  /** The step in sentence form for the status line, e.g. "departed Origin Depot under seal AB-1". Lower-case, no time. */
   sentence: string
   marker: 'recorded' | 'in_progress' | 'warn'
   phase: ParcelTracePhase | null
   scan: ParcelScanObservation | null
-  /** Exceptions linked to this phase; empty for scan and cancelled steps. */
   exceptions: ParcelTraceException[]
-  /** At most one: the exception count, else a flagged location verdict. The "Overridden" pill is `overridden`, separate. */
   issuePill: string | null
   overridden: boolean
   relevanceUnknown: boolean
@@ -215,7 +191,6 @@ function phaseWording(phase: ParcelTracePhase, journey: ParcelJourney): { title:
   switch (phase.phase_type) {
     case 'loading': return { title: 'Consignment loaded', sentence: `consignment loaded${at}` }
     case 'departure': {
-      // The seal belongs to the leg, so a departure with no seal of its own still reads the seal its window recorded.
       const seal = phase.seal_number ?? journey.seal_windows.find(window => window.phase_ids.includes(phase.id))?.departure_seal ?? null
       return { title: seal ? `Departed, sealed ${seal}` : 'Departed', sentence: `departed${place ? ` ${place}` : ''}${seal ? ` under seal ${seal}` : ''}` }
     }
@@ -284,7 +259,6 @@ function nextUnrecordedPhase(journey: ParcelJourney): ParcelTracePhase | null {
 function cancelledStep(journey: ParcelJourney): ParcelStep {
   const next = nextUnrecordedPhase(journey)
   const subline = !lastRecordedPhase(journey) ? 'before any recorded phase' : next ? `before ${lowerPhaseName(next)}` : 'after the last recorded phase'
-  // No time: the DTO has none, and borrowing an exception's time would invent one.
   return { kind: 'cancelled', key: 'cancelled', title: 'Trip cancelled', subline, sentence: 'trip cancelled', marker: 'warn', phase: null, scan: null, exceptions: [], issuePill: null, overridden: false, relevanceUnknown: false }
 }
 
@@ -309,7 +283,6 @@ export function notRecordedItems(journey: ParcelJourney): string[] {
     const name = lowerPhaseName(phase)
     return (occurrences.get(name) ?? 0) > 1 ? `${name} at ${phase.precinct_name ?? UNRECORDED_PLACE}` : name
   })
-  // The backend writes no gap for a missing scan-out, so it is named here, and first: it is the earliest event.
   if (journey.scans.every(scan => scan.scan_out_at === null)) items.unshift(ORIGIN_SCAN_ITEM)
   const window = relevantSealWindow(journey)
   if (window && OPEN_SEAL_STATUSES.includes(window.status)) items.push(SEAL_CHECK_ITEM)
@@ -318,7 +291,6 @@ export function notRecordedItems(journey: ParcelJourney): string[] {
 }
 
 export function statusBadge(journey: ParcelJourney): { label: string; type: ChipType } {
-  // The wording is the parcel's own; the colour is the app's: cancellation is the same red as the trip list and trip page.
   const cancelled = journey.trip_status === 'cancelled' || journey.progress.position === 'cancelled'
   const type = cancelled ? TRIP_STATUS_META.cancelled.chipType : progressChipType(journey.progress)
   if (journey.progress.position !== 'cancelled') return { label: progressLabel(journey.progress, journey.phases), type }

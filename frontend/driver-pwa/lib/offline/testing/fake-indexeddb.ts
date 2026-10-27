@@ -25,9 +25,6 @@ export interface FakeIndexedDbControls {
 
 export type FakeIndexedDbFactory = IDBFactory & FakeIndexedDbControls
 
-// Copies plain objects/arrays so a stored record can't be mutated through a reference the
-// caller kept, but leaves Blobs (and other non-plain values) shared, as structured clone
-// would preserve their contents.
 function cloneRecord<T>(value: T): T {
   if (Array.isArray(value)) return value.map(cloneRecord) as unknown as T
   if (value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
@@ -60,7 +57,6 @@ class FakeTransaction {
     readonly mode: IDBTransactionMode,
     private readonly controls: { putError: DOMException | null },
   ) {
-    // A transaction that never receives a request must still complete.
     setTimeout(() => this.maybeComplete(), 0)
   }
 
@@ -73,7 +69,6 @@ class FakeTransaction {
     this.fail(new DOMException('Transaction aborted', 'AbortError'))
   }
 
-  // Runs a request body on a later task, like the real event loop, then fires its callbacks.
   dispatch<T>(request: FakeRequest<T>, run: () => T): void {
     this.pending += 1
     setTimeout(() => {
@@ -105,7 +100,6 @@ class FakeTransaction {
   }
 
   private maybeComplete(): void {
-    // A callback that issued a follow-up request (read-modify-write) keeps the tx alive.
     if (this.finished || this.pending > 0) return
     this.finished = true
     this.oncomplete?.({ target: this } as unknown as Event)
@@ -178,7 +172,6 @@ class FakeDatabase {
   }
 
   close(): void {
-    // Data persists in the factory; closing only ends this handle.
   }
 }
 

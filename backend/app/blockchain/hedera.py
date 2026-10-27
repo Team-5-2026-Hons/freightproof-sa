@@ -69,7 +69,6 @@ class _SdkHederaAdapter:
                 "Install backend dependencies to include it."
             ) from exc
 
-        # hedera-sdk-py wraps the Java SDK via pyjnius — all names are Java camelCase.
         normalized_network = network.strip().lower()
         if normalized_network == "testnet":
             client = Client.forTestnet()
@@ -83,7 +82,6 @@ class _SdkHederaAdapter:
                 "Expected one of: testnet, mainnet, previewnet."
             )
 
-        # Strip leading 0x if present — fromStringECDSA expects raw hex only.
         raw_key = private_key.strip().removeprefix("0x")
         client.setOperator(
             AccountId.fromString(account_id),
@@ -116,13 +114,9 @@ class _SdkHederaAdapter:
             if maybe_timestamp is not None:
                 consensus_timestamp = str(maybe_timestamp)
         except Exception as exc:  # pragma: no cover - defensive parse of SDK record
-            # Anchoring already succeeded at this point; a missing consensus
-            # timestamp degrades the receipt, so record why instead of hiding it.
             logger.warning("Could not read consensus timestamp from tx record: %s", exc)
             consensus_timestamp = None
 
-        # receipt.topicId can be Java null (pyjnius maps it to Python None) on
-        # TopicMessageSubmit receipts — fall back to the known topic_id we submitted to.
         raw_topic_id = getattr(receipt, "topicId", None)
         resolved_topic_id = str(raw_topic_id) if raw_topic_id is not None else topic_id
 
@@ -161,8 +155,6 @@ class HederaService:
         self._private_key = _require_non_empty("HEDERA_PRIVATE_KEY", private_key)
         self._topic_id = _require_non_empty("HEDERA_TOPIC_ID", topic_id)
 
-        # Mirror-node verification is HTTP-only. Do not load Java or initialize a
-        # signing client on the API event loop just to read a public receipt.
         self._adapter = adapter
 
         self._mirror_base_url = (

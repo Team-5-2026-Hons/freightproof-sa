@@ -20,8 +20,6 @@ from app.db.errors import DATABASE_UNAVAILABLE_DETAIL
 Outcome = Literal["http", "cancelled", "watchdog", "error"]
 
 MS_PER_SECOND = 1000
-# Must match the first words of app.main.database_unavailable_handler's warning, whose
-# first two arguments are the failure reason and operation.
 DATABASE_UNAVAILABLE_LOG_PREFIX = "Database unavailable reason="
 PERCENTILES = (("p50", 0.50), ("p95", 0.95), ("p99", 0.99))
 
@@ -70,8 +68,6 @@ class RequestSpec:
 
 
 def successful_payload(response: object, expected: object) -> bool:
-    # A dict must contain the expected key/value pairs; a list must contain an item
-    # matching each expected item. This proves the seeded records came back.
     if expected is None:
         return isinstance(response, (dict, list))
     if isinstance(expected, dict) and isinstance(response, dict):
@@ -99,8 +95,6 @@ async def measure(client: AsyncClient, spec: RequestSpec, samples: list[Sample],
             sample.database_failure = is_database_failure(sample.status, body)
             sample.valid_success = sample.status == HTTPStatus.OK and successful_payload(body, spec.expected)
     except TimeoutError:
-        # Only our own watchdog counts as "watchdog"; a TimeoutError from inside the
-        # request is an unexpected error, never a database-timeout success.
         sample.outcome = "watchdog" if deadline.expired() else "error"
         sample.error_type = "TimeoutError"
     except asyncio.CancelledError:
@@ -116,7 +110,6 @@ async def measure(client: AsyncClient, spec: RequestSpec, samples: list[Sample],
 
 
 def distribution(values: list[float]) -> dict[str, float | int]:
-    # Nearest-rank percentiles: the value at position ceil(p * n) of the sorted samples.
     if not values:
         return {"count": 0}
     ordered = sorted(values)
@@ -153,8 +146,6 @@ def summarize(samples: list[Sample], elapsed: float) -> dict[str, object]:
 
 
 def request_failures(samples: list[Sample], expected: int, *, cancellations: int = 0) -> list[str]:
-    # Every attempt must be accounted for. Apart from deliberate cancellations, each one
-    # must be a valid success or the exact database 503 with its logged reason/operation.
     failures = []
     if len(samples) != expected:
         failures.append("Request accounting mismatch")
@@ -170,8 +161,6 @@ def request_failures(samples: list[Sample], expected: int, *, cancellations: int
 
 
 def queue_pool(engine: AsyncEngine) -> QueuePool:
-    # create_db_engine always builds a QueuePool subclass; the check gives mypy, and a
-    # reader, the checked-out/size methods that the generic Pool type lacks.
     pool = engine.pool
     if not isinstance(pool, QueuePool):
         raise TypeError("The load harness expects the API engine's queue pool")
@@ -191,7 +180,6 @@ class PoolMetrics:
     holds_by_route: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
 
     def attach(self) -> None:
-        # The engine is disposed with its harness, so these listeners never outlive it.
         event.listen(self.engine.sync_engine, "checkout", self.checkout)
         event.listen(self.engine.sync_engine, "checkin", self.checkin)
         event.listen(self.engine.sync_engine, "invalidate", self.invalidate)
@@ -199,7 +187,6 @@ class PoolMetrics:
     def checkout(self, connection: object, record: ConnectionPoolEntry, proxy: object) -> None:
         self.checkouts += 1
         sample = CURRENT_SAMPLE.get()
-        # Connections opened by the harness itself, not by an HTTP request.
         route = sample.route if sample is not None else "administrative"
         self.checkouts_by_route[route] += 1
         self.held[id(record)] = (perf_counter(), route)

@@ -24,13 +24,11 @@ Create Date: 2026-09-23
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_arrival_seal_condition"
 down_revision = "ciaran_lock_down_data_api"
 branch_labels = None
 depends_on = None
 
-# Mirrors PhaseEvent.seal_condition in app/db/models/phases.py.
 _SEAL_CONDITION_LENGTH = 20
 
 

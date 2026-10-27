@@ -26,8 +26,6 @@ from app.schemas.text import _require_content, clean_text
 from app.schemas.transit import DriverCheckpointCreateBody, DriverExceptionCreateBody, TripExceptionRead
 from app.schemas.trips import TripStopRead
 
-# ── Bounds (contract: exchange label 1-255, instructions 0-1000, reasons/notes 1-1000) ──
-
 EXCHANGE_LABEL_MAX_LENGTH = 255
 SUBSTITUTION_TEXT_MAX_LENGTH = 1000
 PLANNED_V1 = "planned_v1"
@@ -36,8 +34,6 @@ RequestFormat = Literal["planned_v1", "immediate_v2"]
 ConfirmationPolicy = Literal["two_driver_v1", "incoming_acceptance_v2"]
 LocationUnavailableReason = Literal["permission_denied", "timeout", "position_unavailable", "unknown"]
 
-# Reasons, notes and the not-applicable explanation. min_length runs before cleaning, so
-# _require_content closes the gap for whitespace/invisible-only input.
 SubstitutionText = Annotated[
     str,
     StringConstraints(min_length=1, max_length=SUBSTITUTION_TEXT_MAX_LENGTH),
@@ -54,8 +50,6 @@ ExchangeInstructions = Annotated[
     str, StringConstraints(max_length=SUBSTITUTION_TEXT_MAX_LENGTH), AfterValidator(clean_text)
 ]
 
-
-# ── Enums ───────────────────────────────────────────────────────────────────────
 
 
 class SubstitutionState(str, Enum):
@@ -152,9 +146,6 @@ class SubstitutionErrorCode(str, Enum):
     SUBSTITUTIONS_DISABLED = "SUBSTITUTIONS_DISABLED"
 
 
-# HTTP status per code. Domain conflicts are 409 except the two the contract singles out: a
-# dispatcher lacking admin identity authority is a permission error (403) and the disabled
-# flag is a service-availability condition (503).
 SUBSTITUTION_ERROR_STATUS: dict[SubstitutionErrorCode, int] = {
     **{code: 409 for code in SubstitutionErrorCode},
     SubstitutionErrorCode.IDENTITY_ATTESTATION_FORBIDDEN: 403,
@@ -162,12 +153,8 @@ SUBSTITUTION_ERROR_STATUS: dict[SubstitutionErrorCode, int] = {
 }
 
 
-# ── Shared validators ───────────────────────────────────────────────────────────
-
 
 def _require_timezone(value: Optional[datetime], field: str) -> Optional[datetime]:
-    # The contract wants ISO 8601 with an explicit offset; a naive value would silently be
-    # compared as UTC and could manufacture a wrong exchange or capture time.
     if value is not None and value.tzinfo is None:
         raise ValueError(f"{field} must be timezone-aware")
     return value
@@ -176,8 +163,6 @@ def _require_timezone(value: Optional[datetime], field: str) -> Optional[datetim
 def _request_config() -> ConfigDict:
     return ConfigDict(extra="forbid")
 
-
-# ── Building blocks ─────────────────────────────────────────────────────────────
 
 
 class DriverContact(BaseModel):
@@ -216,8 +201,6 @@ class SealCheck(BaseModel):
     @field_validator("seal_number")
     @classmethod
     def _normalise_seal_number(cls, value: Optional[str]) -> Optional[str]:
-        # The existing phase rule (XX-####, trimmed and upper-cased), reused so a seal reads
-        # identically wherever it was captured.
         return None if value is None else _validate_seal_format(value)
 
     @model_validator(mode="after")
@@ -283,7 +266,6 @@ class SubstitutionCompletionRead(BaseModel):
     trigger: SubstitutionCompletionTrigger
     completed_by_driver_id: Optional[UUID] = None
     completed_by_user_id: Optional[UUID] = None
-    # A display label read alongside the completed-transfer detail; every other read of a completion leaves it None.
     completed_by_name: Optional[str] = None
 
     @model_validator(mode="after")
@@ -337,7 +319,6 @@ class SubstitutionRequestRead(BaseModel):
                 raise ValueError("a completed request carries its completion facts")
         elif any(fact is not None for fact in facts):
             raise ValueError("only a completed request carries completion facts")
-        # A saved-but-blocked confirmation is a PENDING request (HTTP 200), never a completed one.
         if self.completion_blocked_by is not None and self.state is not SubstitutionState.PENDING:
             raise ValueError("completion_blocked_by is only valid on a pending request")
         if self.replacement_request_id is not None and self.state is not SubstitutionState.CANCELLED:
@@ -394,7 +375,6 @@ class SubstitutionCorrectionRead(BaseModel):
     correction_note: str
     anchor_status: AnchorStatus
     receipt_id: Optional[UUID] = None
-    # The recorder's display label, filled by the completed-transfer detail read only.
     recorded_by_name: Optional[str] = None
 
 
@@ -470,10 +450,6 @@ class DriverParticipationHistoryRead(BaseModel):
     declarations: list[SubstitutionConfirmationDetail]
 
 
-# ── Late evidence ───────────────────────────────────────────────────────────────
-# A discriminated union over four EXISTING request schemas, embedded verbatim as `payload`.
-# Never an arbitrary URL or executable operation.
-
 
 class LatePhaseEvidence(BaseModel):
     model_config = _request_config()
@@ -532,8 +508,6 @@ class LateEvidenceDetailRead(LateEvidenceRead):
     artifacts: list[EvidenceArtifactWithUrl]
 
 
-# ── Request bodies ──────────────────────────────────────────────────────────────
-
 
 class _ArrangementFields(BaseModel):
     model_config = _request_config()
@@ -591,8 +565,6 @@ class ConfirmSubstitutionRequest(BaseModel):
     client_request_id: UUID
     expected_version: int = Field(..., ge=1)
     captured_at: datetime
-    # Null together where the device could not capture a position; absence is preserved,
-    # never replaced by an invented position.
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     accuracy_metres: Optional[float] = Field(default=None, ge=0)
@@ -608,7 +580,6 @@ class ConfirmSubstitutionRequest(BaseModel):
     @field_validator("accuracy_metres")
     @classmethod
     def _accuracy_is_finite(cls, value: Optional[float]) -> Optional[float]:
-        # ge=0 lets inf through; the same guard the phase and checkpoint bodies apply.
         if value is not None and not math.isfinite(value):
             raise ValueError("accuracy_metres must be a finite number")
         return value
@@ -651,8 +622,6 @@ class CompleteSubstitutionRequest(BaseModel):
 
     client_request_id: UUID
     expected_version: int = Field(..., ge=1)
-    # Null means "no attestation requested". A supplied value must be real text: a blank
-    # reason is a 422, never silently treated as absent.
     missing_confirmation_reason: Optional[SubstitutionText] = None
     identity_unavailable_reason: Optional[SubstitutionText] = None
     declared_exchange_at: Optional[datetime] = None
@@ -694,8 +663,6 @@ class AcknowledgeLateEvidenceRequest(BaseModel):
     note: SubstitutionText
 
 
-# ── Errors ──────────────────────────────────────────────────────────────────────
-
 
 class SubstitutionErrorDetail(BaseModel):
     """FastAPI's ``detail`` object for a domain conflict. Existing clients must also parse the
@@ -712,8 +679,6 @@ class SubstitutionErrorResponse(BaseModel):
     detail: SubstitutionErrorDetail
 
 
-# The trip reads embed these types, but schemas/trips is imported by this module, so they are
-# forward references there, resolved here once both modules exist (FP-83 C6).
 def _resolve_trip_read_references() -> None:
     from app.schemas import trips
 

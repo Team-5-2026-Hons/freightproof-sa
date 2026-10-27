@@ -15,20 +15,15 @@ interface Props {
   precinct: Precinct
   open: boolean
   onClose: () => void
-  /** This trip's own URL, so the precinct page's Back returns here. */
   returnTo: string
 }
 
-// Tall enough to read the fence against its surroundings, short enough that the rows
-// and buttons below still fit a laptop viewport without the modal scrolling.
 const PRECINCT_MAP_HEIGHT_CLASS = 'mb-4 h-[260px] w-full'
 
 /** Which depot or warehouse a stop names, reachable without leaving the trip. */
 export function PrecinctModal({ precinct, open, onClose, returnTo }: Props) {
   return (
     <Modal open={open} onClose={onClose} title={precinctLabel(precinct)} size="md">
-      {/* Read-only (no onPositionChange): the fence is shown, never edited from a trip.
-          Modal returns null while closed, so Leaflet only loads once this is opened. */}
       <GeofenceMap latitude={precinct.latitude} longitude={precinct.longitude} radiusMetres={precinct.geofence_radius_metres} polygon={precinct.geofence_polygon} className={PRECINCT_MAP_HEIGHT_CLASS} />
       <InfoRow label="Address" value={precinct.address ?? 'Not recorded'} />
       <InfoRow label="Coordinates" value={`${precinct.latitude}, ${precinct.longitude}`} mono />

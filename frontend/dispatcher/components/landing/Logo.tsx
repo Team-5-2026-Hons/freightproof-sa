@@ -2,9 +2,7 @@ import { cn } from '@shared/lib/utils/cn'
 
 interface LogoMarkProps {
   className?: string
-  /** Rendered height (and width) in px. */
   size?: number
-  /** Accessible name; omit when a visible wordmark already names the brand. */
   title?: string
 }
 
@@ -34,9 +32,7 @@ export function LogoMark({ className, title, size = 30 }: LogoMarkProps) {
 
 interface LogoProps {
   className?: string
-  /** Show the "SA" region tag after the wordmark. */
   showRegion?: boolean
-  /** Mark height in px; the wordmark scales with it. Fixed px on purpose: the lockup is chrome. */
   size?: number
 }
 

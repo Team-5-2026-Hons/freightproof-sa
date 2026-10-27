@@ -139,8 +139,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Dropping the tables discards their RLS flags too, but disabling first keeps
-    # downgrade the exact mirror of upgrade.
     for table in _NEW_TABLES:
         op.execute(f"ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY")
     op.drop_index("ix_incident_declarations_trip_created", table_name="incident_declarations")

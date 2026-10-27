@@ -25,7 +25,6 @@ class World:
     trip: Trip
 
     def __post_init__(self) -> None:
-        # Plain copies: reading these must not lazy-load after a test calls expire_all().
         self.trip_id, self.driver_id, self.org_id = self.trip.id, self.driver.id, self.org.id
 
 

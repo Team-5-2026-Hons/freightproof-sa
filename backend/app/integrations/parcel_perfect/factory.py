@@ -6,10 +6,6 @@ from app.integrations.parcel_perfect.mock import MockParcelPerfectClient
 from app.integrations.parcel_perfect.port import ParcelPerfectPort
 
 
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
 
 def get_pp_client() -> ParcelPerfectPort:
     """Return the appropriate PP client based on settings.PP_USE_MOCK.

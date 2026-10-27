@@ -32,13 +32,10 @@ vi.mock('@/lib/hooks/useMyTrips', () => ({
   useMyTrips: () => mockUseMyTrips(),
 }))
 
-// jsdom has no scrollIntoView; PhaseProgressBar calls it on the current phase's cell.
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
-// Marks every phase up to and including `through` (by sequence_number) as completed —
-// mirrors the identical local helper in lib/phase/__tests__/derive.test.ts.
 function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
   return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
@@ -83,11 +80,6 @@ describe('HomeContent driving entry', () => {
   })
 
   it('shows the arrival capture card, not the driving screen, once in_transit resolves', () => {
-    // in_transit resolved, arrival current — the driver has swiped "Arrive at
-    // destination" and is standing at the gate doing seal-verify, before unloading. This
-    // state used to be mistaken for "still driving" (the old case-2 fossil, V7): it is the
-    // exact moment driving must be false, and the arrival capture card is what should be
-    // offered instead.
     mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 4)), isLoading: false, exceptions: [] })
 
     render(<HomeContent />)
@@ -106,9 +98,6 @@ describe('HomeContent driving entry', () => {
   })
 
   it('offers the driving entry while in_transit is the unresolved current phase', () => {
-    // With the backend keeping in_transit pending during the drive, isDriving returns
-    // true while the driver is actively en route. This is exactly when the driving button
-    // should appear to take them to the map and checkpoint/exception screens.
     mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3)), isLoading: false, exceptions: [] })
 
     render(<HomeContent />)
@@ -117,9 +106,6 @@ describe('HomeContent driving entry', () => {
   })
 
   it('offers the driving entry on the SECOND leg of a cross-dock plan', () => {
-    // Regression guard for a plan-length or phase_type assumption: the entry has to fire
-    // per leg, not once per trip. Walked to one row before the second in_transit, so that
-    // row is left PENDING and current — the driver is mid-leg on the second drive.
     const secondInTransit = CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type === 'in_transit')[1]
     mockUseTrip.mockReturnValue({
       trip: makeTrip(walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)),
@@ -133,9 +119,6 @@ describe('HomeContent driving entry', () => {
   })
 
   it('a held trip shows the hold notice instead of the driving entry, even mid-leg', () => {
-    // Genuinely mid-leg (in_transit pending, current) so this actually proves the hold
-    // outranks driving, rather than the hold notice winning by coincidence because the
-    // trip wasn't driving anyway.
     mockUseTrip.mockReturnValue({
       trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3), { status: 'exception_hold' }),
       isLoading: false,
@@ -154,7 +137,6 @@ describe('HomeContent driving entry', () => {
     render(<HomeContent />)
 
     expect(screen.getByText('No trip assigned')).toBeInTheDocument()
-    // Leads somewhere useful: the driver's past trips (overhaul 2.3).
     expect(screen.getByRole('button', { name: 'See past trips' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
   })

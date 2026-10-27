@@ -8,13 +8,11 @@ import { Modal } from '@/components/ui/Modal'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { SubjectType, VerifyResult } from '@shared/lib/types/blockchain'
 
-// Storage has a 15s total deadline, followed by the mirror's 10s request.
 const VERIFICATION_TIMEOUT_MS = 35_000
 
 type Props = {
   subjectType: SubjectType
   subjectId: string
-  // When true: fires on mount and the result persists instead of auto-resetting.
   autoVerify?: boolean
   onResult?: (r: VerifyResult, checkedAt: string) => void
   className?: string
@@ -149,7 +147,6 @@ export function VerifyButton({
       )
       setUi({ kind: 'result', result, checkedAt })
       resultCallback.current?.(result, checkedAt)
-      // Manual verifies auto-reset after 8s; auto-verify results stay visible.
       if (!autoVerify) {
         resetTimer.current = setTimeout(() => {
           resetTimer.current = null
@@ -173,7 +170,6 @@ export function VerifyButton({
     }
   }, [subjectType, subjectId, autoVerify, notify])
 
-  // Defer to next tick so verify()'s synchronous setUi call doesn't fire during render.
   useEffect(() => {
     const initialVersion = requestVersion.current
     const timer = setTimeout(() => {
@@ -298,7 +294,6 @@ export function VerifyButton({
       )
     }
 
-    // no_receipt
     return (
       <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" aria-label={statusAriaLabel} className={`mt-2 ${className}`}>
         <div className="text-[11px] font-[500] text-chain-onc opacity-60">
@@ -309,7 +304,6 @@ export function VerifyButton({
     )
   }
 
-  // idle — manual mode only
   return (
     <button
       ref={idleButtonRef}

@@ -105,7 +105,6 @@ async def test_driver_cannot_log_checkpoint_on_someone_elses_trip(client: AsyncC
         json={"checkpoint_type": "manual"},
         headers=auth_header(token),
     )
-    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
     assert resp.status_code == 404
 
 
@@ -234,7 +233,6 @@ async def _delete_committed_checkpoint_race_world(session: AsyncSession, ids: di
     await session.commit()
 
 
-# How long the first session waits for a partner that the trip lock keeps out.
 _RACE_BARRIER_SECONDS = 1.0
 
 
@@ -265,7 +263,7 @@ async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separat
             try:
                 await asyncio.wait_for(barrier.wait(), _RACE_BARRIER_SECONDS)
             except (TimeoutError, asyncio.BrokenBarrierError):
-                pass  # serialised by the trip lock: the other session is queued behind this one
+                pass
         return existing
 
     captured_at = datetime.now(UTC)

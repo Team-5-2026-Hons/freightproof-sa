@@ -263,7 +263,6 @@ async def test_foreign_snapshot_does_not_reveal_its_waybill(
 ) -> None:
     foreign = await make_world(db_session, f"PRIVATE-{uuid4()}", barcode="another-barcode")
     await add_archive(db_session, foreign)
-    # The archived snapshot contains BARCODE, but only the foreign operator can see it.
     response = await client.get("/api/v1/parcels/lookup", params={"barcode": BARCODE}, headers=headers(world))
     assert [row["waybill_reference"] for row in response.json()["items"]] == [world.cargo.parcel_perfect_reference]
     response = await client.get("/api/v1/parcels/trace", params={"barcode": BARCODE, "waybill_reference": foreign.cargo.parcel_perfect_reference}, headers=headers(world))
@@ -308,5 +307,4 @@ async def test_trace_batches_queries_for_multiple_journeys(db_session: AsyncSess
     with patch.object(db_session, "execute", wraps=db_session.execute) as execute:
         response = await trace_parcel(db_session, organization_id=world.org.id, query=query)
     assert len(response.journeys) == 3
-    # One trip query and five batched record reads, regardless of the number of journeys.
     assert execute.call_count == 6

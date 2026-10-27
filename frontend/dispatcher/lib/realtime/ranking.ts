@@ -13,16 +13,13 @@ export type ToastRequest = Omit<ToastData, 'id'>
  * dispatcher opens the trip for detail.
  */
 export function toastForEvent(event: RealtimeEvent): ToastRequest | null {
-  // Progress events (create/phase/close) just refetch; they aren't alerts.
   if (event.kind !== 'exception_raised') return null
 
   if (event.severity === 'info') return null
 
   const critical = event.severity === 'critical'
   return {
-    // Only the alarm tier persists until acknowledged; warnings auto-dismiss.
     kind: critical ? 'error' : 'warning',
-    // Read by ToastContext's eviction rule so warnings can't evict a critical alert.
     priority: critical ? 'critical' : 'ordinary',
     title: critical ? 'Critical exception' : 'Exception raised',
     body: critical

@@ -22,7 +22,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "tim_dsub_capture_findings"
 down_revision = "ciaran_checkpoint_actor"
 branch_labels = None

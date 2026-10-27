@@ -20,7 +20,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "tim_add_incidents"
 down_revision = "ciaran_driver_transfer_v2"
 branch_labels = None
@@ -32,7 +31,6 @@ _EXCEPTIONS = "incident_exceptions"
 _PARCELS = "incident_parcels"
 _NEW_TABLES = (_INCIDENTS, _UPDATES, _EXCEPTIONS, _PARCELS)
 _DECLARATIONS = "incident_declarations"
-# The Supabase Data API roles, as in ciaran_lock_down_data_api; skipped where a role does not exist.
 _API_ROLES = "'anon', 'authenticated'"
 
 
@@ -44,8 +42,6 @@ def _timestamps() -> list[sa.Column]:
 
 
 def _lock_down(table: str) -> None:
-    # Same posture as every table since ciaran_lock_down_data_api: RLS on with no policies,
-    # and Supabase's default Data API grants revoked, so only the backend's own connection reads it.
     op.execute(f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"""
 DO $$

@@ -7,9 +7,7 @@ export interface Tab {
   id: string
   label: string
   icon?: ReactNode
-  /** Small trailing count, e.g. the number of exceptions still needing review. */
   badge?: string | number
-  /** Raises the badge when the count is something a dispatcher must act on. */
   badgeUrgent?: boolean
 }
 
@@ -17,15 +15,11 @@ interface TabsProps {
   tabs: readonly Tab[]
   active: string
   onChange: (id: string) => void
-  /** Id of the element this tablist controls, so screen readers pair the two. */
   panelId?: string
   ariaLabel?: string
   size?: 'sm' | 'md'
-  /** 'equal' gives every tab the same width; 'content' sizes each to its label, for a row where
-   *  one label is much longer than the rest and would otherwise be truncated. */
   fit?: 'equal' | 'content'
   className?: string
-  /** Multiple controls can share view names without sharing DOM ids or keyboard focus. */
   idPrefix?: string
   disabled?: boolean
 }
@@ -46,8 +40,6 @@ export function Tabs({ tabs, active, onChange, panelId, ariaLabel, size = 'md', 
             disabled={disabled}
             aria-selected={isActive}
             aria-controls={panelId}
-            // Only the selected tab stays in the tab order; the arrow-key roving pattern
-            // is what keyboard users expect inside a tablist, not three separate stops.
             tabIndex={isActive ? 0 : -1}
             onKeyDown={event => {
               const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0

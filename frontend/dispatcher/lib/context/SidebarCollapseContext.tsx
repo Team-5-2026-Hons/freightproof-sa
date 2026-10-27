@@ -4,20 +4,15 @@ import { createContext, useContext, useState, useCallback, useMemo } from 'react
 import { usePathname } from 'next/navigation'
 import { ROUTES } from '@/lib/constants/routes'
 
-/** localStorage key for the persisted sidebar collapse preference. */
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'fp.sidebarCollapsed'
 
 interface SidebarCollapseState {
-  /** Effective collapsed state to render — derived from preference, route, and any per-visit override. */
   collapsed: boolean
   toggle: () => void
 }
 
 const SidebarCollapseContext = createContext<SidebarCollapseState | null>(null)
 
-// Reads the persisted preference on init. Guards against SSR (no `window`) and
-// unavailable storage (privacy mode, disabled storage) by defaulting to expanded
-// and logging rather than throwing.
 function readPersistedCollapsed(): boolean {
   if (typeof window === 'undefined') return false
 
@@ -29,8 +24,6 @@ function readPersistedCollapsed(): boolean {
   }
 }
 
-// Persists the preference. Guards against SSR/no-storage the same way as the
-// initial read — never throws on the caller.
 function persistCollapsed(next: boolean): void {
   if (typeof window === 'undefined') return
 
@@ -41,8 +34,6 @@ function persistCollapsed(next: boolean): void {
   }
 }
 
-// Trip detail is /trips/<id> — deliberately excludes /trips/new (the create-trip
-// form, a sibling path that matches the same shape but isn't a detail view).
 function isTripDetailRoute(pathname: string): boolean {
   return /^\/trips\/[^/]+$/.test(pathname) && pathname !== ROUTES.tripNew
 }
@@ -51,10 +42,6 @@ export function SidebarCollapseProvider({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const [preferredCollapsed, setPreferredCollapsed] = useState(readPersistedCollapsed)
 
-  // Per-visit override: lets a dispatcher manually re-expand on a trip detail page
-  // without touching their saved preference. Reset during render (not an effect)
-  // when the route changes, so the reset lands in the same paint — no auto-collapse
-  // flash-then-correct on navigation between trip detail pages.
   const [sessionOverride, setSessionOverride] = useState<boolean | null>(null)
   const [trackedPathname, setTrackedPathname] = useState(pathname)
   if (pathname !== trackedPathname) {

@@ -19,8 +19,6 @@ it.each(['handover', 'late'] as const)('the_%s_wrapper_keeps_its_actor_across_mu
   const pending = kind === 'handover'
     ? uploadSubstitutionArtifact('trip', 'request', 'incoming', upload)
     : uploadLateEvidenceArtifact('trip', 0, upload)
-  // The conversion may finish immediately before a queued auth event. The outer
-  // continuation must still own the generation from before its await.
   prepared(new FormData())
   bindActorLease('driver-b', invalidateActorLease())
   bindActorLease('driver-a', invalidateActorLease())

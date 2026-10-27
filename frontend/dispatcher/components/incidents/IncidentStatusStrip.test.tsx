@@ -17,28 +17,22 @@ function cell(name: string): HTMLElement {
 
 describe('IncidentStatusStrip', () => {
   it('keeps trip closed, exceptions reviewed and incident open as three separate answers', () => {
-    // Arrange / Act
     render(<IncidentStatusStrip incident={BASE} />)
 
-    // Assert
     expect(within(cell('Trip')).getByText('Complete')).toBeInTheDocument()
     expect(within(cell('Exceptions')).getByText('2 of 3 reviewed')).toBeInTheDocument()
     expect(within(cell('Incident')).getByText('Investigating')).toBeInTheDocument()
   })
 
   it('says when this incident stopped the trip', () => {
-    // Arrange / Act
     render(<IncidentStatusStrip incident={{ ...BASE, trip_status: 'cancelled', trip_stopped_at: '2026-10-20T10:05:00Z' }} />)
 
-    // Assert
     expect(screen.getByText('Stopped by this incident')).toBeInTheDocument()
   })
 
   it('shows the outcome once closed', () => {
-    // Arrange / Act
     render(<IncidentStatusStrip incident={{ ...BASE, status: 'closed', outcome: 'partial_recovery' }} />)
 
-    // Assert
     expect(screen.getByText('Partial recovery')).toBeInTheDocument()
   })
 })

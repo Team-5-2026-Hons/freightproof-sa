@@ -19,22 +19,13 @@ import { SampleRecord } from './SampleRecord'
 import { Truck } from './Truck'
 import styles from './landing.module.css'
 
-// Sampling interval along the road. 4px keeps the lookup table a few thousand entries on
-// the longest page while staying well under a pixel of visible error after interpolation.
 const SAMPLE_STEP_PX = 4
-// Apple's "response": how quickly the truck catches up with the scroll. Short enough to
-// feel glued to the wheel, long enough to smooth out mouse-wheel steps.
 const SPRING_RESPONSE_S = 0.2
-// A backgrounded tab can hand back a huge frame delta; the spring is exact for any dt,
-// but clamping keeps the first frame back from teleporting the truck.
 const MAX_FRAME_S = 1 / 20
 const SETTLE_EPSILON = 0.35
-// How far ahead/behind to look when working out which way the truck is facing.
 const HEADING_LOOKAHEAD_PX = 8
 const SEAL_TOLERANCE_PX = 2
 const ROAD_BEND = 0.62
-// The truck is drawn centred on its position, so at the destination it would overhang the
-// end of the road by half its length (plus the headlight throw). Park it short instead.
 const PARK_INSET_PX = 56
 const DESKTOP_QUERY = '(min-width: 768px)'
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
@@ -44,7 +35,6 @@ const ROAD = {
   mobile: { width: 30, truckScale: 0.56 },
 } as const
 
-// Illustrative fingerprints only. The section says so; real ones come from the ledger.
 const SAMPLE_HASHES = [
   '9f2c41ab…3d1a',
   '04be7d19…c2f7',
@@ -65,7 +55,6 @@ interface Geometry {
 
 export function RoadJourney() {
   const sectionRef = useRef<HTMLElement>(null)
-  // [origin, ...one per stop, destination] — the road is drawn through their centres.
   const anchorRefs = useRef<(HTMLSpanElement | null)[]>([])
   const stopRefs = useRef<(HTMLLIElement | null)[]>([])
   const roadRef = useRef<SVGPathElement>(null)
@@ -101,8 +90,6 @@ export function RoadJourney() {
     })
   }, [])
 
-  // The frame loop lives in one effect as plain functions: it runs every frame while the
-  // page scrolls, so it writes straight to the DOM through refs instead of re-rendering.
   useEffect(() => {
     let frame: number | null = null
     let lastTime: number | null = null
@@ -130,7 +117,6 @@ export function RoadJourney() {
         const stop = stopRefs.current[i]
         if (!stop) return
         const isSealed = length >= stopLength - SEAL_TOLERANCE_PX
-        // Only the first unsealed checkpoint is "next"; the rest are simply pending.
         const isNext = !isSealed && !nextFound
         if (isNext) nextFound = true
         const sealed = String(isSealed)
@@ -152,8 +138,6 @@ export function RoadJourney() {
 
       let state = springRef.current
       if (!placedRef.current || reducedMotion.matches) {
-        // First placement (e.g. a reload halfway down the page) and reduced motion both
-        // put the truck exactly where the scroll says, with no catch-up animation.
         state = { value: target, velocity: 0 }
         placedRef.current = true
       } else {
@@ -188,8 +172,6 @@ export function RoadJourney() {
     }
   }, [])
 
-  // Re-measure whenever layout can move an anchor: size changes, breakpoint flips, and
-  // the web font swapping in (which reflows every card).
   useEffect(() => {
     const section = sectionRef.current
     if (!section) return
@@ -200,11 +182,9 @@ export function RoadJourney() {
     return () => observer.disconnect()
   }, [measure])
 
-  // New road geometry: rebuild the lookup table from the path the browser actually drew.
   useLayoutEffect(() => {
     geoRef.current = geo
     const road = roadRef.current
-    // jsdom (tests) has no SVG geometry; the page still renders, just without a truck.
     if (!geo || !road || typeof road.getTotalLength !== 'function') return
 
     const total = road.getTotalLength()
@@ -218,7 +198,6 @@ export function RoadJourney() {
 
     samplesRef.current = samples
     totalRef.current = total
-    // Stops sit between the origin and destination anchors.
     stopLengthsRef.current = geo.points.slice(1, -1).map(p => lengthAtY(samples, p.y))
     trailRef.current?.style.setProperty('stroke-dasharray', `${total} ${total}`)
     requestTickRef.current()
@@ -234,8 +213,6 @@ export function RoadJourney() {
       className="relative scroll-mt-16"
     >
       {geo && (
-        // Sized by the section (h-full w-full), never by the measured numbers, so a layout
-        // change that lands before the next measurement can't push the page longer.
         <svg
           className="pointer-events-none absolute inset-0 z-0 h-full w-full"
           viewBox={`0 0 ${geo.width} ${geo.height}`}
@@ -345,7 +322,6 @@ export function RoadJourney() {
       </div>
 
       {geo && (
-        // overflow-visible: parked at the origin, the trailer reaches up into the hero.
         <svg
           className="pointer-events-none absolute inset-0 z-20 h-full w-full overflow-visible"
           viewBox={`0 0 ${geo.width} ${geo.height}`}

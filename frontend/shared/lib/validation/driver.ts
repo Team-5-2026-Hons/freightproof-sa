@@ -26,7 +26,6 @@ export type DriverField =
 
 export type DriverFormValues = Record<DriverField, string>
 
-// Display order — shared by create and edit forms to focus the first invalid field on submit.
 export const DRIVER_FIELD_ORDER: readonly DriverField[] = [
   'full_name',
   'id_number',
@@ -120,7 +119,6 @@ export function phoneFieldFeedback(value: string): { hint: string | null; error:
   if (SA_PHONE_PATTERN.test(digits)) {
     return { hint: null, error: null }
   }
-  // Still a valid prefix toward a complete number — guide, don't alarm.
   if (SA_PHONE_PARTIAL.test(digits)) {
     const target = digits.startsWith('+') ? INTL_PHONE_LENGTH : LOCAL_PHONE_LENGTH
     return { hint: `${digits.length} of ${target} characters`, error: null }

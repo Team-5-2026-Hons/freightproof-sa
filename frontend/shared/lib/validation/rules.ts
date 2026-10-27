@@ -58,8 +58,6 @@ export function pattern(re: RegExp, message: string): Rule {
   }
 }
 
-// parseInt alone would accept "3.5" as 3 — guard against non-integer characters so a
-// fractional string is rejected, not silently truncated.
 const INTEGER_STRING_PATTERN = /^-?\d+$/
 
 /** Fails when a non-empty value isn't a valid integer in [min, max]. */

@@ -29,19 +29,12 @@ import {
   GEOFENCE_RADIUS_MAX,
 } from '@shared/lib/validation/constants'
 
-// Johannesburg. Only ever the STARTING viewport for a brand-new precinct — the
-// dispatcher's first click replaces it. Never submitted as-is: latitude and longitude
-// start empty and are required, so an untouched map cannot be saved.
 const DEFAULT_MAP_CENTRE = { latitude: -26.2041, longitude: 28.0473 }
 
-// 5 dp ≈ 1 m — finer than any geofence decision, and finer than a click is accurate.
 const CLICK_COORDINATE_PRECISION = 5
 
 const RADIUS_SLIDER_STEP_METRES = 10
 
-// Outline = the property outline is the fence; radius = the circle is. An outline is the
-// default for a NEW precinct (it is the more accurate fence); an existing one opens in
-// whichever shape it has.
 type BoundaryMode = 'outline' | 'radius'
 
 const BOUNDARY_MODES: ReadonlyArray<{ mode: BoundaryMode; label: string }> = [
@@ -49,7 +42,6 @@ const BOUNDARY_MODES: ReadonlyArray<{ mode: BoundaryMode; label: string }> = [
   { mode: 'radius', label: 'Radius' },
 ]
 
-// Same pressed-state treatment as OutlinePanel's candidate rows.
 const MODE_BUTTON_CLASS =
   'flex-1 rounded-md px-3 py-1.5 text-xs font-medium text-on-surf-v transition-colors ' +
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec ' +
@@ -64,8 +56,6 @@ interface PrecinctFormState {
   is_shared: boolean
 }
 
-// The text-input fields. `is_shared` is excluded because it is a boolean Switch, not a
-// string input — this is what lets setField narrow to PrecinctField without a cast.
 type PrecinctTextField = Exclude<keyof PrecinctFormState, 'is_shared'>
 
 const EMPTY_FORM: PrecinctFormState = {
@@ -95,7 +85,6 @@ function coordOr(value: string, fallback: number): number {
 }
 
 interface PrecinctFormProps {
-  /** Absent = create. Present = edit that precinct. */
   precinct?: Precinct
 }
 
@@ -118,13 +107,11 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
   const [candidates, setCandidates] = useState<OutlineCandidate[]>([])
   const [candidateStatus, setCandidateStatus] = useState<CandidateStatus>('idle')
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
-  // "Save" pressed with no outline: only then is the missing outline an error worth showing.
   const [outlineSubmitAttempted, setOutlineSubmitAttempted] = useState(false)
   const lookupRef = useRef<AbortController | null>(null)
   useEffect(() => () => lookupRef.current?.abort(), [])
 
   const errors = validatePrecinctForm(form)
-  // The radius is not the fence while an outline is, so its field can't block a save.
   const relevantErrors = boundaryMode === 'outline' ? { ...errors, geofence_radius_metres: null } : errors
   const hasErrors = Object.values(relevantErrors).some((e) => e !== null)
 
@@ -145,18 +132,11 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
 
   const mapLat = coordOr(form.latitude, DEFAULT_MAP_CENTRE.latitude)
   const mapLng = coordOr(form.longitude, DEFAULT_MAP_CENTRE.longitude)
-  // Deliberately NOT clamped: if the dispatcher types 9000, the map should draw a 9000 m
-  // circle so the reason it is rejected is visible, rather than quietly showing a legal
-  // one. The slider below is clamped separately, because a range input has no way to
-  // represent a value outside its own bounds.
   const mapRadius = coordOr(form.geofence_radius_metres, GEOFENCE_RADIUS_DEFAULT)
   const sliderRadius = Math.min(GEOFENCE_RADIUS_MAX, Math.max(GEOFENCE_RADIUS_MIN, mapRadius))
 
   function setField(name: PrecinctTextField, value: string): void {
     setForm((prev) => ({ ...prev, [name]: value }))
-    // Every text field is validated (address for length only), and PrecinctTextField is
-    // exactly PrecinctField — excluding only the boolean Switch — so this narrows without
-    // a cast and no field is left unable to surface its error.
     setTouched((prev) => new Set(prev).add(name))
   }
 
@@ -179,9 +159,6 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
         return
       }
     }
-    // FormField hands back the `name` prop this component gave it, so the value is
-    // always one of ours — but it is typed as a bare string, so it is checked rather
-    // than asserted.
     if (name in EMPTY_FORM && name !== 'is_shared') {
       setField(name as PrecinctTextField, value)
     }
@@ -229,8 +206,6 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
       longitude: next.longitude.toFixed(CLICK_COORDINATE_PRECISION),
     }))
     setTouched((prev) => new Set(prev).add('latitude').add('longitude'))
-    // Deliberately no outline lookup: a click or drag is the dispatcher fine-tuning the
-    // gate, and must never redraw or discard an outline they have shaped.
   }
 
   /** Forget the outline and everything found for it — the site it belonged to is gone. */
@@ -244,7 +219,6 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
 
   function handleOutlineEdit(next: LatLngPair[]): void {
     setOutline(next)
-    // Edited: it is no longer the mapped shape it started from.
     setSelectedCandidateId(null)
   }
 
@@ -288,10 +262,7 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
         address: form.address || null,
         latitude: parseFloat(form.latitude),
         longitude: parseFloat(form.longitude),
-        // Sent only when valid: under an outline the radius is unused, and an unfinished
-        // radius entry must not 422 a save it has no bearing on.
         ...(radiusValid ? { geofence_radius_metres: parseInt(form.geofence_radius_metres, 10) } : {}),
-        // null in radius mode removes any outline, so the circle applies again.
         geofence_polygon: boundaryMode === 'outline' ? outline : null,
         is_shared: form.is_shared,
       }
@@ -320,13 +291,6 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           Cancel
         </Button>
-        {/* One gradient CTA per view — DESIGN_SYSTEM 10.5.
-            Enabled even while invalid, and deliberately so: a create form opens with
-            latitude and longitude empty, so disabling on `hasErrors` would render a
-            permanently dead button next to fields that show no errors yet (nothing is
-            touched). Clicking runs handleSubmit's invalid branch instead, which marks
-            every field touched and focuses the first offender — telling the dispatcher
-            what is wrong rather than leaving them to guess. */}
         <Button size="sm" loading={submitting} disabled={submitting} onClick={handleSubmit}>
           {isEdit ? 'Save Changes' : 'Save Precinct'}
         </Button>
@@ -441,8 +405,6 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
                     : undefined
                 }
               />
-              {/* Slider and number together: the slider grows the circle under your eye,
-                  the field keeps it exact and typeable. */}
               <input
                 type="range"
                 min={GEOFENCE_RADIUS_MIN}
@@ -451,9 +413,6 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
                 value={sliderRadius}
                 onChange={(e) => setField('geofence_radius_metres', e.target.value)}
                 aria-label="Geofence radius in metres"
-                // accent-sec, not accent-[var(--sec)]: this codebase defines its palette in
-                // tailwind.config.ts and has no CSS custom properties, so the var() form
-                // resolves to nothing and the slider renders in the browser default colour.
                 className="w-full accent-sec"
               />
               <div

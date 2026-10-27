@@ -16,8 +16,6 @@ export function ManifestSummary({ preview }: ManifestSummaryProps): React.JSX.El
 
   return (
     <section aria-label={`Manifest ${ref.display}`} className="flex flex-col gap-4">
-      {/* The manifest is the title and the client the line under it, so neither is repeated
-          below. The card's own heading already says "Client manifest". */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[20px] font-[800] leading-tight tabular-nums text-on-surf">
@@ -33,8 +31,6 @@ export function ManifestSummary({ preview }: ManifestSummaryProps): React.JSX.El
         <Chip type={preview.is_closed ? 'complete' : 'pending'} label={preview.is_closed ? 'Closed' : 'Open'} />
       </div>
 
-      {/* Short values in their own tiles: one long "3 waybills · 20 parcels · 875.5 kg" string
-          wrapped across lines in a quarter-width column. */}
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <ManifestStat label="Route" value={`${preview.origin.hub_code} → ${preview.destination.hub_code}`} />
         <ManifestStat label="Waybills" value={String(totals.waybills)} />

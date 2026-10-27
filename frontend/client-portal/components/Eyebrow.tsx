@@ -4,15 +4,12 @@ type EyebrowTag = 'p' | 'h4' | 'h5' | 'dt'
 
 interface EyebrowProps {
   as?: EyebrowTag
-  /** `micro` for a standalone page label, `caption` for a section sub-heading. */
   size?: 'micro' | 'caption'
-  /** `onDark` for the ink header band, where the muted grey would not read. */
   tone?: 'muted' | 'onDark'
   className?: string
   children: ReactNode
 }
 
-// Written out in full so Tailwind's scanner finds every class name.
 const SIZE_CLASS = { micro: 'text-micro', caption: 'text-caption' } as const
 const TONE_CLASS = { muted: 'text-muted', onDark: 'text-white/60' } as const
 

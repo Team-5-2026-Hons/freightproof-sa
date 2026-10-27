@@ -88,7 +88,6 @@ def trip_steps(trips: CTE) -> Subquery:
     window runs over every row, trip_creation included, so the previous row is
     always the true previous plan step; filter only afterwards."""
     bucket = [trips.c.bucket_start] if "bucket_start" in trips.c else []
-    # Carried so a query can tell a delivery on a loaded trip from an empty run's last stop.
     trip_type = [trips.c.trip_type] if "trip_type" in trips.c else []
     stmt: Select[Any] = select(
         PhaseEvent.id.label("phase_event_id"),

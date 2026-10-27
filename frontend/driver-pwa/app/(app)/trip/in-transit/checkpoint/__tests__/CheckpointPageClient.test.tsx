@@ -21,9 +21,6 @@ vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => mockUseTrip(),
 }))
 
-// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
-// Mocked like every other hook here so these tests stay about submission behaviour, and
-// so the fix is a known value the payload assertions can check for.
 const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
@@ -41,12 +38,6 @@ vi.mock('@/lib/api/checkpoints', () => ({
   submitCheckpoint: (...args: unknown[]) => mockSubmitCheckpoint(...args),
 }))
 
-// CameraCapture/SwipeToConfirm drive real camera/swipe-gesture APIs that are out of
-// scope here (each already has its own dedicated test coverage) — stub them to simple
-// controls so this suite only exercises CheckpointPageClient's own submit/queue wiring
-// (Fix 3), mirroring the Button stub in LogExceptionPageClient's test. There is no GPS
-// control left to stub: the fix is taken silently at submit (mocked above).
-
 vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
     <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
@@ -60,7 +51,6 @@ vi.mock('@/components/phase/SwipeToConfirm', () => ({
 }))
 
 function fillCaptures() {
-  // By role: the checklist above the swipe repeats the label as a plain list item.
   fireEvent.click(screen.getByRole('button', { name: 'Cargo photo' }))
 }
 
@@ -120,8 +110,6 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
     fillCaptures()
     fireEvent.click(screen.getByText('Swipe to Log Checkpoint'))
 
-    // Audit fix: the 4xx branch previously showed "check your connection" — misleading
-    // exactly where the code knows retrying won't help.
     await waitFor(() =>
       expect(screen.getByText(/the checkpoint was not accepted/i)).toBeInTheDocument(),
     )
@@ -196,24 +184,19 @@ describe('CheckpointPageClient route-deviation switch (audit M5)', () => {
   })
 
   it('is a labelled switch with the 44px minimum touch target, not a 16px checkbox', () => {
-    // Arrange / Act
     render(<CheckpointPageClient />)
     const toggle = screen.getByRole('switch', { name: /route deviation/i })
 
-    // Assert — the switch's own root is the hit area (h-11 = 44px, Switch.tsx).
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(toggle).toHaveClass('h-11')
   })
 
   it('flips on tap and reads back as checked', () => {
-    // Arrange
     render(<CheckpointPageClient />)
     const toggle = screen.getByRole('switch', { name: /route deviation/i })
 
-    // Act
     fireEvent.click(toggle)
 
-    // Assert
     expect(toggle).toHaveAttribute('aria-checked', 'true')
   })
 })
@@ -225,11 +208,6 @@ describe('CheckpointPageClient swipe placement (0px-wide swipe bug)', () => {
   })
 
   it('gives the swipe a full-width wrapper so it cannot collapse to zero width', () => {
-    // jsdom does no layout, so the 0px width itself can't be measured here (it was found
-    // in a real browser). This guards the structure that caused it: the track is w-full,
-    // so its wrapper must be full width too, not a shrink-to-fit box in a centred column.
-    // SwipeToConfirm is mocked as a plain button in this file; its direct parent is the
-    // wrapper that collapsed the real track.
     render(<CheckpointPageClient />)
 
     const wrapper = screen.getByRole('button', { name: 'Swipe to Log Checkpoint' }).parentElement

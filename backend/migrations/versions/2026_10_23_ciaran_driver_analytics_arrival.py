@@ -24,7 +24,6 @@ from pathlib import Path
 
 from alembic import op
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "ciaran_drv_arrival_dwell"
 down_revision = "ciaran_rv_resolved_at"
 branch_labels = None
@@ -32,7 +31,6 @@ depends_on = None
 
 _TZ = "Africa/Johannesburg"
 _ATTESTED = "('completed', 'exception')"
-# Arrival added between departure and unloading, in phase order.
 _DWELL_PHASES = ("activation", "loading", "departure", "arrival", "unloading", "confirmation")
 
 _GAP_IS_ATTESTED = (
@@ -175,9 +173,6 @@ FROM contributions
 GROUP BY operator_organization_id, driver_id, month_start
 """
 
-# Recreating a view drops its REVOKE, and Supabase's default privileges grant every new public
-# object to anon/authenticated: without this every operator's driver analytics would be readable
-# cross-tenant through the Data API (tom_live_analytics_views' reasoning). No-op on plain Postgres.
 _REVOKE_DATA_API_ACCESS = """
 DO $$
 DECLARE

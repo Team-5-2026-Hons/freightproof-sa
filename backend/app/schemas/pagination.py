@@ -11,5 +11,5 @@ class CursorPage(BaseModel, Generic[T]):
     """One page of results plus the opaque cursor to fetch the next one."""
 
     items: list[T]
-    next_cursor: str | None  # None means this is the last page
+    next_cursor: str | None
     total_items: int = Field(ge=0)

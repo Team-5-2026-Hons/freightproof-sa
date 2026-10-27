@@ -39,20 +39,17 @@ from tests.integration.test_road_check import (  # noqa: F401
 
 _APP = Path(__file__).resolve().parents[2] / "app"
 
-# Files whose constructions go through register_exception: path -> number of hooked sites.
 HOOKED_SITES = {
     "orchestration/evidence/road_check.py": 1,
     "orchestration/handover/verdict.py": 1,
     "orchestration/phases/advance_departure.py": 1,
     "orchestration/phases/findings.py": 2,
-    "orchestration/phases/override.py": 1,   # the authored note; its seal warning is below
+    "orchestration/phases/override.py": 1,
     "orchestration/substitutions/seal_comparison.py": 1,
     "orchestration/substitutions/transfer_review.py": 1,
     "orchestration/trips/administration.py": 1,
 }
-# Built by the driver-facing creation service, which anchors via prepare_exception_anchors.
 CREATION_SERVICE = {"orchestration/exceptions/creation.py": 1}
-# Raw constructions that are provably constant-WARNING and not authored: they owe nothing.
 WARNING_ONLY_SITES = {
     "orchestration/consignments/scans.py": 1,
     "orchestration/evidence/action_location.py": 2,
@@ -76,7 +73,6 @@ def _constructions() -> dict[str, dict[str, int]]:
                 if rel in CREATION_SERVICE:
                     kind = "creation"
                 else:
-                    # A raw site must be a constant WARNING row, with no authored-review spread.
                     code = "\n".join(
                         text for text in lines[index:index + 40] if not text.lstrip().startswith("#")
                     )
@@ -135,8 +131,6 @@ async def test_hook_owes_events_by_severity_and_authorship(db_session, world, se
     assert await _events_for(db_session, row.id) == expected
 
 
-# ── Real workflows ────────────────────────────────────────────────────────────
-
 async def test_road_check_critical_finding_freezes_a_raise_event(db_session):
     seed = await _seed(db_session, completed_through=PhaseType.DEPARTURE)
     await _stage(seed["trip"], seed["horse"].pulsit_device_id, _MID)
@@ -149,7 +143,6 @@ async def test_road_check_critical_finding_freezes_a_raise_event(db_session):
     assert row.severity == ExceptionSeverity.CRITICAL
     [event] = (await db_session.execute(select(EvidenceAnchorEvent))).scalars().all()
     assert event.exception_id == row.id and event.receipt_type == BlockchainReceiptType.EXCEPTION_RAISED
-    # GPS stays in Postgres: the frozen payload has no coordinates.
     assert "gps" not in str(event.payload_json) and "lat" not in str(event.payload_json)
 
 

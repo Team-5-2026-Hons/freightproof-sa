@@ -31,18 +31,13 @@ Create Date: 2026-09-23
 """
 from alembic import op
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_lock_down_data_api"
 down_revision = "tim_driver_location_mismatch"
 branch_labels = None
 depends_on = None
 
-# Supabase's PostgREST roles. service_role and the table owner are deliberately
-# untouched: they are how the backend and migrations reach the database.
 API_ROLES: tuple[str, ...] = ("anon", "authenticated")
 
-# Every public table without RLS on 2026-09-23. The analytics views are not listed:
-# their own migrations already revoke the API roles, and RLS cannot apply to a view.
 LOCKED_DOWN_TABLES: tuple[str, ...] = (
     "alembic_version",
     "driver_events",
@@ -86,7 +81,6 @@ UPGRADE_STATEMENTS: tuple[str, ...] = (
     _for_each_api_role("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM %I"),
 )
 
-# Restores exactly the state before upgrade: Supabase's default grants and no RLS.
 DOWNGRADE_STATEMENTS: tuple[str, ...] = (
     _for_each_api_role("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %I"),
     _for_each_api_role("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %I"),

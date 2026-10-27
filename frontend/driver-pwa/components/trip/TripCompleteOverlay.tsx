@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/Button'
 import { PhaseList } from '@/components/trip/PhaseList'
 import { TripContext } from '@/lib/context/TripContext'
 
-// The completion moment, in milliseconds. Long enough to read every phase row on stage,
-// short enough that a driver who pockets the phone is not blocked behind it.
 const AUTO_DISMISS_MS = 10_000
 const TICK_MS = 1_000
 const MS_PER_SECOND = 1_000
@@ -36,16 +34,12 @@ export function TripCompleteOverlay() {
   useEffect(() => {
     if (completed === null || dismiss === undefined) return
     setSecondsLeft(AUTO_DISMISS_MS / MS_PER_SECOND)
-    // Focus moves to the only action, so a screen reader announces the panel and a
-    // keyboard user is not left behind the dismissed screen.
     doneRef.current?.focus()
 
     const closeAt = Date.now() + AUTO_DISMISS_MS
     const tick = window.setInterval(() => {
       const remaining = Math.max(0, Math.ceil((closeAt - Date.now()) / MS_PER_SECOND))
       setSecondsLeft(remaining)
-      // Driven off wall-clock rather than a tick count: a backgrounded WebView throttles
-      // timers, and a driver returning to the app should not find a stale countdown.
       if (remaining === 0) dismiss()
     }, TICK_MS)
     return () => window.clearInterval(tick)

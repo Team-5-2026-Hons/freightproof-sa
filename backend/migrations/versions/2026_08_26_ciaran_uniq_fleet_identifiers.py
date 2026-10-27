@@ -28,8 +28,6 @@ Create Date: 2026-08-26
 """
 from alembic import op
 
-# Under 32 characters — alembic_version.version_num is varchar(32), and a longer id
-# lets the DDL succeed then fails on the version bump, rolling the whole thing back.
 revision = "ciaran_uniq_fleet_ids"
 down_revision = "ciaran_uniq_order_no"
 branch_labels = None

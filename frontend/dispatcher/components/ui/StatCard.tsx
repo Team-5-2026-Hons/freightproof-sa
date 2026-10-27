@@ -1,11 +1,8 @@
 interface StatCardProps {
   value: string
   label: string
-  /** Red value colour — for exception counts etc. */
   warn?: boolean
-  /** Green value colour — for on-time rates etc. */
   success?: boolean
-  /** Shows pulsing placeholder bars instead of value/label while data is loading. */
   loading?: boolean
 }
 

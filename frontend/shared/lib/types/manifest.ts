@@ -22,20 +22,16 @@ export interface Parcel {
   updated_at: string
 }
 
-// Parcels grouped by delivery stop — dispatcher-only view; the driver only ever receives
-// Linehaul, never per-stop/per-parcel detail.
 export interface DeliveryStop {
   delivery_stop: string
   parcel_count: number
   parcels: Parcel[]
 }
 
-// One consignment's slice of the manifest — multi-client trips return one per client.
 export interface ConsignmentManifest {
   consignment_id: string
   parcel_perfect_reference: string
   client_organization_id: string
-  // Consolidated-unit grain (pallets) — distinct from parcel grain.
   unit_count_expected: number | null
   total_parcel_count: number
   origin_scan_complete: boolean
@@ -48,14 +44,9 @@ export interface Manifest {
   origin_scan_complete: boolean
   consignments: ConsignmentManifest[]
   pulled_at: string
-  // The PP manifest as locked at creation (H0, FP-281), or null on trips without one. Never
-  // refreshed: later Parcel Perfect changes show in `consignments`, not here (spec §10.6).
   pp_manifest_snapshot: PPManifestSnapshot | null
 }
 
-// Linehaul: the driver-facing document for the same manifest endpoint — returned instead
-// of Manifest when the caller is a driver, with no per-parcel/per-stop detail (theft-risk
-// rule: drivers see only a consolidated unit count, never contents).
 export interface Linehaul {
   trip_id: string
   vehicle_registration: string

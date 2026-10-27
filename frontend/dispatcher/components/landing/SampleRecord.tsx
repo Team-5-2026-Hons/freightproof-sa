@@ -2,7 +2,6 @@ import type { CSSProperties } from 'react'
 import { Check } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 
-// Synthetic: what a journey-lock record looks like, labelled as a sample on the card itself.
 const SAMPLE_RECORD = {
   trip: 'FP-0418',
   route: 'Cape Town → Johannesburg',

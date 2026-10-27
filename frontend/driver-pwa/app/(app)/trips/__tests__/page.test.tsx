@@ -16,7 +16,6 @@ import type { SubstitutionRequestRead } from '@shared/lib/types/driver-substitut
 import { substitutionFixturePack } from '@shared/lib/mocks/driver-substitutions'
 import TripsPage from '../page'
 
-// Real-data mode: demo mode short-circuits to fixtures and would prove nothing here.
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
 const mockPush = vi.fn()
@@ -37,8 +36,6 @@ vi.mock('@/lib/api/trips', () => ({
   fetchMyTrips: () => mockFetchMyTrips(),
 }))
 
-// FP-83: pending handovers come from their own resource, not /trips/me. Empty by default
-// so every pre-existing case below renders exactly as before.
 let mockPendingHandovers: SubstitutionRequestRead[] = []
 vi.mock('@/lib/hooks/useDriverSubstitutions', () => ({
   useDriverSubstitutions: () => ({
@@ -68,7 +65,6 @@ function makeTrip(overrides: Partial<DriverTripSummary> & { status: CoarseTripSt
   }
 }
 
-// The exact shape reported: one activated trip, two assignments not yet started.
 const ACTIVE = makeTrip({ status: 'active', trip_reference: 'FP-ACTIVE' })
 const UPCOMING_A = makeTrip({ status: 'created', trip_reference: 'FP-UPCOMING-A', planned_departure_at: '2026-08-07T06:00:00Z', origin_precinct_name: 'Durban Depot' })
 const UPCOMING_B = makeTrip({ status: 'created', trip_reference: 'FP-UPCOMING-B', planned_departure_at: '2026-08-06T06:00:00Z', origin_precinct_name: 'Pretoria Depot' })
@@ -82,8 +78,6 @@ function section(name: string): HTMLElement {
 describe('trips page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // useMyTrips now caches the list in a module-level store (one GET /trips/me per
-    // driver, shared by every reader); each test starts from an empty store.
     __resetMyTripsStoreForTests()
     mockPendingHandovers = []
   })
@@ -160,7 +154,6 @@ describe('trips page', () => {
   })
 
   it('test_previews_only_what_fits_and_leaves_the_rest_to_see_all', async () => {
-    // jsdom cannot measure layout, so the page falls back to its default preview count.
     const many = Array.from({ length: 8 }, (_, i) =>
       makeTrip({ status: 'closed', trip_reference: `FP-P${i}`, planned_departure_at: `2026-07-0${i + 1}T06:00:00Z` }))
     mockFetchMyTrips.mockResolvedValue(many)
@@ -191,7 +184,6 @@ describe('trips page', () => {
 
   it('test_pending_incoming_handover_is_not_reported_as_no_trips', async () => {
     const fixture = substitutionFixturePack.incomingPendingNoActiveTrip.pending[0]
-    // Named as this harness's signed-in driver, so the card is for them.
     mockPendingHandovers = [{ ...fixture, incoming: { ...fixture.incoming, id: 'driver-real-uuid' } }]
     mockFetchMyTrips.mockResolvedValue([])
 

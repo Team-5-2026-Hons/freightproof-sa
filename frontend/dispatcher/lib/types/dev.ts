@@ -10,23 +10,10 @@
 
 export type ScanDirection = 'out' | 'in'
 
-/**
- * Phase statuses that mean a phase has already been decided and will not accept
- * a further scan-driven gate change. Mirrors CLOSED_PHASE_STATUSES in
- * backend/app/schemas/dev.py — keep the two lists in sync by hand, since this
- * file has no import path back to the backend.
- *
- * Also reused by LoadingDetail/UnloadingDetail (components/domain) as the
- * governing test for "has this phase's stamped figure been written yet" — the
- * same set of statuses that means a scan gate is decided also means a phase's
- * parcel_count_* has been stamped and stops being read live.
- */
 export const CLOSED_PHASE_STATUSES = ['completed', 'exception', 'overridden'] as const
 
 export type ClosedPhaseStatus = (typeof CLOSED_PHASE_STATUSES)[number]
 
-// Narrow helper so callers don't re-implement the `includes` check (and the
-// null handling) at every call site.
 export function isClosedPhaseStatus(status: string | null): boolean {
   return status !== null && (CLOSED_PHASE_STATUSES as readonly string[]).includes(status)
 }
@@ -44,15 +31,9 @@ export interface DevTripStop {
   precinct_name: string
   pickup_consignments: DevConsignment[]
   delivery_consignments: DevConsignment[]
-  // Status of the phase event gating each scan direction AT THIS STOP. None = no
-  // such phase event yet. See CLOSED_PHASE_STATUSES for "already decided" values.
   loading_phase_status: string | null
   confirmation_phase_status: string | null
-  // Status of the DEPARTURE phase for the leg that ends at this stop — the truck
-  // physically leaving the origin is the precondition for any destination scan.
-  // Null when no departure precedes this stop (i.e. it is the origin).
   preceding_departure_status: string | null
-  // Scan IN at this stop opens once ARRIVAL is decided (the seal is inspected first).
   arrival_phase_status: string | null
   unloading_phase_status: string | null
 }
@@ -72,9 +53,7 @@ export interface DevTripSummary {
   driver_full_name: string | null
   created_at: string
   stops: DevTripStop[]
-  // Trip.current_stop: the stop sequence the ledger says the trip is at.
   current_stop_sequence: number | null
-  // Horse first, then trailers by registration.
   vehicles: DevVehicle[]
 }
 
@@ -95,10 +74,6 @@ export interface ScanTriggerRequest {
   direction: ScanDirection
   parcel_count?: number
   barcodes?: string[]
-  // Per-waybill selection: parcel_perfect_reference -> the barcodes to stage for
-  // it. A waybill absent from the map stages an EMPTY scan, not a full one — see
-  // MockScanFeed.stage_scans's replace-not-append docstring. The panel always
-  // sends every waybill's full ticked set for this reason.
   barcodes_by_reference?: Record<string, string[]>
 }
 
@@ -119,7 +94,6 @@ export interface CloseScanSessionResponse {
   trip_id: string
   trip_stop_id: string
   direction: ScanDirection
-  // One per consignment at the stop — a stop may serve several waybills.
   sessions_closed: number
 }
 
@@ -160,11 +134,6 @@ export interface FlushMockStateResponse {
   keys_deleted: number
 }
 
-/**
- * Exception types the panel offers. A deliberate subset of the backend enum —
- * the ones with a demo narrative. Scan discrepancies are raised by the
- * reconciliation service itself and are not in this list.
- */
 export const DEMO_EXCEPTION_TYPES = [
   'seal_broken_in_transit',
   'panic_button',
@@ -194,12 +163,6 @@ export interface WaypointRead {
   expected_confirmed: boolean | null
 }
 
-/**
- * FP-197 — trip-stop-relative scenario mode, alongside the legacy fixed
- * waypoint mode above. Mirrors backend/app/schemas/dev.py's SCENARIO_* constants and
- * DevTruckScenario exactly — kept in sync by hand like CLOSED_PHASE_STATUSES above,
- * since this file has no import path back to the backend.
- */
 export const DEV_TRUCK_SCENARIOS = [
   'at_stop',
   'inside_tolerance',
@@ -211,19 +174,6 @@ export const DEV_TRUCK_SCENARIOS = [
 
 export type DevTruckScenario = (typeof DEV_TRUCK_SCENARIOS)[number]
 
-/**
- * Presentation labels for the scenario buttons, mirroring
- * orchestration/dev_truck_service.py's SCENARIO_LABELS. Needed client-side (not just
- * read off the response) because the buttons have to say something BEFORE the
- * operator presses one — the response's own waypoint_label only exists after a scenario
- * has already run.
- *
- * Deliberately spelled DIFFERENTLY from every legacy waypoint label
- * (WaypointRead.label, served by the backend for the "Fixed demo locations" grid):
- * both grids render on screen at the same time once a trip is selected, and two
- * differently-behaved buttons sharing identical visible text (e.g. two "No signal"
- * buttons) would be ambiguous for an operator and for a screen reader alike.
- */
 export const SCENARIO_LABELS: Record<DevTruckScenario, string> = {
   at_stop: 'At the stop',
   inside_tolerance: 'Just inside tolerance',
@@ -233,18 +183,12 @@ export const SCENARIO_LABELS: Record<DevTruckScenario, string> = {
   no_signal: 'Go dark (no signal)',
 }
 
-// The one scenario that may fire without a trip stop selected — going dark is not a
-// coordinate offset from anywhere. Named so call sites never re-spell the literal.
 export const NO_STOP_REQUIRED_SCENARIO: DevTruckScenario = 'no_signal'
 
 export interface MoveTruckRequest {
   trip_id: string
-  // Exactly one of waypoint_id or scenario is sent — mirrors MoveTruckRequest's own
-  // model validator in backend/app/schemas/dev.py, which 422s otherwise.
   waypoint_id?: string
   scenario?: DevTruckScenario
-  // Required unless scenario is 'no_signal', which may omit it (going dark is not a
-  // coordinate offset from a stop). Never sent alongside waypoint_id.
   trip_stop_id?: string
 }
 
@@ -254,53 +198,29 @@ export interface MoveTruckResponse {
   waypoint_label: string
   device_id: string
   vehicle_registration: string
-  // The EXPECTED precinct — the trip's current phase-ledger stop. Unchanged meaning
-  // from before FP-197; see expected_trip_stop_id/expected_precinct_name
-  // below for the same stop under an unambiguous name.
   precinct_id: string
   precinct_name: string
   latitude: string | null
   longitude: string | null
   has_position: boolean
-  // Measured against the EXPECTED precinct above, not the scenario-mode target below.
   distance_metres: number | null
   geofence_radius_metres: number | null
   gps_tolerance_metres: number
-  // null (not false) on the no_signal waypoint/scenario — no fix means no verdict was
-  // ever computed, which is a different fact from a fix that failed the geofence.
   geofence_confirmed: boolean | null
   in_tolerance_band: boolean
   verdict_reason: string
 
-  // ---- FP-197 additions, all nullable: null in legacy waypoint mode, and
-  // null for target_* when scenario='no_signal' named no stop. ----
-
-  // The stop scenario mode actually staged the tracker relative to. Distinct from
-  // expected_trip_stop_id whenever the operator deliberately targets a stop other
-  // than the trip's current one — the whole point of this mode.
   target_trip_stop_id: string | null
   target_precinct_name: string | null
-  // The distance scenario mode computed from target_trip_stop_id's own precinct
-  // centre — independent of whatever distance_metres above says about the EXPECTED
-  // stop. Never render both as "distance from the precinct" — see formatDistance/
-  // formatTargetDistance in DevTriggerPanel.tsx.
   target_distance_metres: number | null
   scenario: DevTruckScenario | null
 
-  // The stop precinct_id/precinct_name/distance_metres above actually describe —
-  // always populated in both modes.
   expected_trip_stop_id: string | null
   expected_precinct_name: string | null
 }
 
-/**
- * The waypoint_id that resets the mock tracker to sit at the precinct. Shared
- * between the panel's per-waypoint buttons and its "Reset to precinct" button
- * so the two never drift onto different literal strings.
- */
 export const PRECINCT_WAYPOINT_ID = 'precinct'
 
-// Mirrors RigScenario in backend/app/schemas/dev.py — kept in sync by hand.
 export const RIG_SCENARIOS = [
   'at_stop', 'away_from_stop', 'en_route', 'left_before_departure', 'trailer_uncoupled', 'silent',
 ] as const
@@ -318,7 +238,6 @@ export interface RigReadingRead {
   registration: string
   role: 'horse' | 'trailer'
   status: string
-  // Decimal serialised as a string — never coerce to number (see WaypointRead).
   latitude: string | null
   longitude: string | null
 }
@@ -328,7 +247,6 @@ export interface RoadFindingRead {
   severity: string
   vehicle_id: string
   description: string
-  // False when this run matched a finding already on record — shown, not re-written.
   newly_recorded: boolean
 }
 
@@ -344,16 +262,10 @@ export interface RigScenarioResponse extends RoadCheckResponse {
   label: string
 }
 
-// ---- "Move the phone" (demo scaffolding) --------------------------------------------
-// Mirrors backend/app/dev/schemas.py's MovePhoneRequest/Response. A closed vocabulary:
-// the panel names a place on the trip and the backend resolves the coordinate, so no
-// coordinate is ever sent from the browser.
 export const PHONE_PLACEMENTS = ['at_origin', 'at_destination', 'at_stop', 'release'] as const
 
 export type DevPhonePlacement = (typeof PHONE_PLACEMENTS)[number]
 
-// The one placement that needs a stop chosen with it (the cross-dock case); origin and
-// destination resolve to the trip's first and last stop server-side.
 export const STOP_REQUIRED_PLACEMENT: DevPhonePlacement = 'at_stop'
 
 export const PHONE_PLACEMENT_LABELS: Record<DevPhonePlacement, string> = {
@@ -366,7 +278,6 @@ export const PHONE_PLACEMENT_LABELS: Record<DevPhonePlacement, string> = {
 export interface MovePhoneRequest {
   trip_id: string
   placement: DevPhonePlacement
-  // Required for 'at_stop' only — the backend 422s otherwise.
   trip_stop_id?: string
 }
 
@@ -375,13 +286,9 @@ export interface MovePhoneResponse {
   placement: DevPhonePlacement
   placement_label: string
   staged: boolean
-  // Null on 'release': there is no coordinate when the handset reports for itself.
   latitude: string | null
   longitude: string | null
   trip_stop_id: string | null
   precinct_name: string | null
-  // What the ledger will record for phases completed in this state: 'simulated' while a
-  // position is staged, 'device' once released. Surfaced so a presenter is never under
-  // the impression a staged walk is stored as a real capture.
   recorded_as: string
 }

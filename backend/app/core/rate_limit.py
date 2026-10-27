@@ -34,15 +34,10 @@ from app.core.limits import GLOBAL_PER_IP, RateLimit
 
 logger = logging.getLogger(__name__)
 
-# Prefix so rate-limit keys are greppable and separable from other Redis users.
 _KEY_PREFIX = "fp:ratelimit"
 
-# Identical for every bucket: naming which budget was exhausted would tell an
-# attacker which door is cheapest to probe.
 RATE_LIMITED_DETAIL = "Too many requests. Please slow down and try again shortly."
 
-# /health must never be throttled (orchestrator polls it and restarts a
-# "dead" container on failure); docs routes are static and unauthenticated.
 _MIDDLEWARE_EXEMPT_PATHS = frozenset({"/health", "/docs", "/redoc", "/openapi.json"})
 
 
@@ -91,9 +86,6 @@ async def _count_and_check(limit: RateLimit, identity: str) -> bool:
     """
     key = _window_key(limit, identity)
     try:
-        # INCR+TTL in one MULTI/EXEC. EXPIRE is set outside the transaction and
-        # only when missing, so it never re-fires on every request (which would
-        # keep pushing the window out and it would never roll over).
         pipe = _get_redis().pipeline()
         pipe.incr(key)
         pipe.ttl(key)
@@ -149,10 +141,6 @@ def rate_limit(limit: RateLimit) -> Callable[[Request], Awaitable[None]]:
 
         authorization = request.headers.get("authorization", "")
         if authorization.lower().startswith("bearer "):
-            # Hash of the whole token. A prefix is NOT unique per user: an ES256 token opens
-            # with a ~96-character base64 header (alg, kid, typ) identical for everyone, so
-            # a 64-character prefix put every authenticated caller in one shared bucket.
-            # Hashing also keeps token material out of Redis keys and the warning log below.
             identity = f"token:{hashlib.sha256(authorization[7:].encode()).hexdigest()}"
         else:
             identity = f"ip:{_client_identity(request)}"
@@ -182,8 +170,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             logger.warning(
                 "Global rate limit exceeded: identity=%s path=%s", identity, request.url.path,
             )
-            # Built by hand: raising here bypasses FastAPI's HTTPException
-            # handler (it sits below this middleware) and would 500 instead.
             return JSONResponse(
                 status_code=http_status.HTTP_429_TOO_MANY_REQUESTS,
                 content={"detail": RATE_LIMITED_DETAIL},

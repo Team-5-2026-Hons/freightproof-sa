@@ -33,7 +33,6 @@ function cell(columnId: string, row: Driver, context: TableRenderContext = NOTHI
   return column.render(row, context)
 }
 
-// Expiry as an ISO date a whole number of days after NOW, so each case reads as "N days left".
 const inDays = (days: number): string => new Date(NOW.getTime() + days * 86_400_000).toISOString().slice(0, 10)
 
 describe('driver columns', () => {

@@ -13,10 +13,8 @@
 /** localStorage key. Read in two places — here, and inside THEME_INIT_SCRIPT below. */
 export const PREF_THEME = 'fp:pref:theme'
 
-/** The class Tailwind's `darkMode: 'class'` strategy looks for on <html>. */
 export const DARK_CLASS = 'dark'
 
-/** The OS-level signal consulted when the preference is 'system'. */
 export const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 
 export const THEME_PREFERENCES = ['system', 'light', 'dark'] as const
@@ -27,9 +25,6 @@ export type ThemePreference = (typeof THEME_PREFERENCES)[number]
 /** What actually gets painted, once 'system' has been resolved against the device. */
 export type ResolvedTheme = 'light' | 'dark'
 
-// Follow the device by default. A driver starting a night leg gets a dark screen without
-// having to find a setting first, and the explicit choices exist for when the device is
-// wrong — a phone on auto-dark is still being read in Highveld sun at midday.
 export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'system'
 
 function isThemePreference(value: string | null): value is ThemePreference {
@@ -41,8 +36,6 @@ export function getThemePref(): ThemePreference {
 
   try {
     const stored = window.localStorage.getItem(PREF_THEME)
-    // An unrecognised value means a hand-edited or stale key, not a valid choice —
-    // fall back rather than writing an unknown string onto <html>.
     return isThemePreference(stored) ? stored : DEFAULT_THEME_PREFERENCE
   } catch {
     console.warn('getThemePref: failed to read preference from localStorage')
@@ -54,9 +47,6 @@ export function setThemePref(pref: ThemePreference): void {
   try {
     window.localStorage.setItem(PREF_THEME, pref)
   } catch {
-    // Quota exceeded, private browsing, or storage disabled. The theme is still applied
-    // and subscribers still notified below, so the choice holds for this session even
-    // though it won't survive a relaunch.
     console.warn('setThemePref: failed to persist preference to localStorage')
   }
 
@@ -64,10 +54,6 @@ export function setThemePref(pref: ThemePreference): void {
   listeners.forEach((notify) => notify())
 }
 
-// Same-tab subscription channel for useSyncExternalStore consumers — the browser's
-// native 'storage' event only fires in *other* tabs. Mirrors the pattern in
-// lib/constants/preferences.ts, with its own set so the two preferences don't wake
-// each other's subscribers.
 const listeners = new Set<() => void>()
 
 export function subscribeThemePref(listener: () => void): () => void {
@@ -94,32 +80,10 @@ export function applyTheme(pref: ThemePreference): void {
   document.documentElement.classList.toggle(DARK_CLASS, resolveTheme(pref) === 'dark')
 }
 
-/**
- * Runs before first paint, as the first child of <body> in app/layout.tsx.
- *
- * Without it the page paints light, then React hydrates and flips it — a full-screen
- * white flash on every cold start, which for a driver checking a load at 3am is worse
- * than having no dark mode at all. This is why it is a raw string of JavaScript rather
- * than a component: it has to execute while the parser is still blocked, before React
- * exists on the page.
- *
- * Kept as one expression with no dependencies so it stays inlinable — the key, query and
- * class name come from the constants above so this copy can never drift from the
- * TypeScript one.
- *
- * Plain string pieces joined, NOT template literals with ${} interpolation: the production
- * minifier dropped the text after each interpolation (`getItem('fp:pref:theme` lost its
- * `');`), so the shipped script was a syntax error on every launch and the pre-paint theme
- * never applied. JSON.stringify quotes each value safely. The unit tests run the source
- * string, which can't see a minifier bug: after a build, check the script in out/index.html.
- */
 export const THEME_INIT_SCRIPT = [
   '(function(){try{',
   'var p=window.localStorage.getItem(' + JSON.stringify(PREF_THEME) + ');',
   "var dark=p==='dark'||(p!=='light'&&window.matchMedia(" + JSON.stringify(DARK_SCHEME_QUERY) + ').matches);',
   'document.documentElement.classList.toggle(' + JSON.stringify(DARK_CLASS) + ',dark);',
-  // Never allowed to throw: an exception here aborts the inline script and the app paints
-  // in the wrong theme. Warn (visible in logcat / Safari inspector) and let ThemeManager
-  // correct it on mount.
   "}catch(e){console.warn('theme-init: could not apply stored theme',e)}})()",
 ].join('')

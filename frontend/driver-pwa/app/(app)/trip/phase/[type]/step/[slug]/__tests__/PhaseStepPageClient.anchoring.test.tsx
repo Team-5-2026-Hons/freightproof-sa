@@ -26,17 +26,12 @@ const CONFIRMATION_PE = 'pe-confirmation-1' as PhaseEventId
 const mockUseParams = vi.fn()
 const mockRouterPush = vi.fn()
 const mockNotify = vi.fn()
-// true: stored, as the real queue answers when the phone has room.
 const mockEnqueuePhase = vi.fn(() => true)
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
-// The success path adopts the trip the submit already returned instead of refetching it.
 const mockAdoptTrip = vi.fn()
-// Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
-// Raised by the final phase of a plan (see TripCompleteOverlay); stubbed so the
-// hand-off under test runs the same code path the app does.
 const mockNoteTripCompleted = vi.fn()
 
 interface MockTripState {
@@ -50,9 +45,6 @@ interface MockTripState {
   noteTripCompleted: typeof mockNoteTripCompleted
 }
 
-// Mutable module-level value, reassigned per test — the current PHASE must match
-// whatever mockUseParams' [type] is set to for that test (the guard redirects
-// otherwise), and departure/confirmation need different phase_event_id fixtures.
 let tripState: MockTripState
 
 function setTripState(trip: Trip): void {
@@ -73,9 +65,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockRouterPush, replace: vi.fn(), back: vi.fn() }),
 }))
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => tripState }))
-// The step pages take a GPS fix silently at submit time (lib/context/LocationContext.tsx).
-// Mocked like every other hook here so these tests stay about submission behaviour, and
-// so the fix is a known value the payload assertions can check for.
 const mockCapturePosition = vi.fn(async () => ({ lat: -26.09, lng: 28.13, accuracyM: 8 }))
 vi.mock('@/lib/hooks/useLocationTrail', () => ({
   useLocationTrail: () => ({ capturePosition: mockCapturePosition, recordHere: vi.fn() }),
@@ -96,8 +85,6 @@ function SubmitConfirmationStub({ onComplete }: { onComplete: () => void }) {
 }
 
 async function continuePastUnavailableLocationCheck(): Promise<void> {
-  // Location comparison is best-effort. These tests exercise what happens after
-  // a driver deliberately continues when comparison data is unavailable.
   fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
 }
 
@@ -183,8 +170,6 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
-  // The submitter's in-flight registry and failure list live at module scope (that is the
-  // point of it) — vitest's per-test isolation cannot reach them.
   __resetPhaseSubmitterForTests()
 })
 
@@ -227,7 +212,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
       { status: 'closed' },
     )
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: freshTrip, phaseStatus: 'completed' })
-    mockRefetchTrip.mockResolvedValue(null) // trip is closed — /trips/me/active has nothing left
+    mockRefetchTrip.mockResolvedValue(null)
 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-confirmation'))
@@ -248,8 +233,6 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
     const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'in_progress' })
     setTripState(makeTrip([departure]))
     mockUseParams.mockReturnValue({ type: 'departure', slug: '4-departure' })
-    // Completed but no blockchain_receipt_id yet — claiming "anchored" here would be
-    // dishonest; the driver is pointed at the trip screen's own anchor progress UI.
     const freshTrip = makeTrip([{ ...departure, status: 'completed', blockchain_receipt_id: null }])
     mockSubmitPhase.mockResolvedValue({ ok: true, trip: freshTrip, phaseStatus: 'completed' })
     mockRefetchTrip.mockResolvedValue(freshTrip)
@@ -288,8 +271,6 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
         body: expect.stringContaining('Stored on this device'),
       }),
     )
-    // No anchor row at all: claiming even "Anchoring…" would be dishonest for evidence
-    // that has not left the phone.
     expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ anchor: expect.anything() }))
   })
 

@@ -110,7 +110,6 @@ describe('Table', () => {
         columns: [{ ...COLUMNS[0], skeleton: <span data-testid="custom-skeleton" /> }, COLUMNS[1], COLUMNS[2]],
       })
       expect(screen.getAllByTestId('custom-skeleton')).toHaveLength(2)
-      // 2 rows x 2 generic cells (City, Extra) each get one bar.
       expect(document.querySelectorAll('tbody .animate-pulse')).toHaveLength(4)
     })
 
@@ -130,7 +129,6 @@ describe('Table', () => {
         vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
           return { height: height(this) } as DOMRect
         })
-        // The shared stub never reports a size; a real observer reports one as soon as it observes.
         vi.stubGlobal('ResizeObserver', class {
           constructor(private readonly callback: () => void) {}
           observe(): void { this.callback() }
@@ -143,7 +141,6 @@ describe('Table', () => {
       it('adds placeholder rows until they reach the bottom of the scroll area', () => {
         renderTable({ isLoading: true })
 
-        // (490 - 40 header) / 50 per row = 9 rows, more than the default 6.
         expect(document.querySelectorAll('tbody tr')).toHaveLength(9)
       })
 
@@ -192,8 +189,6 @@ describe('Table', () => {
     const header = screen.getAllByRole('columnheader')
     const cells = within(screen.getByText('Alice').closest('tr') as HTMLElement).getAllByRole('cell')
     for (const cell of [...header, ...cells]) expect(cell.className).toContain(DIVIDER)
-    // The :not(:first-child) variant is what keeps the first cell's edge clear; assert it is the
-    // variant that is used rather than a bare border-l.
     expect(header[0].className).not.toMatch(/(^|\s)border-l(\s|$)/)
   })
 

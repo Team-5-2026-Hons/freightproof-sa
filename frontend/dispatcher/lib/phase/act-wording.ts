@@ -17,7 +17,6 @@ import {
   type AbsentAct, type AnchorAct, type CompletionAct, type EvidenceAct, type ExpectedAct,
 } from './acts'
 
-/** Every time names the clock it came from (D16). Exported so the exception rows say it the same way. */
 export const CLOCK_SOURCE_LABEL = { device: 'Driver’s phone', server: 'System recorded' } as const
 export const DEVICE_CLOCK = '(driver’s phone)'
 export const SERVER_CLOCK = '(system recorded)'
@@ -56,8 +55,6 @@ const STATE_WORDING: Record<EvidenceAct['state'], string> = {
 }
 const AFTER_CANCELLATION = 'Received after the trip was cancelled'
 
-// ── Evidence rows ────────────────────────────────────────────────────────────
-
 const RECEIVER_CONFIRMED = 'Receiver confirmed delivery · Attestation image'
 const RECEIVER_SUBMITTED = 'Submitted as receiver confirmation'
 
@@ -94,8 +91,6 @@ export function evidenceTimeLines(act: EvidenceAct): string[] {
   return lines
 }
 
-// ── Completion row ───────────────────────────────────────────────────────────
-
 const OVERRIDE_TITLE = 'Closed by dispatcher override'
 const EXCEPTION_SUFFIX = ', exception recorded'
 
@@ -116,8 +111,6 @@ const SEAL_PHASES: readonly PhaseType[] = ['departure', 'arrival']
 function sealLines(act: CompletionAct, phaseType: PhaseType): string[] {
   const { sealNumber, sealCondition } = act.values
   if (!SEAL_PHASES.includes(phaseType)) return []
-  // A closed phase with no seal number is a recorded fact, but an override bypassed the
-  // checks, so it never claims one (D35).
   if (sealNumber === null) return act.outcome === 'overridden' ? [] : [NO_SEAL_RECORDED]
   if (phaseType === 'departure') return [`Seal ${sealNumber}`]
   return [`Seal read ${sealNumber}`, ...(sealCondition ? [`Seal found ${sealCondition}`] : [])]
@@ -134,8 +127,6 @@ function countLines(act: CompletionAct, phaseType: PhaseType): string[] {
 
 function overrideLines(act: CompletionAct): string[] {
   if (act.override === null) return []
-  // The override record is visible to everyone: it is what happened, not audit plumbing (O3).
-  // The id is shown as stored: the trip payload carries no user directory to resolve it against.
   return [
     ...(act.override.note ? [act.override.note] : []),
     ...(act.override.authorisedBy ? [`Authorised by ${act.override.authorisedBy}`] : []),
@@ -154,8 +145,6 @@ export function completionTimeLine(act: CompletionAct): string {
   const confirmed = `Confirmed ${fmtDateTime(act.confirmedAt)} ${DEVICE_CLOCK}`
   return showsReceivedTime(act.confirmedAt, act.recordedAt) ? `${confirmed} · recorded ${recorded}` : confirmed
 }
-
-// ── Absent, anchor, expected, awaiting ───────────────────────────────────────
 
 /** D35: on a closed phase the absence of a submitted copy is a recorded fact. */
 export function absentLabel(act: AbsentAct): string {

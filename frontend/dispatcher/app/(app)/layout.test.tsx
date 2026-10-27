@@ -6,7 +6,6 @@ import { ToastProvider } from '@/lib/context/ToastContext'
 import { useToast } from '@/lib/hooks/useToast'
 import { ROUTES } from '@/lib/constants/routes'
 
-// AuthContext (imported for a constant) pulls in the Supabase client, which needs env vars.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -18,13 +17,9 @@ const auth = vi.hoisted(() => ({
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => auth.state }))
 
 const replace = vi.fn()
-// One stable router object, as Next provides: a fresh object per call would re-run the
-// layout's effect on every render.
 const router = { replace }
 vi.mock('next/navigation', () => ({ useRouter: () => router }))
 
-// The shell, realtime connection and assistant bubble have their own tests; this file is about
-// the auth gate.
 vi.mock('@/components/layout/DispatcherShell', () => ({
   DispatcherShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
@@ -49,8 +44,6 @@ function tree() {
 
 function mount() {
   const view = render(tree())
-  // A fresh element each time: re-rendering the identical one would be bailed out by React
-  // and the mocked auth state would never be re-read.
   return { rerender: () => view.rerender(tree()) }
 }
 
@@ -68,8 +61,6 @@ describe('AppLayout — session loss', () => {
     auth.state = { user: null, isLoading: false }
     view.rerender()
 
-    // ToastProvider sits above this layout, so without the clear the sticky toast outlives
-    // the signed-in view and is still on screen over the login page.
     expect(screen.queryByText('Failed to load trips')).not.toBeInTheDocument()
     expect(replace).toHaveBeenCalledWith(ROUTES.login)
   })

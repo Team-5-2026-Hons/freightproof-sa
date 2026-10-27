@@ -21,8 +21,6 @@ from sqlalchemy.orm import Session, SessionTransaction
 
 logger = logging.getLogger(__name__)
 
-# asyncio keeps only weak references to scheduled tasks; hold dispatches and fallbacks until
-# their completion callback has observed the result.
 _BACKGROUND_EVIDENCE_TASKS: set[asyncio.Task[bool]] = set()
 
 
@@ -71,16 +69,9 @@ def run_after_outer_commit(db: AsyncSession, start: Callable[[], None]) -> None:
     inside SQLAlchemy's after_commit hook, so it must only schedule work, never touch the session.
     """
     sync_session = db.sync_session
-    # The innermost transaction at registration owns the event row. Events registered
-    # before an unrelated savepoint belong to an outer transaction and never see its rollback.
     owner: SessionTransaction | None = sync_session.get_nested_transaction() or sync_session.get_transaction()
-    # Listeners cannot be removed from inside their own dispatch ("deque mutated during
-    # iteration"), so a spent dispatch is switched off with a flag instead.
     spent = False
 
-    # A savepoint that ends is either released (after_commit fires first, while it is still
-    # the session's nested transaction) or rolled back (no after_commit). That ordering is
-    # the only reliable way to tell the two apart at after_transaction_end.
     owner_released = False
 
     def _on_commit(session: Session) -> None:
@@ -98,9 +89,9 @@ def run_after_outer_commit(db: AsyncSession, start: Callable[[], None]) -> None:
         nonlocal owner, spent, owner_released
         if transaction is owner:
             if owner_released:
-                owner, owner_released = transaction.parent, False  # the row now lives in the parent
+                owner, owner_released = transaction.parent, False
             else:
-                spent = True  # rolled back with the row it was registered for
+                spent = True
         if transaction.parent is None:
             spent = True
 
@@ -111,8 +102,6 @@ def run_after_outer_commit(db: AsyncSession, start: Callable[[], None]) -> None:
 async def _publish(event_id: uuid.UUID) -> bool:
     publisher = _publisher
     if publisher is None:
-        # Startup wiring is missing. The event row is committed, so the recovery sweep
-        # will still anchor it; say so loudly rather than dropping it silently.
         logger.error(
             "No evidence publisher configured; evidence_event_id=%s will be anchored by the recovery sweep",
             event_id,

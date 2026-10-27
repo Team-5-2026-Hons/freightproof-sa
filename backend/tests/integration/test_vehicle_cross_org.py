@@ -19,14 +19,12 @@ async def _seed(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid
     db.add_all([org_a, org_b])
     await db.flush()
 
-    # Trip.created_by_user_id is a NOT NULL FK to users — seed one creator.
     creator = User(
         id=uuid.uuid4(), organization_id=org_a.id,
         email="creator-a@example.com", full_name="Creator A", is_active=True,
     )
     db.add(creator)
 
-    # Precinct uses principal_organization_id (not organization_id) and requires lat/long.
     pre_a = Precinct(
         id=uuid.uuid4(), principal_organization_id=org_a.id, name="Gate A",
         address="1 Rd", latitude=Decimal("-33.9249"), longitude=Decimal("18.4241"),

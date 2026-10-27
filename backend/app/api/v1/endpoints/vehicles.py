@@ -33,7 +33,6 @@ async def list_vehicles_endpoint(
     return await list_vehicles(db=db, organization_id=current_user.organization_id)
 
 
-# Same rationale as the driver mutations: an event row per call, and an anchor on top.
 @router.post("", response_model=VehicleRead, status_code=201,
              dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def create_vehicle_endpoint(
@@ -75,7 +74,6 @@ async def update_vehicle_endpoint(
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except DuplicateResourceError as exc:
-        # Same conflict the create path returns a 409 for — a rename can collide too.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except HederaTimeoutError as exc:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))

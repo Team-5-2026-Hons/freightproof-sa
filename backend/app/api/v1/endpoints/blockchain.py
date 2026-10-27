@@ -58,8 +58,6 @@ async def list_receipts(
     return [BlockchainReceiptRead.model_validate(r) for r in receipts]
 
 
-# Verification re-reads a Hedera mirror node. Cheap for us, not free for them, and it is
-# the one dispatcher-facing endpoint whose cost is borne by a third party per call.
 @router.post("/verify", response_model=VerifyResponse,
              dependencies=[Depends(rate_limit(BLOCKCHAIN_VERIFY))])
 async def verify_endpoint(

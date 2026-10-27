@@ -5,7 +5,6 @@ import { DEFAULT_EXCEPTION_SORT, EXCEPTION_SORT_KEYS, type ExceptionSort } from 
 export interface ExceptionHistoryNavigationState {
   cursorStack: (string | undefined)[]
   pageIndex: number
-  /** Cursor boundaries and range labels belong to the page size that produced them. */
   pageSize?: RowsPerPage
 }
 
@@ -34,7 +33,6 @@ const DAY_LENGTH = 10
 export function validExceptionDate(value: string | null): string | undefined {
   if (!value || !DATE_PATTERN.test(value)) return undefined
 
-  // Round-trips through Date so 2026-02-31 is refused rather than rolled into March.
   const date = new Date(`${value}T00:00:00Z`)
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, DAY_LENGTH) === value ? value : undefined
 }
@@ -59,7 +57,6 @@ function parseDateRange(params: URLSearchParams): Pick<ExceptionListViewState, '
 function parseNavigation(params: URLSearchParams): ExceptionHistoryNavigationState {
   const cursors = params.getAll('cursor').filter(Boolean)
   const index = params.get('page') ?? '0'
-  // A page beyond the cursors we hold cannot be reached, so it falls back to the first page.
   const reachable = /^\d+$/.test(index) && Number.isSafeInteger(Number(index)) && Number(index) <= cursors.length
   const pageSize = ROWS_PER_PAGE_OPTIONS.find(size => String(size) === params.get('pageSize'))
 
@@ -94,7 +91,6 @@ export function serializeExceptionViewState(state: ExceptionListViewState): stri
   if (state.toDate) params.set('to', state.toDate)
   if (state.group !== 'none') params.set('group', state.group)
 
-  // The default order is omitted so an unsorted URL stays clean and equal to "no sort".
   if (state.sort.key !== DEFAULT_EXCEPTION_SORT.key || state.sort.dir !== DEFAULT_EXCEPTION_SORT.dir) {
     params.set('sort', state.sort.key)
     params.set('dir', state.sort.dir)

@@ -50,8 +50,6 @@ beforeEach(() => {
 })
 
 describe('usePushNotifications', () => {
-  // Native only: a notification the driver taps from the shade arrives as
-  // pushNotificationActionPerformed, not pushNotificationReceived.
   it('routes a tapped gate-arrival notification to the phase step', async () => {
     native.value = true
     renderHook(() => usePushNotifications())
@@ -62,8 +60,6 @@ describe('usePushNotifications', () => {
     expect(mockPush).toHaveBeenCalledWith('/trip/phase/activation/step/2-verification')
   })
 
-  // in_transit has no driver steps (the phase is submitted from the in-transit hub), so a
-  // destination-arrival push must land somewhere real rather than on ".../step/undefined".
   it('routes a tapped in_transit notification to the active trip when the phase has no steps', async () => {
     native.value = true
     renderHook(() => usePushNotifications())
@@ -96,7 +92,6 @@ describe('usePushNotifications', () => {
     expect(PushNotifications.register).not.toHaveBeenCalled()
   })
 
-  // Without this the OS issued a token nobody stored, and no push could reach the driver.
   it('sends the token the OS issues to the backend with this device\'s platform', async () => {
     native.value = true
     platform.value = 'ios'

@@ -16,17 +16,10 @@ from app.integrations.parcel_perfect.waybill_fixtures import MOCK_WAYBILLS
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Mock client
-# ---------------------------------------------------------------------------
 
-
-# Redis key kind for staged PP waybill overrides, distinct from staged scan state.
 _PP_KEY_KIND = "pp"
 
-# Redis key kind for staged manifest-header overrides (FP-281).
 _PP_MANIFEST_KEY_KIND = "pp-manifest"
-# Header fields a demo may stage; each is an ISO-8601 UTC string, or None to clear.
 _STAGEABLE_HEADER_FIELDS = ("closed_at", "planned_departure_at", "expected_arrival_at")
 
 
@@ -123,10 +116,6 @@ class MockParcelPerfectClient:
         if (failtype := staged.get("failtype")) is not None:
             waybill.details.failtype = str(failtype)
         if (parcel_count := staged.get("parcel_count")) is not None:
-            # Regenerate tracks[] to the new size, keeping the fixture's barcode
-            # format. This reproduces the real failure mode: the expected parcel
-            # set — the baseline every reconciliation is measured against — grows
-            # with no version, timestamp or audit field on the waybill.
             count = int(parcel_count)
             reference = waybill.details.waybill
             waybill.tracks = [
@@ -140,7 +129,6 @@ class MockParcelPerfectClient:
     async def _waybills_with_overrides(self) -> list[PPWaybillResponse]:
         """Every fixture waybill as PP would return it now, staged edits applied. One
         batched read, not a Redis round trip per fixture."""
-        # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
         waybills = [copy.deepcopy(w) for w in MOCK_WAYBILLS.values()]
         if not settings.DEV_PANEL_ENABLED:
             return waybills
@@ -201,8 +189,6 @@ class MockParcelPerfectClient:
         store = get_mock_state_store()
         staged = dict(await store.get_json(key) or {})
         if closed is not None:
-            # Stored once, at staging: the snapshot must hash the same on the preview
-            # and on the create that follows it.
             staged["closed_at"] = datetime.now(UTC).isoformat() if closed else None
         if planned_departure_at is not None:
             staged["planned_departure_at"] = planned_departure_at.astimezone(UTC).isoformat()
@@ -229,7 +215,6 @@ class MockParcelPerfectClient:
         """Look up the waybill in the fixture library; raise if unregistered."""
         logger.info("MockParcelPerfectClient.get_single_waybill waybill=%s", waybill_number)
         try:
-            # Deep copy: callers may mutate results; module-level fixtures must stay pristine.
             waybill = copy.deepcopy(MOCK_WAYBILLS[waybill_number])
         except KeyError as exc:
             raise PPWaybillNotFoundError(waybill_number) from exc

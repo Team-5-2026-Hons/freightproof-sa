@@ -32,10 +32,8 @@ from app.schemas.fleet_analytics import (
     RoutesResponse,
 )
 
-# 10:00 SAST on Monday 19 Oct 2026.
 _NOW = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
 _TODAY = date(2026, 10, 19)
-# What "All time" starts at in these tests: the organisation's (patched) first trip.
 _FIRST_TRIP = date(2025, 3, 1)
 
 _SERVICES = (
@@ -43,7 +41,6 @@ _SERVICES = (
     "get_evidence", "get_routes", "get_cost", "get_tiles",
 )
 
-# tool name -> the service(s) it must call.
 _TOOL_SERVICES = {
     "activity": ("get_activity", "get_patterns"),
     "on_time": ("get_on_time",),
@@ -55,7 +52,6 @@ _TOOL_SERVICES = {
     "right_now": ("get_tiles",),
 }
 
-# tool name -> every response model it can hand to the model (for the personal-data check).
 _TOOL_OUTPUTS: dict[str, tuple[type[BaseModel], ...]] = {
     "activity": (ActivityResponse, PatternsResponse),
     "on_time": (OnTimeResponse,),
@@ -67,24 +63,15 @@ _TOOL_OUTPUTS: dict[str, tuple[type[BaseModel], ...]] = {
     "right_now": (FleetTilesResponse,),
 }
 
-# Field-name words that would mean personal data (POPIA, spec D5). Matched against whole
-# underscore-separated words, so "late_1_15" doesn't trip "lat".
 _PERSONAL_WORDS = frozenset({
     "driver", "person", "user", "phone", "email", "lat", "lng", "latitude", "longitude", "gps", "name",
 })
-# Fields that contain one of those words but are not personal data, as Model.field so a new
-# field with the same name elsewhere is still checked. Each with its reason.
 _ALLOWED_FIELDS = frozenset({
-    # Business sites (depots), named on the page already; a site belongs to a client company.
     "SiteActivity.precinct_name",
     "LaneRisk.origin_name", "LaneRisk.destination_name",
     "LaneCost.origin_name", "LaneCost.destination_name",
-    # Rand amounts: the driver share of operating cost, and the driver cost rate. Not a person.
     "OperatingCost.driver", "CostBucket.driver", "CostProfileRead.driver_cost_per_hour",
-    # The admin who last saved the cost rates, shown on the Cost tab's rates card (spec §12). In the schema, but
-    # stripped before anything is sent (tools._rates_without_names; test_cost_tool_never_sends_the_rates_editors_name).
     "CostProfileRead.updated_by_name",
-    # A count of receiver sign-offs sent from a phone already signed in to FreightProof.
     "SignoffFlags.same_phone_count",
 })
 
@@ -98,7 +85,6 @@ def services(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, AsyncMock]]:
     mocks = {name: AsyncMock(return_value=_Stub()) for name in _SERVICES}
     for name, mock in mocks.items():
         monkeypatch.setattr(tools, name, mock)
-    # The stand-in results have no rows to total; totals have their own tests (test_analytics_chat_totals.py).
     for name in ("activity_totals", "patterns_totals", "on_time_totals", "problems_totals", "review_totals",
                  "evidence_totals", "routes_totals", "cost_totals"):
         monkeypatch.setattr(tools, name, lambda response: {"stub": True})
@@ -125,8 +111,6 @@ def _args_for(tool_name: str) -> dict[str, Any]:
     return _args()
 
 
-# ── Which service, which organisation, which period ──────────────────────────
-
 
 @pytest.mark.parametrize("tool_name", sorted(_TOOL_SERVICES))
 async def test_run_tool_calls_its_service_for_the_callers_org(
@@ -138,7 +122,6 @@ async def test_run_tool_calls_its_service_for_the_callers_org(
 
     assert outcome.error is None
     assert outcome.result is not None
-    # The page's own lines about this tab come first, before any figure (B43).
     assert next(iter(outcome.result)) == "about"
     assert outcome.result["about"] == about(tool_name)
     for service in _TOOL_SERVICES[tool_name]:
@@ -214,8 +197,6 @@ async def test_run_tool_right_now_has_no_period_and_passes_now(services: dict[st
     assert services["get_tiles"].await_args.kwargs["now"] == _NOW
 
 
-# ── Mistakes come back as messages, and nothing runs ─────────────────────────
-
 
 async def _assert_error(services: dict[str, AsyncMock], name: str, arguments: dict[str, Any], match: str) -> None:
     outcome = await run_tool(object(), organization_id=uuid.uuid4(), name=name, arguments=arguments, now=_NOW)  # type: ignore[arg-type]
@@ -259,8 +240,6 @@ async def test_run_tool_rejects_an_unknown_preset(services: dict[str, AsyncMock]
 async def test_run_tool_rejects_a_missing_grain(services: dict[str, AsyncMock]) -> None:
     await _assert_error(services, "on_time", _args(grain=None), "Invalid input")
 
-
-# ── The tool list itself ─────────────────────────────────────────────────────
 
 
 def test_tools_are_the_eight_figure_tools_and_the_page_guide() -> None:
@@ -316,13 +295,10 @@ def test_personal_data_check_catches_a_nested_driver_name() -> None:
     assert _personal_fields((_Response,)) == ["_Row.driver_name"]
 
 
-# ── What the descriptions say a figure counts (B43) ─────────────────────────
-
 
 def test_right_now_says_live_trips_include_planned_ones_and_where_each_trip_is_listed() -> None:
     description = TOOLS_BY_NAME["right_now"].description
 
-    # 21 Oct: the chat said planned trips weren't tracked, while the tile counts them.
     assert "created, underway or on hold" in description
     assert "planned trips that haven't departed yet" in description
     assert "Active Trips list" in description
@@ -330,15 +306,11 @@ def test_right_now_says_live_trips_include_planned_ones_and_where_each_trip_is_l
 
 
 def test_no_period_tool_claims_closed_trips_only_without_deferring_to_about() -> None:
-    # Cancellations (dated when cancelled), busy patterns (any status) and the review desk (any
-    # status) are not closed-trips-by-departure; the old wording said every tool was.
     for tool in TOOLS:
         assert "Counts closed trips only" not in tool.description
         if tool.gives_figures:
             assert "`about`" in tool.description
 
-
-# ── The page guide (B45) ─────────────────────────────────────────────────────
 
 
 async def test_run_tool_explain_needs_no_period_and_returns_the_guide(services: dict[str, AsyncMock]) -> None:
@@ -384,7 +356,6 @@ class _CostWithRates(BaseModel):
 
 
 async def test_cost_tool_never_sends_the_rates_editors_name(services: dict[str, AsyncMock]) -> None:
-    # 22 Oct: the cost response carried the name of the admin who last saved the rates, and it was sent as is.
     services["get_cost"].return_value = _CostWithRates(rates={"fuel_per_km": 17.64, "updated_by_name": "Thandi Mokoena"})
 
     outcome = await run_tool(object(), organization_id=uuid.uuid4(), name="cost", arguments=_args_for("cost"), now=_NOW)  # type: ignore[arg-type]

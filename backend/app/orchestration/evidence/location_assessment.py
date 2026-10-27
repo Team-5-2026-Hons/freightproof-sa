@@ -44,8 +44,6 @@ logger = logging.getLogger(__name__)
 _LOCATION_PREVIEW_TRACKER_TIMEOUT_SECONDS = 2.0
 
 
-# Trip states in which a preview is pointless: nothing can be completed on a trip that
-# is over, cancelled, or frozen on a hold, so there is no Pulsit read worth paying for.
 _PREVIEW_INELIGIBLE_TRIP_STATUSES = frozenset(
     {TripStatus.CLOSED, TripStatus.CANCELLED, TripStatus.EXCEPTION_HOLD}
 )
@@ -81,8 +79,6 @@ async def build_phase_assessment(
     record of which stop this assessment's phase was anchored to, independent of
     whether a precinct check against that stop made sense.
     """
-    # Preview supplies an ephemeral capture; completion deliberately leaves this
-    # unset so its persisted event fields remain the sole input to final evidence.
     driver_lat = (
         capture.driver_phone_lat if capture is not None
         else (float(event.driver_phone_lat) if event.driver_phone_lat is not None else None)
@@ -98,7 +94,6 @@ async def build_phase_assessment(
     tracker_lat: Optional[float] = None
     tracker_lng: Optional[float] = None
     tracker_captured_at: Optional[datetime] = None
-    # lat/lng None-checks are implied by has_position; repeated so mypy can narrow the Decimal | None.
     if horse_fix is not None and horse_fix.has_position and horse_fix.lat is not None and horse_fix.lng is not None:
         tracker_lat = float(horse_fix.lat)
         tracker_lng = float(horse_fix.lng)
@@ -152,7 +147,6 @@ async def preview_phase_location(
     capture: DriverLocationCapture,
 ) -> ActionLocationAssessment:
     """Evaluate a fresh phone capture without altering phase or evidence records."""
-    # A read-only comparison, so no lock or sequence: but only for the driver holding the trip.
     trip = await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
 
     event_result = await db.execute(
@@ -179,15 +173,8 @@ async def preview_phase_location(
                 timeout=_LOCATION_PREVIEW_TRACKER_TIMEOUT_SECONDS,
             )
         except Exception as exc:
-            # Telemetry is advisory.  A failure must remain visible in the returned
-            # assessment, but must never turn a preview into a write/retry workflow.
             logger.warning("Location preview tracker read unavailable for trip=%s: %s", trip.id, exc)
 
-    # A demo-staged phone position (dev panel -> "move the phone") is applied to the
-    # PREVIEW too, not just the recorded completion. Otherwise the driver is shown a
-    # warning about a mismatch that the submission a second later will not record, and the
-    # preview's whole job is to predict what completing the phase would store. The staged
-    # pair is stamped SIMULATED where it is written — see phases/driver_position.py.
     staged = await staged_demo_position(trip.id)
     previewed = capture if staged is None else capture.model_copy(
         update={"driver_phone_lat": float(staged[0]), "driver_phone_lng": float(staged[1])},
@@ -251,7 +238,6 @@ def build_capture_assessment(
     tracker_lat: Optional[float] = None
     tracker_lng: Optional[float] = None
     tracker_captured_at: Optional[datetime] = None
-    # lat/lng None-checks are implied by has_position; repeated so mypy can narrow the Decimal | None.
     if horse_fix is not None and horse_fix.has_position and horse_fix.lat is not None and horse_fix.lng is not None:
         tracker_lat = float(horse_fix.lat)
         tracker_lng = float(horse_fix.lng)

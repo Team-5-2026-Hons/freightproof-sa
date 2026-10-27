@@ -23,8 +23,6 @@ interface RecordedFact {
   chain?: boolean
 }
 
-// What the swipe itself records — said before the swipe, so nothing about it is a
-// surprise. Every phase anchors (backend phase_plan.ANCHORED_PHASES), activation included.
 const RECORDED: readonly RecordedFact[] = [
   { label: 'Location', Icon: MapPin },
   { label: 'Time', Icon: Clock },
@@ -44,11 +42,8 @@ function TripRoute({ trip }: { trip: Trip }) {
 }
 
 export function Verification({ phase, stepIndex, onComplete }: VerificationProps) {
-  // Outside a trip session (a cold deep link mid-load) the route is left out, not guessed.
   const trip = useOptionalTrip()?.trip ?? null
 
-  // No readiness gate: the GPS fix is taken as this swipe submits, and nothing else on
-  // this phase is driver-captured.
   return (
     <StepLayout
       phase={phase}

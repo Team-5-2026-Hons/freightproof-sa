@@ -8,7 +8,6 @@ from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 
-# Postgres SQLSTATE for unique_violation.
 UNIQUE_VIOLATION = "23505"
 
 

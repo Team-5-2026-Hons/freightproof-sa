@@ -58,7 +58,7 @@ async def test_trips_without_a_manifest_never_collide(db_session: AsyncSession) 
 async def test_partial_manifest_key_is_rejected(db_session: AsyncSession) -> None:
     world = await build_manifest_world(db_session)
     trip = await insert_trip(db_session, world, number=None)
-    trip.pp_manifest_number = 81  # number without issuer and hub
+    trip.pp_manifest_number = 81
 
     with pytest.raises(IntegrityError) as exc:
         await db_session.flush()

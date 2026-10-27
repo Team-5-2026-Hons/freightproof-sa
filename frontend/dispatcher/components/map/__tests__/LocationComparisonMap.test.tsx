@@ -11,18 +11,9 @@ import {
 import { haversineMetres, type Coords } from '@/lib/phase/geo'
 import type { LocationEvidence } from '@/lib/phase/location-evidence'
 
-// Leaflet is never mounted here (per the brief: jsdom has no real tile/canvas stack to
-// exercise it against): only the pure helpers this component exports are tested, the
-// same "pure logic exported and tested against fakes" style as GeofenceMap.test.tsx.
-
 const DRIVER_COORDS = { lat: -33.9249, lng: 18.4241 }
 const TRACKER_COORDS = { lat: -33.9260, lng: 18.4300 }
 
-// Mirrors geo.ts's EARTH_RADIUS_METRES (not imported: it is a private module constant
-// there). A pure north/south offset with no longitude change makes haversineMetres
-// return exactly this radius times the latitude delta in radians (asin(sin(x)) is x
-// itself for the tiny angles involved), so this lets a test target a specific metres
-// value directly instead of searching for one.
 const EARTH_RADIUS_METRES_FOR_TEST = 6_371_008.8
 
 function northOf(coords: Coords, metres: number): Coords {
@@ -30,9 +21,6 @@ function northOf(coords: Coords, metres: number): Coords {
   return { lat: coords.lat + deltaDeg, lng: coords.lng }
 }
 
-// Roughly 1,400 km north of the Cape Town fixes above (great-circle, since only the
-// latitude differs): far past BOUNDARY_NEARBY_METRES from either recorded fix, standing
-// in for the brief's "fix 1,400 km from its precinct" case.
 const FAR_BOUNDARY_COORDS = northOf(DRIVER_COORDS, 1_400_000)
 
 function makeEvidence(overrides: Partial<LocationEvidence> = {}): LocationEvidence {
@@ -77,10 +65,6 @@ describe('comparisonBounds', () => {
   })
 
   it('extends the box past both fixes when the boundary circle is the larger extent', () => {
-    // A boundary centred on the driver fix with a radius many times the driver/tracker
-    // separation must widen the box well past where the two fixes alone would put it;
-    // this is the case a fit-bounds computed only from driverFix/trackerFix would get
-    // wrong by clipping the boundary circle's stroke off-screen.
     const evidence = makeEvidence({
       boundary: {
         coords: DRIVER_COORDS,
@@ -126,8 +110,6 @@ describe('comparisonBounds', () => {
 
     expect(isBoundsExtent(extent)).toBe(true)
     if (!isBoundsExtent(extent)) throw new Error('unreachable')
-    // "Non-degenerate": Leaflet's fitBounds on south===north / west===east zooms to its
-    // own maximum rather than anything sensible, so the box must have real extent.
     expect(extent.north).toBeGreaterThan(extent.south)
     expect(extent.east).toBeGreaterThan(extent.west)
   })
@@ -202,9 +184,6 @@ describe('comparisonBounds', () => {
     const noFixesEvidence = makeEvidence({ driverFix: null, trackerFix: null, separationMetres: null, boundary })
 
     const precinctExtent = comparisonBounds(evidence, 'precinct')
-    // The no-fix fallback for the 'fixes' target already returns just the boundary
-    // circle's own box (see the next test), so it is the same box the 'precinct' target
-    // must return: this checks the two agree without duplicating the box maths here.
     const circleOnlyExtent = comparisonBounds(noFixesEvidence, 'fixes')
 
     expect(precinctExtent).toEqual(circleOnlyExtent)
@@ -238,7 +217,7 @@ describe('comparisonBounds', () => {
 
 describe('boundaryDistanceMetres', () => {
   it('measures from the boundary centre to the nearest of the two fixes', () => {
-    const boundaryCentre = northOf(TRACKER_COORDS, 200) // closer to the tracker than to the driver
+    const boundaryCentre = northOf(TRACKER_COORDS, 200)
     const evidence = makeEvidence({
       boundary: {
         coords: boundaryCentre,
@@ -310,10 +289,6 @@ describe('boundaryIsNearby', () => {
 })
 
 describe('COMPARISON_MAP_INTERACTION', () => {
-  // Leaflet is never mounted in this file (see the top-of-file comment), so this
-  // constant — spread into `L.map(...)` in the component itself — is the only surface
-  // of the scroll-wheel-zoom behaviour a jsdom test can reach at all; a live map's real
-  // wheel-event handling is a browser-check concern, not a unit-test one.
   it('enables scroll-wheel zoom, unlike the embedded (non-modal) GeofenceMap', () => {
     expect(COMPARISON_MAP_INTERACTION.scrollWheelZoom).toBe(true)
   })

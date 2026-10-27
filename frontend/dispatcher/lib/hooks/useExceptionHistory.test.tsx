@@ -11,7 +11,6 @@ vi.mock('@/lib/api/client', () => ({
   api: { get: vi.fn() },
 }))
 
-// History is a browsable archive, not a live queue — it must never subscribe.
 vi.mock('@/lib/realtime/useLiveResource', () => ({
   useLiveResource: vi.fn(),
 }))
@@ -57,9 +56,6 @@ function makePage(
   }
 }
 
-// A promise plus the functions to settle it later, so a test can control the ORDER in
-// which two overlapping requests resolve (out-of-order resolution is the whole point of
-// the stale-response test below).
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (err: unknown) => void
@@ -202,8 +198,6 @@ describe('useExceptionHistory', () => {
     rerender({ severity: 'warning' })
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2))
 
-    // Resolve the NEWER request first, then the OLDER one — the older result must be
-    // discarded even though it settles last.
     second.resolve(makePage({
       items: [makeItem({ id: 'newer' as TripExceptionListItem['id'] })],
       total_items: 99,
@@ -215,7 +209,6 @@ describe('useExceptionHistory', () => {
       total_items: 1,
     }))
 
-    // Give the stale promise a tick to (wrongly) apply, then assert it did not.
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()

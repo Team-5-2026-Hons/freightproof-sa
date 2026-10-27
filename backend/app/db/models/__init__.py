@@ -8,7 +8,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# Import order matters: Base must be defined above before any model file is imported.
 from app.db.models.organisations import Organization, Precinct  # noqa: E402,F401
 from app.db.models.people import Driver, User  # noqa: E402,F401
 from app.db.models.vehicles import Vehicle  # noqa: E402,F401

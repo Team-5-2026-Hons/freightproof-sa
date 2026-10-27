@@ -4,7 +4,6 @@ import { TopBar } from './TopBar'
 
 describe('TopBar', () => {
   it('renders the title and its page actions without a forensic switch', () => {
-    // The forensic toggle moved to Settings; headers differ per page and no longer carry it.
     render(<TopBar title="Exceptions"><button type="button">Export</button></TopBar>)
 
     expect(screen.getByText('Exceptions')).toBeInTheDocument()

@@ -33,11 +33,6 @@ from app.main import app
 
 from tests.conftest import auth_header, make_token
 
-# A real JPEG signature (SOI + APP0), padded. The upload path re-derives the content type
-# from the bytes rather than trusting the client's declared one — see
-# app/storage/mime_allowlist.py — so a placeholder like b"fakejpegbytes" is now correctly
-# rejected as "not any allowed format". Tests that want a successful upload have to send
-# something that genuinely looks like an image.
 JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 32
 
 
@@ -123,9 +118,6 @@ async def test_upload_artifact_over_10mb_returns_413(
     have been a second, inconsistent code for one condition.
     """
     trip, driver = seed_trip
-    # The 10 MB ceiling is pinned by value, then shrunk for the request: the size check
-    # compares against the constant whatever its value, and a real 10 MB multipart body
-    # took ~5s to build and parse — the slowest test in the suite.
     assert artifacts_endpoint.MAX_FILE_SIZE_BYTES == 10 * 1024 * 1024
     monkeypatch.setattr(artifacts_endpoint, "MAX_FILE_SIZE_BYTES", len(JPEG_BYTES))
 
@@ -194,12 +186,8 @@ async def test_upload_artifact_for_someone_elses_trip_returns_404(client: AsyncC
         files={"file": ("gate.jpg", io.BytesIO(JPEG_BYTES), "image/jpeg")},
         headers=auth_header(token),
     )
-    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
     assert resp.status_code == 404
 
-
-# ── Attribution columns: constraints are declared on the model, because tests build the
-# schema with create_all and never run the migration ────────────────────────────────
 
 async def _seed_phase(db_session, trip: Trip, phase_type: PhaseType = PhaseType.LOADING) -> PhaseEvent:
     phase = PhaseEvent(
@@ -261,8 +249,6 @@ async def test_unattributed_rows_may_share_a_hash(db_session, seed_trip):
     await db_session.flush()
 
 
-# ── Attributed upload ──────────────────────────────────────────────────────────
-
 _OUTBOX_KEY = "realtime_outbox"
 _ARTIFACTS_LOGGER = "app.orchestration.evidence.artifacts"
 
@@ -293,8 +279,6 @@ def storage(monkeypatch: pytest.MonkeyPatch) -> _FakeStorage:
     return fake
 
 
-# One token per driver for the whole test: a second token for the same driver starts a new
-# session, and the one-device rule (app/auth/sessions.py) rejects a same-second repeat.
 _DRIVER_TOKENS: dict[uuid.UUID, str] = {}
 
 
@@ -491,7 +475,6 @@ async def test_new_attributed_upload_enqueues_one_info_evidence_event(client, db
     assert org_id == trip.operator_organization_id
     assert event.id == trip.id
     assert event.severity == EventSeverity.INFO
-    # Ids and kind only (POPIA): no coordinates, names or artifact details on the wire.
     assert set(event.model_dump()) == {"resource", "id", "kind", "severity", "ts"}
 
 
@@ -514,7 +497,7 @@ async def test_rolled_back_upload_leaves_no_row_and_publishes_nothing(
         captured_by_driver_id=driver.id,
         attribution=EvidenceAttribution(phase_event_id=phase.id, role=EvidenceRole.LINEHAUL_PHOTO),
     )
-    assert len(_evidence_events(db_session)) == 1  # queued, not yet published
+    assert len(_evidence_events(db_session)) == 1
     await db_session.rollback()
 
     assert (await db_session.execute(

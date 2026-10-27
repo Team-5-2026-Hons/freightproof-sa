@@ -20,9 +20,6 @@ import { markTransition } from '@/lib/navigation/transition-direction'
 import { useOptionalTrip } from '@/lib/hooks/useOptionalTrip'
 import { usePhaseSubmissions } from '@/lib/submission/phase-submitter'
 
-// Screens that only make sense while this driver holds a working trip. Panic is left out on
-// purpose: its confirmation must never be pulled from under a driver mid-alert, and its own
-// "back" leads to In Transit, which this then catches.
 const TRIP_BOUND_PREFIXES = [PHASE_STEP_PREFIX, ROUTES.inTransit, ROUTES.activeTripDetail] as const
 
 export function isTripBoundRoute(pathname: string): boolean {
@@ -35,9 +32,6 @@ export function LeaveEndedTripScreen(): null {
   const pathname = usePathname()
   const tripCtx = useOptionalTrip()
   const { inFlight } = usePhaseSubmissions()
-  // A submission still running means the trip may only be momentarily absent: the final
-  // hand-off closes the trip and routes Home itself, and the step screen keeps its own last
-  // copy of the plan for that window (PhaseStepPageClient's lastTripRef).
   const stranded = tripCtx !== null && !tripCtx.isLoading && tripCtx.trip === null
     && inFlight.length === 0 && isTripBoundRoute(pathname)
 

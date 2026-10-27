@@ -45,7 +45,6 @@ function envelope(photos: ExceptionPhotoRecord[] = []): ExceptionEnvelope {
   }
 }
 
-// Resolves each call with the next id in the list; uploads are identified by order.
 function uploadsSucceedWith(...ids: string[]): void {
   for (const id of ids) upload.mockResolvedValueOnce({ id, file_hash: 'h' })
 }
@@ -173,8 +172,6 @@ describe('sendExceptionReport', () => {
     expect(stored?.status).toBe('needs-attention')
   })
 
-  // An expired session or a request timeout says nothing about the report itself, so the
-  // report must wait for sign-in / signal instead of being parked as "not accepted".
   test.each([401, 408])('test_post_%i_is_transient_not_needs_attention', async (status) => {
     const env = envelope([])
     await saveExceptionEnvelope(env)
@@ -262,7 +259,6 @@ describe('sendExceptionReport', () => {
 
     expect(resumed.kind).toBe('acknowledged')
     expect(post).toHaveBeenNthCalledWith(1, ['a1', 'a2'])
-    // After the ack the memory is cleared, so the same envelope starts from scratch.
     expect(upload).toHaveBeenCalledTimes(2)
   })
 
@@ -315,8 +311,6 @@ describe('sendExceptionReport', () => {
     __setIndexedDbForTests(idb)
     const env = envelope([photo(), photo()])
     await saveExceptionEnvelope(env)
-    // The initial save succeeded; from here the store refuses every write, including
-    // the "photo 1 uploaded" record.
     idb.failPuts()
     upload.mockResolvedValueOnce({ id: 'a1', file_hash: 'h' })
     upload.mockRejectedValueOnce(new ApiError(0, 'offline'))
@@ -324,13 +318,12 @@ describe('sendExceptionReport', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const first = await sendExceptionReport(env, { durable: true, post })
-    // Same (stale) envelope again, exactly what a retry from the page would hold.
     upload.mockResolvedValueOnce({ id: 'a2', file_hash: 'h' })
     const second = await sendExceptionReport(env, { durable: true, post })
 
     expect(first).toEqual({ kind: 'transient', retryAfterMs: null })
     expect(second).toEqual({ kind: 'acknowledged' })
-    expect(upload).toHaveBeenCalledTimes(3) // photo 1 once, photo 2 twice (first failed) - never photo 1 twice
+    expect(upload).toHaveBeenCalledTimes(3)
     expect(post).toHaveBeenCalledWith(['a1', 'a2'])
   })
 
@@ -344,7 +337,6 @@ describe('sendExceptionReport', () => {
 
     releaseFirst?.()
     const releaseSecond = await second
-    // Handed over without a gap: a non-waiting caller still cannot take it.
     expect(tryReportLock('r1')).toBeNull()
     releaseSecond()
     const releaseThird = await third

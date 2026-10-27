@@ -11,17 +11,13 @@ import { IncidentStatusChip } from './IncidentStatusChip'
 interface Props {
   incidents: IncidentSummary[]
   isLoading: boolean
-  /** Why the last load failed, if it did. With nothing cached this is "unavailable", never "none". */
   error?: string | null
   onRetry?: () => void
-  /** This trip's own URL, so an incident opened from here comes back here. */
   returnTo: string
   onReport: () => void
-  /** The incident the timeline just pointed at: outlined for a moment so the eye finds it in the list. */
   highlightedId?: string | null
 }
 
-/** The attribute the page's landing looks the row up by. */
 export const INCIDENT_ROW_ATTR = 'data-incident-row'
 
 /** A trip's incidents and the way to report one: the body of the Info tab's Incidents section,
@@ -30,9 +26,6 @@ export const INCIDENT_ROW_ATTR = 'data-incident-row'
 export function TripIncidentsSection({ incidents, isLoading, error = null, onRetry, returnTo, onReport, highlightedId = null }: Props): React.JSX.Element {
   const report = <Button size="sm" variant="secondary" onClick={onReport}>Report incident</Button>
   if (isLoading && incidents.length === 0) return <SectionRowsSkeleton rows={2} label="Loading incidents" />
-  // An empty list after a failed load says nothing about the trip: "No incidents" here would be a
-  // false all-clear on a screen used for evidence. Reporting stays available, since a dispatcher
-  // who has just been told of a hijacking must not be blocked by a failed read.
   if (incidents.length === 0 && error) {
     return (
       <div className="flex flex-col gap-3">
@@ -44,7 +37,6 @@ export function TripIncidentsSection({ incidents, isLoading, error = null, onRet
       </div>
     )
   }
-  // Nothing to list: the sentence and the one thing to do about it share a line.
   if (incidents.length === 0) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -55,7 +47,6 @@ export function TripIncidentsSection({ incidents, isLoading, error = null, onRet
   }
   return (
     <div className="flex flex-col gap-3">
-      {/* Cached rows stay, since old evidence beats none, but they may be out of date. */}
       {error && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p role="status" className="text-xs text-on-surf-v">Couldn&apos;t refresh incidents.</p>

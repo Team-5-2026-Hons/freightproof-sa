@@ -83,7 +83,6 @@ def stops(seed: dict[str, Any]) -> list[Precinct]:
 
 
 async def _seed_reviews(db: AsyncSession, operator: Operator, stops: list[Precinct]) -> None:
-    # An open trip on purpose: the review desk is not limited to closed trips.
     trip = (await seed_trip(db, operator, stops=stops, start=at_sast(_day(0), 6), status=TripStatus.ACTIVE)).trip
     critical, warning = ExceptionSeverity.CRITICAL, ExceptionSeverity.WARNING
     reviewed, waiting = ExceptionReviewStatus.REVIEWED, ExceptionReviewStatus.NEEDS_REVIEW
@@ -112,8 +111,6 @@ async def _seed_reviews(db: AsyncSession, operator: Operator, stops: list[Precin
         review_status=waiting,
     )
 
-
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
 
 
 async def test_fleet_review_without_token_returns_403(client: AsyncClient) -> None:
@@ -144,8 +141,6 @@ async def test_fleet_review_rejects_an_end_after_today(client: AsyncClient, oper
     assert response.status_code == 422
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_review_for_an_org_without_exceptions_is_empty_but_complete(
     client: AsyncClient, operator: Operator,
@@ -168,7 +163,6 @@ async def test_fleet_review_waiting_now_bands_the_open_queue_by_age(
     response = await client.get(_REVIEW, params=_params(), headers=headers(operator))
 
     assert response.status_code == 200
-    # E6 (30 minutes old) and E3 (weeks old); the other operator's waiting item never counts.
     assert [bar["count"] for bar in response.json()["waiting_by_age"]] == [1, 0, 0, 1]
 
 
@@ -180,7 +174,6 @@ async def test_fleet_review_queue_counts_items_raised_before_and_reviewed_after_
     response = await client.get(_REVIEW, params=_params(), headers=headers(operator))
 
     assert response.status_code == 200
-    # End of week 0: E2 and E8 raised, not yet reviewed (E1 done, E4 legacy). End of week 1: E3.
     assert [row["waiting_at_end"] for row in response.json()["queue"]] == [2, 1]
 
 

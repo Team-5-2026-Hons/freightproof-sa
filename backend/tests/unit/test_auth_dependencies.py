@@ -51,8 +51,6 @@ def patch_jwks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.auth.dependencies._get_jwks", make_jwks)
 
 
-# ── _decode_token ──────────────────────────────────────────────────────────────
-
 
 def test_decode_token_valid_returns_payload() -> None:
     user_id = str(uuid.uuid4())
@@ -75,7 +73,6 @@ def test_decode_token_expired_raises_401() -> None:
 
 
 def test_decode_token_wrong_key_raises_401(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Token signed with the test key, but JWKS patched to a different key — signature mismatch.
     different_key = generate_private_key(SECP256R1(), default_backend())
     pub_numbers = different_key.public_key().public_numbers()
 
@@ -113,8 +110,6 @@ def test_decode_token_malformed_raises_401() -> None:
 
 
 def test_decode_token_unknown_kid_raises_401(monkeypatch: pytest.MonkeyPatch) -> None:
-    # JWKS contains no key with the kid that the token carries.
-    # Patch both _get_jwks (TTL path) and _fetch_jwks (forced-refresh path in _get_signing_key).
     monkeypatch.setattr("app.auth.dependencies._get_jwks", lambda: {"keys": []})
     monkeypatch.setattr("app.auth.dependencies._fetch_jwks", lambda: {"keys": []})
 
@@ -127,7 +122,6 @@ def test_decode_token_unknown_kid_raises_401(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_decode_token_wrong_audience_raises_401() -> None:
-    # Token signed with the correct key but carrying the wrong audience claim.
     key = generate_private_key(SECP256R1(), default_backend())
     private_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -148,8 +142,6 @@ def test_decode_token_wrong_audience_raises_401() -> None:
 
     assert exc_info.value.status_code == 401
 
-
-# ── _require_dispatcher_role ──────────────────────────────────────────────────
 
 
 def test_require_dispatcher_role_passes_for_dispatcher() -> None:
@@ -198,12 +190,10 @@ def test_require_dispatcher_role_raises_403_when_role_missing() -> None:
     assert exc_info.value.status_code == 403
 
 
-# ── _require_driver_role ───────────────────────────────────────────────────────
-
 
 def test_require_driver_role_passes_for_driver() -> None:
     payload = {"app_metadata": {"role": "driver"}}
-    _require_driver_role(payload)  # does not raise
+    _require_driver_role(payload)
 
 
 def test_require_driver_role_raises_403_for_dispatcher() -> None:
@@ -231,8 +221,6 @@ def test_require_driver_role_raises_403_when_role_missing() -> None:
     assert exc_info.value.status_code == 403
 
 
-# ── require_admin_dispatcher ──────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_require_admin_dispatcher_passes_for_admin() -> None:
@@ -250,8 +238,6 @@ async def test_require_admin_dispatcher_raises_403_for_dispatcher() -> None:
 
     assert exc_info.value.status_code == 403
 
-
-# ── get_current_driver ──────────────────────────────────────────────────────────
 
 
 class _DriverRowLike(Protocol):
@@ -273,7 +259,7 @@ class _DriverRowLike(Protocol):
 
 def _make_driver_row(*, is_active: bool = True) -> _DriverRowLike:
     """Return a stand-in for a Driver ORM row — only the attributes get_current_driver reads."""
-    active = is_active  # avoid self-shadowing the class attribute of the same name below
+    active = is_active
 
     class _FakeDriver:
         id = uuid.uuid4()
@@ -308,12 +294,6 @@ async def test_get_current_driver_returns_driver_read_for_valid_token(
     token = make_token(sub=str(driver_row.id), role="driver")
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-    # Four statements, in order: the driver row, then TWO reads of the session row — the
-    # idle check (app/auth/sessions.enforce_driver_idle_timeout) followed by the
-    # single-device check — and finally the upsert that claims the device. The two reads
-    # are separate deliberately: the idle check has to read last_seen_at BEFORE the
-    # single-device check stamps it forward, or the timeout could never fire. No session
-    # row on either read means a freshly signed-in handset claiming the device.
     db = AsyncMock()
     driver_result = MagicMock()
     driver_result.scalar_one_or_none.return_value = driver_row
@@ -321,10 +301,6 @@ async def test_get_current_driver_returns_driver_read_for_valid_token(
     idle_result.scalar_one_or_none.return_value = None
     session_result = MagicMock()
     session_result.scalar_one_or_none.return_value = None
-    # The claim's RETURNING. A driver_id back means the row is ours; None would mean a
-    # newer handset holds it and the request is refused (covered against a real database
-    # in tests/integration/test_session_concurrency.py, which is where the concurrency
-    # that makes that branch reachable can actually be produced).
     claim_result = MagicMock()
     claim_result.scalar_one_or_none.return_value = driver_row.id
     db.execute.side_effect = [driver_result, idle_result, session_result, claim_result]

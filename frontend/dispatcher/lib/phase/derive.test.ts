@@ -11,8 +11,6 @@ import {
 } from './derive'
 import type { TripException } from '@shared/lib/types/exception'
 
-// Marks phases 0..through as completed. Local to the test on purpose: the module
-// under test must not gain a helper that only tests use.
 function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
   return plan.map(p => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
@@ -43,9 +41,6 @@ describe('activePhase', () => {
     expect(activePhase(plan)?.sequence_number).toBe(1)
   })
 
-  // A departure that raised a seal mismatch does not hold the trip server-side, so it
-  // must not hold the dispatcher's idea of "current" either — otherwise the header chip
-  // names Departure while the driver is hours down the N3.
   it('does not pin to an exception phase — the backend has already moved past it', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map(p =>
       p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
@@ -63,7 +58,6 @@ describe('completionPct', () => {
   })
 
   it('uses the plan its own length as the denominator, not a constant', () => {
-    // 7 of 13 done is 54%. Against a hard-coded denominator of 6 it would be 100%.
     expect(completionPct(walk(CROSS_DOCK_PHASE_PLAN, 6))).toBe(54)
   })
 
@@ -71,9 +65,6 @@ describe('completionPct', () => {
     expect(completionPct([])).toBe(0)
   })
 
-  // A trip that closed with a recorded exception is 100% done — the phase happened, the
-  // anomaly is evidence attached to it, not outstanding work. Reporting 86% on a
-  // delivered load reads as an unfinished trip on the board.
   it('reaches 100 on a closed trip that carries an exception phase', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 7).map(p =>
       p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
@@ -83,9 +74,6 @@ describe('completionPct', () => {
 })
 
 describe('nodeTypeFor', () => {
-  // Guards the check ORDER in nodeTypeFor. `exception` is a resolved status, so if the
-  // isResolved test ran first this would return 'done' and a seal mismatch would render
-  // as ordinary green progress.
   it('marks an exception phase warn even though the status counts as resolved', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 2).map(p =>
       p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
@@ -94,10 +82,6 @@ describe('nodeTypeFor', () => {
     expect(nodeTypeFor(plan[3], active?.phase_event_id ?? null)).toBe('warn')
   })
 
-  // The regression this whole change exists to kill: on a trip whose departure raised a
-  // seal mismatch, the row the driver is actually on must still be the `next` row. When
-  // it fell through to 'pending', page.tsx read that as isPending and suppressed
-  // alwaysExpandedContent — deleting the in-transit Journey card for the entire drive.
   it('still marks the genuinely-next row `next` when an earlier phase is an exception', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map(p =>
       p.sequence_number === 3 ? { ...p, status: 'exception' as const } : p)
@@ -112,8 +96,6 @@ describe('nodeTypeFor', () => {
     const activeId = activePhase(plan)?.phase_event_id ?? null
 
     expect(nodeTypeFor(plan[2], activeId)).toBe('done')
-    // The ledger's current gate, but still `pending` — nothing has actually
-    // started, so this must not read as `active`.
     expect(nodeTypeFor(plan[3], activeId)).toBe('next')
     expect(nodeTypeFor(plan[4], activeId)).toBe('pending')
   })
@@ -127,8 +109,6 @@ describe('nodeTypeFor', () => {
   })
 
   it('keeps activation pending, not next, while the trip has not been activated', () => {
-    // A trip created weeks ahead sits dormant — activation is not "about to happen",
-    // so it must render indistinguishably from a phase that has not been reached yet.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
     const activationPhase = plan.find(p => p.phase_type === 'activation')!
     const activeId = activePhase(plan)?.phase_event_id ?? null
@@ -147,8 +127,6 @@ describe('nodeTypeFor', () => {
 
 describe('currentSealNumber', () => {
   it('is the highest-sequence completed departure — the seal actually on the vehicle', () => {
-    // Cross-dock: two departures (seq 3 and 8). Leg 1 is sealed and done, leg 2 is
-    // sealed and done, so the current seal is leg 2 s.
     const plan = walk(CROSS_DOCK_PHASE_PLAN, 9).map(p =>
       p.phase_type === 'departure'
         ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
@@ -164,9 +142,6 @@ describe('currentSealNumber', () => {
     expect(currentSealNumber(plan)).toBeNull()
   })
 
-  // The driver applied and photographed this seal; the guard's re-entry is what
-  // disagreed. It is the seal physically on the truck, and blanking it on a mismatch
-  // hides the number from the one reader most likely to need it.
   it('reports the seal from a departure that raised a mismatch exception', () => {
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 4).map(p =>
       p.sequence_number === 3
@@ -179,8 +154,6 @@ describe('currentSealNumber', () => {
 
 describe('departureSealForLeg', () => {
   it("is the seal from THIS leg's own departure, not an earlier leg's", () => {
-    // Cross-dock: departures at seq 3 (leg 1) and seq 8 (leg 2). Leg 2's unloading
-    // (seq 11) must compare against leg 2's own seal, never leg 1's.
     const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
       p.phase_type === 'departure'
         ? { ...p, seal_number: p.sequence_number === 3 ? 'AB-1111' : 'AB-2222' }
@@ -200,8 +173,6 @@ describe('departureSealForLeg', () => {
     expect(departureSealForLeg(plan, unloading)).toBe('AB-1111')
   })
 
-  // D40: the nearest preceding departure is this leg's departure even when it recorded no
-  // seal. Skipping it would hand leg 2 the seal that physically left with leg 1.
   it("is null when this leg's own departure recorded no seal, not an earlier leg's seal", () => {
     const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
       p.phase_type === 'departure'
@@ -233,10 +204,6 @@ describe('originScannedCount', () => {
 
 describe('destinationScannedCount', () => {
   it('reads the confirmation row — the only phase the backend ever writes the count on', () => {
-    // The unloading row carries a decoy. parcel_count_destination exists on every phase
-    // in the shared type, but advance_confirmation (orchestration/phase_service.py) writes
-    // it onto CONFIRMATION alone, so a reader pointed at unloading finds a permanent NULL
-    // and reports a delivered trip as having no destination count at all.
     const plan = SINGLE_LEG_PHASE_PLAN.map(p => {
       if (p.phase_type === 'unloading') return { ...p, parcel_count_destination: 99 }
       if (p.phase_type === 'confirmation') return { ...p, parcel_count_destination: 38 }
@@ -261,7 +228,6 @@ describe('destinationScannedCount', () => {
 
 describe('anchorTally', () => {
   it('counts receipts owed from anchor_status, never from plan length', () => {
-    // Every phase anchors, so a single-leg plan owes one receipt per row: eight.
     expect(anchorTally(SINGLE_LEG_PHASE_PLAN).owed).toBe(8)
     expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(8)
   })
@@ -288,7 +254,6 @@ describe('tripChipMeta', () => {
   it('names the phase behind a warning prefix on a held trip, and stays amber', () => {
     const meta = tripChipMeta('exception_hold', 'unloading')
 
-    // Both facts: that it is held, and where it stopped.
     expect(meta.label).toBe('⚠ Unloading')
     expect(meta.chipType).toBe('exception')
   })
@@ -300,8 +265,6 @@ describe('tripChipMeta', () => {
   })
 
   it('never produces a label longer than the widest one it renders today', () => {
-    // 'At Origin Gate' is 14 chars. Chip has no fixed width, but the trip table's
-    // Status column has a fixed base width, so a regression here would clip silently.
     const widest = (['activation', 'loading', 'departure', 'in_transit', 'unloading',
                      'confirmation'] as const)
       .flatMap(phase => [tripChipMeta('active', phase), tripChipMeta('exception_hold', phase)])
@@ -311,8 +274,6 @@ describe('tripChipMeta', () => {
   })
 
   it('degrades to the coarse label rather than undefined when the cache is empty', () => {
-    // Live defect #4 was TRIP_STATUS_META[status] returning undefined and the caller
-    // reading .chipType off it. This must never throw, whatever the cache holds.
     expect(tripChipMeta('active', null).label).toBe('Active')
     expect(tripChipMeta('active', null).chipType).toBe('transit')
     expect(tripChipMeta('exception_hold', null).label).toBe('Exception')
@@ -320,7 +281,6 @@ describe('tripChipMeta', () => {
 })
 
 describe('legDepartureAt', () => {
-  // Marks one row completed at a given instant, leaving every other row untouched.
   function complete(
     plan: readonly PhaseDescriptor[], sequenceNumber: number, at: string,
   ): PhaseDescriptor[] {
@@ -331,8 +291,6 @@ describe('legDepartureAt', () => {
   }
 
   it('reads the departure that started this leg, never the in-transit row own created_at', () => {
-    // The bug this exists to kill: created_at on every row is plan-generation time, so
-    // the timeline printed a departure BEFORE the trip was created.
     const plan = complete(SINGLE_LEG_PHASE_PLAN, 3, '2026-07-27T14:00:00Z')
     const inTransit = plan.find(p => p.phase_type === 'in_transit')!
 
@@ -341,8 +299,6 @@ describe('legDepartureAt', () => {
   })
 
   it('scopes to the leg — leg 2 is dated from its own departure, not leg 1 s', () => {
-    // Cross-dock: departure at seq 3 (stop 1) and seq 8 (stop 2). The in-transit row at
-    // seq 9 belongs to the SECOND leg and must never inherit the first departure time.
     let plan = complete(CROSS_DOCK_PHASE_PLAN, 3, '2026-07-27T14:00:00Z')
     plan = complete(plan, 8, '2026-07-27T19:30:00Z')
     const secondLeg = plan.find(p => p.phase_type === 'in_transit' && p.sequence_number === 9)!
@@ -401,9 +357,6 @@ describe('sortedPlan / isResolved', () => {
     expect(input.map(p => p.sequence_number)).toEqual(before)
   })
 
-  // The status list here must stay identical to phase_service._is_resolved. The two
-  // surfaces disagreeing about "resolved" is not a cosmetic drift — it moved the active
-  // phase, capped completion below 100% and suppressed the in-transit Journey card.
   it('treats completed, exception and overridden as resolved and nothing else', () => {
     const of = (status: PhaseDescriptor['status']) => isResolved({ ...SINGLE_LEG_PHASE_PLAN[0], status })
 

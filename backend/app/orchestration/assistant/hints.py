@@ -23,26 +23,22 @@ from app.orchestration.assistant.when import WEEKDAYS
 
 HOURS_ON_A_CLOCK_FACE = 12
 
-# A preposition, then an hour on its own. The lookahead drops "5:30", "5h30", "5.30", "17", "5pm".
 _BARE_HOUR = re.compile(
     r"\b(?:at|by|around|about|from|before|after|until|till)\s+(\d{1,2})(?![\d:.h])(?!\s*(?:am|pm|a\.m|p\.m)\b)",
     re.IGNORECASE,
 )
 _O_CLOCK = re.compile(r"^\s*o['’]?\s?clock", re.IGNORECASE)
-# What may follow an hour and settle it ("at 5 in the morning", "5 o'clock pm").
 _SETTLED_BY = re.compile(
     r"^\s*(?:am|pm|a\.m|p\.m|in\s+the\s+(?:morning|afternoon|evening)|at\s+night|tonight"
     r"|this\s+(?:morning|afternoon|evening))\b",
     re.IGNORECASE,
 )
-# "by 5 days", "at 5 depots": the number counts things, it isn't a time.
 _COUNTED = re.compile(
     r"^\s*(?:days?|weeks?|months?|hours?|hrs?|minutes?|mins?|km|trips?|drivers?|trucks?|horses?|trailers?"
     r"|vehicles?|depots?|parcels?|waybills?|stops?|%|percent)\b",
     re.IGNORECASE,
 )
 _TODAY_WORD = re.compile(r"\btoday\b", re.IGNORECASE)
-# Full names, plus the short forms dispatchers type; "sat" and "sun" are ordinary words.
 _WEEKDAY_FORMS: dict[str, tuple[str, ...]] = {
     "monday": ("monday",), "tuesday": ("tuesday", "tues"), "wednesday": ("wednesday", "weds"),
     "thursday": ("thursday", "thurs"), "friday": ("friday",), "saturday": ("saturday",), "sunday": ("sunday",),
@@ -109,7 +105,6 @@ def hints_for(question: str, *, now: datetime) -> tuple[str, ...]:
     last = _last_weekday_hint(question)
     if last is not None:
         hints.append(last)
-    # "last Wednesday" asked on a Wednesday is not "today or next week?": the past hint already settles it.
     weekday = _weekday_hint(question, today_sast(now)) if last is None else None
     if weekday is not None:
         hints.append(weekday)

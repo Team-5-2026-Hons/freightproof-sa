@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 
 interface Props {
-  /** "Recorded", "Checked" or "Audit trail": the three questions a card answers. */
   title: string
   children: ReactNode
 }

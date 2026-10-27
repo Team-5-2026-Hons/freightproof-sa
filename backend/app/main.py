@@ -68,12 +68,8 @@ logger = logging.getLogger(__name__)
 
 _IS_PRODUCTION = settings.ENVIRONMENT == "production"
 
-# Before anything is built — catches misconfiguration that would otherwise
-# fail silently in production (see core/config_validation.py).
 enforce_production_config(settings)
 
-# docs/openapi are a map of the attack surface; useful in dev, gratuitous in
-# prod. Passed as None to remove the routes entirely rather than guard them.
 app = FastAPI(
     title="FreightProof SA",
     description="Cargo theft and disputed delivery evidence platform",
@@ -83,19 +79,8 @@ app = FastAPI(
     openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
 
-# Rate limiting, applied to every request before routing (catches floods
-# aimed at nonexistent paths too).
-#
-# Order note: Starlette's add_middleware inserts at the FRONT of the stack,
-# so the middleware added last ends up outermost. CORS is added after this
-# and wraps it, so a 429 still carries CORS headers on the way out — a
-# throttled browser sees a readable rate-limit response, not an opaque
-# network failure.
 app.add_middleware(RateLimitMiddleware)
 
-# Configured here, not per-router, so all endpoints share one origin policy.
-# cors_allowed_origins, not ALLOWED_ORIGINS directly: that property folds in
-# the receiver app's origin so a .env override can't drop it — see its docstring.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -104,12 +89,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Added last so it's outermost of all three — a rate-limiter 429 or CORS
-# rejection still gets these headers too.
 app.add_middleware(SecurityHeadersMiddleware)
 
-# FP-83: the driver's /trips/me/... substitution routes go BEFORE the trips router, whose
-# /trips/me/{trip_id} would otherwise consume /trips/me/driver-substitutions as a trip id.
 app.include_router(driver_substitutions_driver_router, prefix="/api/v1")
 app.include_router(trips_router, prefix="/api/v1")
 app.include_router(driver_substitutions_dispatcher_router, prefix="/api/v1")
@@ -121,14 +102,10 @@ app.include_router(precincts_router, prefix="/api/v1")
 app.include_router(blockchain_router, prefix="/api/v1")
 app.include_router(phases_router, prefix="/api/v1")
 app.include_router(handover_router, prefix="/api/v1")
-# Unauthenticated by design (FP-239) — the capability token in the path is
-# the whole authorisation. See endpoints/handover.py.
 app.include_router(handover_public_router, prefix="/api/v1")
 app.include_router(artifacts_router, prefix="/api/v1")
 app.include_router(trip_artifacts_router, prefix="/api/v1")
 app.include_router(exceptions_router, prefix="/api/v1")
-# Org-scoped sibling: the dispatcher's exception queue spans every trip in
-# the org, so it can't live under the trip-nested prefix.
 app.include_router(exceptions_dispatcher_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(checkpoints_router, prefix="/api/v1")
@@ -147,45 +124,23 @@ app.include_router(trip_incidents_router, prefix="/api/v1")
 app.include_router(incidents_router, prefix="/api/v1")
 app.include_router(audit_packs_public_router, prefix="/api/v1")
 
-# Dev trigger panel. Gated on DEV_PANEL_ENABLED only, not _IS_PRODUCTION —
-# the deployed demo runs ENVIRONMENT="production" and still needs this panel.
-# These endpoints fabricate scans/exceptions; when the flag is off the
-# router is never registered, so the paths simply don't exist. See
-# dev_triggers.dev_panel_enabled().
 if dev_panel_enabled():
     app.include_router(dev_triggers_router, prefix="/api/v1")
 
-# FP-116 "move the truck" — stricter guard (DEV_PANEL_ENABLED AND
-# PULSE_USE_MOCK) since staging a position while pointed at live Pulsit
-# would write into a mock nothing reads. See dev_pulsit.move_truck_enabled().
 if move_truck_enabled():
     app.include_router(dev_pulsit_router, prefix="/api/v1")
-    # Same two guards: rig scenarios stage the Pulsit mock too. See dev_tracker.py.
     app.include_router(dev_tracker_router, prefix="/api/v1")
-    # "Move the phone" — the driver-side counterpart, a separate control from the truck.
     app.include_router(dev_phone_router, prefix="/api/v1")
-    # "Move the phone", the driver-side counterpart. Installing the provider HERE, behind
-    # the same guard as the routes that stage a position, is what keeps the phase paths
-    # free of any import of app/dev — and what guarantees a deployment without these
-    # flags has no provider at all, so no phase can read a staged position. See
-    # orchestration/phases/demo_position.py.
     configure_demo_position_provider(dev_demo_phone.staged_position)
 
-# Publishes queued realtime events once a request's transaction is durable
-# (see app/core/realtime.py). Idempotent.
 register_realtime_hook()
 
-# Lets the request path queue evidence-anchor events on the Celery worker without importing
-# the task layer (see orchestration/evidence_anchors/dispatch.py). Idempotent.
 register_evidence_publisher()
-# The same for FP-83 custody anchors (orchestration/substitutions/anchors.py).
 register_custody_publisher()
 
 
 @app.exception_handler(DatabaseUnavailableError)
 async def database_unavailable_handler(request: Request, exc: DatabaseUnavailableError) -> JSONResponse:
-    # Route templates, never raw URLs: public handover/audit links carry secrets in
-    # the path. Driver exception messages can also contain connection/SQL parameters.
     route = getattr(request.scope.get("route"), "path", "<unmatched>")
     logger.warning(
         "Database unavailable reason=%s operation=%s route=%s "
@@ -218,20 +173,13 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-# ── Health check ──────────────────────────────────────────────────────────────
-# A 200 from process memory alone only proves the process is running — the
-# outages that actually take FreightProof down leave it alive but cut off
-# from Supabase or Redis, so this probes both on every call.
-
 _DB_PROBE = text("SELECT 1")
 
-# Named so the endpoint, models and tests can't drift apart on a typo.
 _STATUS_OK = "ok"
 _STATUS_DEGRADED = "degraded"
 _PROBE_OK = "ok"
 _PROBE_UNAVAILABLE = "unavailable"
 
-# Probe names, also the keys of HealthResponse.checks.
 _CHECK_DATABASE = "database"
 _CHECK_REDIS = "redis"
 
@@ -241,9 +189,6 @@ class DependencyHealth(BaseModel):
 
     status: Literal["ok", "unavailable"]
 
-    # Exception CLASS name only, never its message — /health is
-    # unauthenticated and a connection error's message routinely carries
-    # the DSN (host, port, user).
     error: str | None = None
 
 
@@ -266,16 +211,8 @@ async def _probe_database(db: AsyncSession) -> DependencyHealth:
             db.execute(_DB_PROBE),
             timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS,
         )
-    # Broad on purpose: a health check whose failure path itself raises turns
-    # a legible "degraded" into an unnamed 500. Every fault (timeout,
-    # DBAPIError, a session already poisoned) is logged with its traceback,
-    # never swallowed.
     except Exception as exc:
         logger.exception("Health probe failed: database unreachable")
-        # invalidate() (not rollback) terminates the connection outright
-        # rather than sending a polite ROLLBACK down what's likely a hung
-        # socket — bounded the same way the probe above is, so this can't
-        # extend the endpoint's promised response window.
         try:
             await asyncio.wait_for(
                 db.invalidate(), timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS
@@ -294,7 +231,7 @@ async def _probe_redis() -> DependencyHealth:
             get_redis().ping(),
             timeout=settings.HEALTH_PROBE_TIMEOUT_SECONDS,
         )
-    except Exception as exc:  # Same reasoning as _probe_database.
+    except Exception as exc:
         logger.exception("Health probe failed: Redis unreachable")
         return DependencyHealth(status=_PROBE_UNAVAILABLE, error=type(exc).__name__)
 

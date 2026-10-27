@@ -15,8 +15,6 @@ import { useOptionalTrip } from '@/lib/hooks/useOptionalTrip'
 
 interface StepHeaderProps {
   phase: PhaseDescriptor
-  // 0-based — matches PhaseStep.stepIndex from lib/phase/derive.ts's stepsFor(), and
-  // indexes directly into STEP_NAMES[phase.phase_type]/STEP_SLUGS[phase.phase_type].
   stepIndex: number
 }
 
@@ -29,16 +27,12 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
   const phaseName = PHASE_NAMES[phase.phase_type]
   const total = slugs.length
 
-  // Where this phase sits in the whole trip: "Phase 3 of 7". From the
-  // session trip's plan; without one (tests, a cold deep link mid-load) the header simply
-  // leaves the trip context out rather than guessing it.
   const plan = session?.trip?.phases
     ? [...session.trip.phases].sort((a, b) => a.sequence_number - b.sequence_number).filter((p) => p.phase_type !== 'trip_creation')
     : null
   const position = plan === null ? -1 : plan.findIndex((p) => p.phase_event_id === phase.phase_event_id)
   const counter = [
     position >= 0 && plan !== null ? `Phase ${position + 1} of ${plan.length}` : null,
-    // A one-step phase has nothing to count.
     total > 1 ? `Step ${stepIndex + 1} of ${total}` : null,
   ].filter(Boolean).join(' · ')
 
@@ -61,8 +55,6 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
         scrolled ? 'border-hairline' : 'border-transparent',
       )}
     >
-      {/* Back · phase (centred) · panic: the same three-column bar as the trip page, so
-          a driver moving between them keeps one back affordance in one place. */}
       <div className="grid grid-cols-[2.75rem_1fr_2.75rem] items-center gap-2 pt-1">
         <button
           type="button"
@@ -76,8 +68,6 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
           <h2 className="truncate text-headline text-surface-on">{phaseName}</h2>
           {counter !== '' && <p className="truncate text-footnote tabular-nums text-surface-on-variant">{counter}</p>}
         </div>
-        {/* A driver under threat mid-phase (gate, loading bay) must reach panic without
-            first backing out to the trip. 44px, for a stressed, gloved hand. */}
         <button
           type="button"
           onClick={() => router.push(ROUTES.panic)}
@@ -87,8 +77,6 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
           <ShieldAlert className="size-5" strokeWidth={2.2} aria-hidden />
         </button>
       </div>
-      {/* The whole trip, one segment per phase: done ink, this phase blue, the rest grey —
-          the same strip as Home and the trip page, so position reads the same everywhere. */}
       {plan !== null && plan.length > 0 && (
         <div data-trip-progress aria-hidden className="mt-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${plan.length}, minmax(0, 1fr))` }}>
           {plan.map((p) => {

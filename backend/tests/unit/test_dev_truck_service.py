@@ -35,18 +35,12 @@ from app.dev.schemas import (
     SCENARIO_THREE_KM,
 )
 
-# A non-Cape-Town origin, deliberately: this suite's whole point is that the maths
-# works anywhere, not only near the seeded demo depot. Somewhere in the Karoo, far
-# from any of demo_waypoints.py's fixed coordinates.
 _ORIGIN_LAT = Decimal("-32.2968")
 _ORIGIN_LNG = Decimal("22.5750")
 
 _RADIUS_METRES = 150
 _TOLERANCE_METRES = 40
 
-# How close a computed offset must land to its intended distance, measured back
-# through the real haversine_metres — see task-3-brief.md's "verify... with
-# haversine_metres (tolerance ≤ 0.5 m)".
 _DISTANCE_ASSERTION_TOLERANCE_METRES = 0.5
 
 
@@ -70,11 +64,8 @@ class _FakePrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
-        # A circle precinct unless a test sets an outline.
         self.geofence_polygon: "list[list[float]] | None" = None
 
-
-# ── scenario_distance_metres — the Core scenario rule from task-3-brief.md ────────
 
 
 def test_at_stop_is_zero_distance() -> None:
@@ -141,8 +132,6 @@ def test_unknown_scenario_raises() -> None:
         )
 
 
-# ── destination_point — verified the other way round, through haversine_metres ────
-
 
 def test_zero_distance_returns_the_exact_same_coordinate() -> None:
     """at_stop must land bit-for-bit on the stop's own coordinate, not a value a few
@@ -174,8 +163,6 @@ def test_destination_point_moves_east_along_the_documented_bearing() -> None:
 
     assert lng > _ORIGIN_LNG
 
-
-# ── build_scenario_target — the full pipeline over a fake Precinct ────────────────
 
 
 def test_build_scenario_target_at_stop_matches_the_precinct_centre() -> None:
@@ -223,8 +210,6 @@ def test_build_scenario_target_no_signal_has_no_coordinate() -> None:
     assert target.latitude is None
     assert target.longitude is None
     assert target.distance_metres is None
-    # The precinct's name is still known even though there is no fix — the panel can
-    # still say "no signal at <precinct>" without a coordinate.
     assert target.precinct_name == "Karoo Crossing Depot"
 
 
@@ -272,9 +257,6 @@ def test_scenario_labels_cover_every_scenario() -> None:
         assert SCENARIO_LABELS[scenario] != ""
 
 
-# ── outline precincts: scenarios judged against the outline, the way the verdict is ──
-
-# ~95 m × 111 m box around the Karoo origin.
 _KAROO_BOX = [[-32.2963, 22.5745], [-32.2963, 22.5755], [-32.2973, 22.5755], [-32.2973, 22.5745]]
 
 

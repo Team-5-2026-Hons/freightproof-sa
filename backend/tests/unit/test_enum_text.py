@@ -13,5 +13,4 @@ def test_enum_text_plain_string_is_unchanged():
 
 
 def test_enum_text_differs_from_str_on_members():
-    # Guards the reason the helper exists: str() yields the qualified member name.
     assert str(AnchorStatus.ANCHORED) != enum_text(AnchorStatus.ANCHORED)

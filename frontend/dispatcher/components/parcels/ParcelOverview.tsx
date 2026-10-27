@@ -10,16 +10,13 @@ import { statusBadge, statusLine } from './trace-display'
 interface Props {
   trace: ParcelTraceResponse
   returnTo: string
-  /** Lets the results controller move focus here after an in-page search. */
   headingRef?: Ref<HTMLHeadingElement>
-  /** Earlier-trips continuation, owned by the results controller. */
   loadingMore: boolean
   onLoadMore: () => void
 }
 
 const POPOVER_TITLE = 'Parcel record'
 const POPOVER_LABEL = 'How to read this parcel record'
-// The caveats that apply to everything on the page, stated once here instead of beside every step they could attach to.
 const SCAN_CAVEAT = 'Parcel scans are recorded against the barcode. They do not identify the source system or whether it was simulated.'
 const POSITION_CAVEAT = 'Vehicle and phone positions are inherited from consignment evidence; they are not parcel GPS or live tracking.'
 const SEALED_CAVEAT = 'The contents of a sealed leg are not observable.'

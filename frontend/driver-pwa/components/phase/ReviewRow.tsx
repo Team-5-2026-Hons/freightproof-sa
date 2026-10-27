@@ -7,9 +7,7 @@ interface ReviewRowProps {
   icon: ReactNode
   label: string
   value: ReactNode
-  /** Optional thumbnail left of the label — the captured photo itself. */
   media?: ReactNode
-  /** A grey pill that goes back to fix this item (Edit, Retake). */
   action?: { label: string; onClick: () => void; accessibleName?: string }
   className?: string
 }
@@ -35,7 +33,6 @@ export function ReviewRow({ icon, label, value, media, action, className }: Revi
           type="button"
           onClick={action.onClick}
           aria-label={action.accessibleName}
-          // 44pt hit area around the 36pt pill the render draws.
           className="flex min-h-11 items-center"
         >
           <span className="inline-flex h-9 items-center rounded-full bg-fill px-4 text-subhead font-semibold text-surface-on transition-transform duration-100 active:scale-95">

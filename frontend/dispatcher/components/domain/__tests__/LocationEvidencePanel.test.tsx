@@ -6,15 +6,6 @@ import { LocationEvidenceSummary } from '../LocationEvidenceSummary'
 import type { LocationEvidence } from '@/lib/phase/location-evidence'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 
-// HTMLDialogElement.showModal/close are stubbed globally in vitest.setup.ts (jsdom does
-// not implement them natively); the "View on map" button below opens the real Modal.
-
-// LocationComparisonMap dynamically imports Leaflet inside an effect (no Leaflet runtime
-// in jsdom), so every test that opens the modal must stub it with a plain, synchronously
-// rendered placeholder, the same approach task R1 used for other Leaflet-backed maps.
-// The component under test also imports boundaryDistanceMetres/boundaryIsNearby (pure
-// functions, no Leaflet) from this same module, so the mock spreads the real module via
-// importOriginal and overrides only the component, rather than replacing every export.
 vi.mock('@/components/map/LocationComparisonMap', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/map/LocationComparisonMap')>()
   return {
@@ -26,10 +17,6 @@ vi.mock('@/components/map/LocationComparisonMap', async (importOriginal) => {
 const DRIVER_COORDS = { lat: -33.924900, lng: 18.424100 }
 const TRACKER_COORDS = { lat: -33.926000, lng: 18.424100 }
 
-// Roughly 1,400 km north of the fixes above (a pure latitude offset, so the great-circle
-// distance is close to 111.32 km per degree times this delta): far past the map's
-// BOUNDARY_NEARBY_METRES default-frame threshold, standing in for the brief's "fix
-// 1,400 km from its precinct" case that motivates the Distance to precinct centre row.
 const FAR_BOUNDARY_COORDS = { lat: -21.33, lng: 18.424100 }
 
 function makeEvidence(overrides: Partial<LocationEvidence> = {}): LocationEvidence {
@@ -66,7 +53,6 @@ describe('LocationEvidencePanel', () => {
 
     expect(screen.getByText('-33.924900, 18.424100')).toBeInTheDocument()
     expect(screen.getByText('-33.926000, 18.424100')).toBeInTheDocument()
-    // Formatted with the same function under test, so this assertion is TZ-portable.
     expect(screen.getByText(fmtDateTime('2026-01-05T09:30:00Z'))).toBeInTheDocument()
     expect(screen.getByText('Tracker reading time not recorded.')).toBeInTheDocument()
     expect(screen.getByText('122 m')).toBeInTheDocument()
@@ -152,15 +138,12 @@ describe('LocationEvidencePanel', () => {
     expect(screen.queryByTestId('comparison-map')).not.toBeInTheDocument()
 
     const viewOnMapButton = screen.getByRole('button', { name: VIEW_ON_MAP_LABEL })
-    // userEvent (not fireEvent) so the click carries the real-browser focus-on-click
-    // behaviour: Modal's focus-return reads document.activeElement at open time.
     await user.click(viewOnMapButton)
 
     const dialog = await screen.findByRole('dialog', { name: 'Recorded locations: Activation at Cape Town DC' })
     expect(within(dialog).getByTestId('comparison-map')).toBeInTheDocument()
     expect(within(dialog).getByText('● Driver phone · ■ Horse tracker · ◌ Precinct boundary (reference only)'))
       .toBeInTheDocument()
-    // The map is never the only carrier of the fact: separation and verdict repeated as InfoRows.
     expect(within(dialog).getByText('122 m')).toBeInTheDocument()
     expect(within(dialog).getByText('Truck within precinct tolerance')).toBeInTheDocument()
 
@@ -206,8 +189,6 @@ describe('LocationEvidencePanel', () => {
 
   it('omits the "Distance to precinct centre" row for a boundary near the recorded fixes', async () => {
     const user = userEvent.setup()
-    // makeEvidence()'s default boundary sits about 70 m from the driver fix, well inside
-    // the map's default frame, so no distance row is needed alongside it.
     render(<LocationEvidencePanel evidence={makeEvidence()} contextLabel="Activation at Cape Town DC" />)
 
     await user.click(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL }))
@@ -220,7 +201,6 @@ describe('LocationEvidencePanel', () => {
     render(<LocationEvidencePanel evidence={makeEvidence()} contextLabel="Activation at Cape Town DC" hideMapButton />)
 
     expect(screen.queryByRole('button', { name: VIEW_ON_MAP_LABEL })).not.toBeInTheDocument()
-    // The comparison data itself is unaffected — only the button/modal this panel owns is suppressed.
     expect(screen.getByText('-33.924900, 18.424100')).toBeInTheDocument()
   })
 

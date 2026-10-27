@@ -7,14 +7,12 @@ import type { Grain } from '@shared/lib/types/fleet-analytics'
 const GRAIN_PLURAL: Record<Grain, string> = { week: 'weeks', month: 'months', year: 'years' }
 
 export const FLEET_COPY = {
-  // Verbatim wording, kept exact. Trends and tiles follow different time rules, so the page says so once.
   scopeNote:
     'Trends count closed trips, grouped by the day they first departed (South African time). Tiles show right now.',
 
   controls: {
     viewBy: 'View by',
     period: 'Period',
-    // The page's notes sit behind this button rather than as loose lines above the charts.
     information: 'Information',
     informationTitle: 'About these figures',
     from: 'From',
@@ -39,15 +37,12 @@ export const FLEET_COPY = {
     } satisfies Record<Grain, string>,
     grainSwitched: (chosen: Grain, shown: Grain): string =>
       `Showing by ${shown}: too many ${GRAIN_PLURAL[chosen]} for this period.`,
-    // The Departures | Arrivals switch's accessible name; it has no visible caption.
     eventsLabel: 'Show departures or arrivals',
     events: { departures: 'Departures', arrivals: 'Arrivals' },
   },
 
   tiles: {
     ariaLabel: 'Headline numbers, right now',
-    // D8: one line for the whole row rather than an "i" per tile: each tile is a whole-tile
-    // link, and a button inside a link is invalid HTML. The four tiles share one kind of source.
     source:
       'Counted live from this system’s trips, exception reports, and the driver and vehicle records dispatchers keep. No refresh delay.',
     needsAttention: 'Needs attention',
@@ -83,7 +78,6 @@ export const FLEET_COPY = {
   },
 
   activity: {
-    // Y-axis headings, worded to match the table view's column headers.
     axis: { trips: 'Trips', cancelledTrips: 'Cancelled trips', avgPerDay: 'Avg per day' },
     trips: {
       title: 'Trips over time',
@@ -140,7 +134,6 @@ export const FLEET_COPY = {
   },
 
   onTime: {
-    // Y-axis headings, worded to match the table view's column headers.
     axis: { onTime: '% on time', trips: 'Trips' },
     punctuality: {
       title: 'On-time departures and arrivals',
@@ -189,7 +182,6 @@ export const FLEET_COPY = {
         `${count} ran over${typical === null ? '' : ` (typically ${typical})`}`,
       finishedEarly: '← Finished early',
       ranOver: 'Ran over →',
-      // Under the middle axis: trips exactly on plan are named there, not drawn.
       onPlan: 'On plan',
       onPlanCount: (count: number): string => `On plan · ${count} ${count === 1 ? 'trip' : 'trips'}`,
       legend: { early: 'Finished early', over: 'Ran over' },
@@ -209,7 +201,6 @@ export const FLEET_COPY = {
   },
 
   problems: {
-    // Tab note, so a total lower than the driver pages is never a mystery.
     tabNote:
       'Dispatcher notes (recorded automatically for every cancellation and override) are not counted as problems, so totals can be lower than on driver pages.',
     axis: {
@@ -218,8 +209,6 @@ export const FLEET_COPY = {
       share: '% of total',
     },
     noTrips: 'No closed trips departed in this period.',
-    // The bars count problems. A rate per 100 trips read "400 per 100" on two trips, so
-    // the rate lives in the tooltip and the table, where the trip count sits beside it.
     perTrip: {
       title: 'Problems over time',
       source: 'Exception reports in our ledger on closed trips, raised by drivers, dispatchers or automatic checks. Dispatcher notes are left out.',
@@ -279,7 +268,6 @@ export const FLEET_COPY = {
       basis: (hours: string, problems: number): string =>
         `${hours} of driving and ${problems} problems raised while driving, by South African time of day`,
       note: "If a block's problem share is much taller than its driving share, that time of day is riskier.",
-      // Shown with the table, where the times can be read one by one.
       caveat:
         'A problem counts in the block when the server received it. A report sent from a phone with no signal may arrive later than it happened.',
       empty: 'No driving legs or problems raised while driving in this period.',
@@ -291,8 +279,6 @@ export const FLEET_COPY = {
   },
 
   review: {
-    // The rest of the page counts closed trips; this tab can't, because a review happens
-    // whatever the trip's status. Said once, at the top of the tab.
     tabNote:
       'Review figures cover every critical problem, on open and closed trips alike. Reviews recorded by the old system, before outcomes existed, are left out.',
     axis: { waiting: 'Problems waiting', hours: 'Hours', reviews: 'Reviews' },
@@ -331,7 +317,6 @@ export const FLEET_COPY = {
       basis: (count: number): string => `${count} reviews of any severity concluded in this period`,
       note: 'A large "data discrepancy" share means automatic checks are raising false alarms.',
       empty: 'No reviews were concluded in this period.',
-      // The donut's centre: every review ends in exactly one outcome.
       centre: (count: number): string => `${count} ${count === 1 ? 'review' : 'reviews'}`,
       legendValue: (count: number, share: string): string => `${count} · ${share}`,
       share: 'Share',
@@ -431,7 +416,6 @@ export const FLEET_COPY = {
       basis: (count: number): string =>
         `${count} lanes with closed trips in this period. Problems leave out dispatcher notes.`,
       note: 'The two faint lines mark the average lane: trips across, problems per trip up. Top-right = busy and risky.',
-      // Written in the chart's top-right corner.
       corner: 'Busy and risky',
       empty: 'No closed trips on a known lane in this period.',
       problems: 'Problems',
@@ -441,27 +425,19 @@ export const FLEET_COPY = {
     },
     incidents: {
       title: 'Incident map',
-      // A stop's tracker mismatch saves the driver's own fix (orchestration/phases/findings.py);
-      // only the road check saves the tracker's (orchestration/evidence/road_check.py).
       source: 'The position saved with each report: the driver’s phone for driver reports and for tracker mismatches at a stop; the simulated tracker for checks on the road. Any trip status; dispatcher notes are left out.',
       question: 'Where do problems happen?',
       basis: (count: number): string =>
         `${count} reports with a location in this period, any trip status. Dispatcher notes are left out.`,
-      // The map's own window, so asking for today doesn't empty the sites and lanes charts
-      // beside it (few closed trips depart on the day).
       window: { label: 'Show reports from', today: 'Today', period: 'This period' },
       basisToday: (count: number, day: string): string =>
         `${count} reports with a location today (${day}, South African time), any trip status. Dispatcher notes are left out.`,
       emptyToday: 'No reports with a location yet today (South African time).',
-      // Names every writer that actually saves a position: driver in-transit and phase reports
-      // (driver-pwa LogExceptionPageClient, TripContext), panic (PanicPageClient) and the
-      // automatic road check (orchestration/evidence/road_check.py).
       empty:
         'No reports with a location in this period. Driver reports, panic alerts and automatic tracker checks send one; older reports and reports from a phone without a GPS fix have none.',
       unlocated: (count: number): string =>
         `${count} ${count === 1 ? 'report' : 'reports'} in this period had no location.`,
       mapUnavailable: 'Map unavailable. Every pin is listed in the table below.',
-      // The table shows ten at a time, and a row finds its pin on the map.
       loadMore: (count: number): string => `Load ${count} more`,
       showing: (shown: number, total: number): string => `Showing ${shown} of ${total}`,
       rowHint: 'Click a row to find it on the map.',
@@ -471,9 +447,6 @@ export const FLEET_COPY = {
     },
   },
 
-  // D10 option C: the integrations that stand behind several figures all run on simulated or
-  // mock feeds until live credentials arrive. Said once here, at page level, rather than
-  // lengthening every card's Source line, and it is where a presenter would point.
   dataNote:
     "Every figure comes from FreightProof's own records of trips run on this system, test and demo trips included. "
     + 'The tracker, parcel and waybill, and receiver-ID checks behind some figures run on simulated and mock feeds until live credentials arrive.',
@@ -481,7 +454,6 @@ export const FLEET_COPY = {
   chart: {
     sourceLabel: 'Source',
     aboutChart: (title: string): string => `About this chart: ${title}`,
-    // The last line of every time-axis card's "i" popover.
     partialFootnote: 'Faded: a part week, month or year at either end of the period, or one still running.',
     showTable: 'Show table',
     showChart: 'Show chart',

@@ -43,7 +43,6 @@ async def _driver(db: AsyncSession, org: Organization | None = None) -> Driver:
 
 
 async def _tokens(db: AsyncSession) -> list[DriverPushToken]:
-    # populate_existing: the upsert ran as Core SQL, so identity-mapped rows would be stale.
     return list((await db.execute(select(DriverPushToken).execution_options(populate_existing=True))).scalars())
 
 

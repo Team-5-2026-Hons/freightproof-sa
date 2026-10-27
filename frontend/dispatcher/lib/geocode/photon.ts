@@ -12,10 +12,8 @@
 /** Photon's public instance. Overridable for a self-hosted one (`docker run komoot/photon`). */
 const PHOTON_PUBLIC_URL = 'https://photon.komoot.io'
 
-// `||`, not `??`: .env.example ships the key blank, so unset arrives as '' (see lib/map/tiles.ts).
 export const GEOCODER_URL = (process.env.NEXT_PUBLIC_GEOCODER_URL || PHOTON_PUBLIC_URL).replace(/\/$/, '')
 
-// West, south, east, north. Every precinct is in South Africa, so results elsewhere are noise.
 const SOUTH_AFRICA_BBOX = '16.3,-34.9,33.0,-22.1'
 const SOUTH_AFRICA_COUNTRY_CODE = 'ZA'
 
@@ -23,11 +21,8 @@ export const ADDRESS_RESULT_LIMIT = 6
 export const ADDRESS_QUERY_MIN_LENGTH = 3
 
 export interface AddressSuggestion {
-  /** Stable for React keys: OSM type + id. */
   id: string
-  /** First line — a place name, or "12 Sookhai Place". */
   label: string
-  /** Second line — suburb, city, province. null when there is nothing to add. */
   detail: string | null
   latitude: number
   longitude: number
@@ -58,7 +53,6 @@ function isFiniteNumber(value: unknown): value is number {
 function toSuggestion(feature: PhotonFeature, index: number): AddressSuggestion | null {
   const props = feature.properties ?? {}
   const coords = feature.geometry?.coordinates
-  // GeoJSON is [lng, lat] — the reverse of every form field in this app.
   if (!Array.isArray(coords) || !isFiniteNumber(coords[0]) || !isFiniteNumber(coords[1])) return null
   if (props.countrycode !== undefined && props.countrycode !== SOUTH_AFRICA_COUNTRY_CODE) return null
 
@@ -92,7 +86,6 @@ export function parsePhotonResponse(json: unknown): AddressSuggestion[] {
   const suggestions: AddressSuggestion[] = []
   features.forEach((feature: PhotonFeature, index) => {
     const suggestion = toSuggestion(feature, index)
-    // Photon returns the same street once per OSM way segment; one row per label+detail is enough.
     const key = suggestion === null ? '' : `${suggestion.label}|${suggestion.detail}`
     if (suggestion !== null && !seen.has(key)) {
       seen.add(key)

@@ -39,14 +39,9 @@ from app.db.models.vehicles import Vehicle
 EntityKind = Literal["driver", "vehicle", "precinct", "trip"]
 ResolutionStatus = Literal["found", "ambiguous", "not_found"]
 
-# A choice card with more buttons than this stops being a choice; the rest are counted, not shown.
 MAX_CANDIDATES = 5
-# 0.8 accepts one or two slips in a name ("Giltg" for "Giltig" is 0.91) and refuses different
-# names that merely share letters ("Tim Giltig" vs "Tom Gilbert" is 0.67).
 FUZZY_MATCH_MIN = 0.8
-# Shorter fragments of a plate or reference match too much ("12" is in half the fleet).
 MIN_FRAGMENT_CHARS = 4
-# What dispatchers call the cities our depots are in. Lower case, normalised.
 CITY_NICKNAMES: dict[str, str] = {
     "joburg": "johannesburg", "jozi": "johannesburg", "jhb": "johannesburg", "jnb": "johannesburg",
     "cpt": "cape town", "kaapstad": "cape town",
@@ -59,19 +54,15 @@ CITY_NICKNAMES: dict[str, str] = {
 class Candidate:
     kind: EntityKind
     id: uuid.UUID
-    # What the dispatcher recognises: a driver's full name, a registration, a depot name, a reference.
     label: str
     is_active: bool = True
-    # One extra fact to tell candidates apart: vehicle type, depot hub code, trip status.
     detail: str | None = None
 
 
 @dataclass(frozen=True)
 class Resolution:
     query: str
-    # found: exactly one · ambiguous: 2..MAX_CANDIDATES · not_found: none.
     candidates: tuple[Candidate, ...]
-    # Candidates past MAX_CANDIDATES that matched too, counted for "and 3 more".
     more: int = 0
 
     @property
@@ -261,7 +252,6 @@ async def resolve_trip(
         typed = normalise_code(text or "")
         if len(typed) < MIN_FRAGMENT_CHARS:
             return Resolution(query=text or "", candidates=())
-        # The same normalisation as normalise_code, done by Postgres.
         stored = func.upper(func.regexp_replace(Trip.trip_reference, "[^A-Za-z0-9]", "", "g"))
         query = query.where(stored.contains(typed))
     rows = (await db.execute(query.order_by(Trip.created_at.desc()).limit(MAX_CANDIDATES + 1))).all()

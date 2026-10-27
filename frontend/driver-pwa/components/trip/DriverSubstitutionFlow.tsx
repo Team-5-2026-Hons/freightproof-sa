@@ -41,9 +41,6 @@ export interface DriverSubstitutionFlowProps {
   actorId: string
 }
 
-// "Not applicable" is the same wire answer whatever the reason, but the words must match
-// what the ledger says: before departure there is no seal YET; after it, only an empty leg
-// has none. Calling a pre-departure takeover an "empty leg" is wrong on a loaded trip.
 function notApplicableLabel(expectation: SealExpectation): string {
   return expectation === 'none-yet' || expectation === 'possible' ? 'No seal yet' : 'No seal (empty leg)'
 }
@@ -57,8 +54,6 @@ function conditionOptions(expectation: SealExpectation): ReadonlyArray<{ value: 
   ]
 }
 
-// A recorded declaration always carries its own not-applicable reason, so the summary label
-// does not guess why.
 const SEAL_LABEL: Record<SubstitutionSealCondition, string> = {
   intact: 'Seal intact',
   damaged: 'Seal damaged',
@@ -222,8 +217,6 @@ function CaptureForm({
   state: ReturnType<typeof useSubstitutionCapture>
 }) {
   const locked = capture.status !== 'draft' || state.isSending
-  // Read from the ledger position the server sent, never from how far the previous driver
-  // "should" have got.
   const expectation = sealExpectation(context)
   const sealNotice = SEAL_EXPECTATION_NOTICE[expectation]
   const toggleVehicle = (vehicleId: string) => {
@@ -338,7 +331,6 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
   const substitutions = useDriverSubstitutions()
   const tripCtx = useContext(TripContext)
   const [lastOutcome, setLastOutcome] = useState<CaptureSendOutcome | null>(null)
-  // The replacement's ordinary trip controls are offered only once the trip has been re-read.
   const [tripRefreshed, setTripRefreshed] = useState(false)
 
   const { context, capture, role, submitted } = state
@@ -355,7 +347,6 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
   const counterpart = counterpartOf(context, role)
   const counterpartDeclaration = context.confirmations.find((confirmation) => confirmation.driver_id === counterpart.id) ?? null
   const result = capture?.result ?? null
-  // An operation receipt acknowledges that capture; the fresh read owns current state.
   const completed = context.state === 'completed'
   const canConfirm = context.state === 'pending'
     && context.permitted_actions.includes(role === 'outgoing' ? 'confirm_outgoing' : 'confirm_incoming')
@@ -365,8 +356,6 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
     if (outcome?.kind !== 'saved') return
     await substitutions.refresh()
     if (outcome.result.state === 'completed') {
-      // Custody moved on the server. The outgoing driver's working trip is dropped; the
-      // incoming driver's current assignment is re-read before any trip control is offered.
       if (role === 'outgoing') tripCtx?.noteTripHandedOver(tripId)
       await tripCtx?.refreshQuietly()
       setTripRefreshed(true)
@@ -388,7 +377,6 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
         <p className="text-subhead text-surface-on">
           {role === 'incoming' ? 'Handing over' : 'Taking over'}: {counterpart.full_name}
         </p>
-        {/* The recorded fleet status. This phone runs no identity check of its own. */}
         <p className="mt-2 text-subhead text-surface-on-variant">
           {role === 'incoming' ? 'Your identity record: ' : 'Incoming driver identity: '}
           {identityLabel(context.identity.status)}

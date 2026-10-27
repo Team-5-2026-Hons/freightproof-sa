@@ -25,7 +25,6 @@ from app.tasks.blockchain import (
 
 logger = logging.getLogger(__name__)
 
-# The phase sweep's constants, reused so the two sweeps cannot drift apart.
 EVIDENCE_ANCHOR_RECOVERY_INTERVAL_SECONDS = PHASE_ANCHOR_RECOVERY_INTERVAL_SECONDS
 RECOVERY_DELAY_SECONDS = _RECOVERY_DELAY_SECONDS
 RECOVERY_BATCH_SIZE = _RECOVERY_BATCH_SIZE

@@ -4,9 +4,7 @@
 // can be anchored side by side (loading payload v3).
 import { PDFDocument } from 'pdf-lib'
 
-// A4 in PDF points (1/72 inch).
 export const A4_PT: readonly [number, number] = [595.28, 841.89]
-// About 12 mm: clear of a printer's unprintable edge.
 const PAGE_MARGIN_PT = 34
 
 const JPEG_DATA_URL = /^data:image\/jpe?g;base64,/
@@ -15,8 +13,6 @@ export async function buildLinehaulPdf(jpegDataUrl: string): Promise<string> {
   if (!JPEG_DATA_URL.test(jpegDataUrl)) {
     throw new Error('The linehaul scan must be a JPEG to build its PDF.')
   }
-  // updateMetadata: false stops pdf-lib stamping creation and modification dates and its
-  // own producer string; the file should describe the sheet, not when the phone built it.
   const doc = await PDFDocument.create({ updateMetadata: false })
   doc.setTitle('Linehaul sheet')
 

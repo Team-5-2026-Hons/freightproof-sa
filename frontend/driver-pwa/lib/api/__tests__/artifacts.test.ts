@@ -3,8 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { uploadArtifact, MAX_ARTIFACT_UPLOAD_BYTES } from '../artifacts'
 import { ApiError } from '../client'
 
-// Keep the real ApiError class (uploadArtifact throws it and instanceof must hold)
-// while stubbing out the network layer.
 const mockPostForm = vi.fn()
 vi.mock('@/lib/api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api/client')>()
@@ -21,8 +19,6 @@ const PARAMS = {
   capturedAt: '2026-07-17T10:00:00Z',
 }
 
-// uploadArtifact converts the data URL to a Blob via fetch(dataUrl) — stub fetch so
-// each test controls the resulting blob's size without building a real 10 MB data URL.
 function stubFetchedBlobOfSize(size: number): void {
   vi.stubGlobal(
     'fetch',
@@ -47,8 +43,6 @@ describe('uploadArtifact pre-upload size check (audit fix)', () => {
     const err: unknown = await uploadArtifact(PARAMS).catch((e: unknown) => e)
 
     expect(err).toBeInstanceOf(ApiError)
-    // 413 matters: isQueueableFailure retries only status 0 / >=500, so this must be
-    // terminal — an oversized photo can never succeed on retry.
     expect((err as ApiError).status).toBe(413)
     expect((err as ApiError).message).toMatch(/too large/i)
     expect(mockPostForm).not.toHaveBeenCalled()
@@ -93,8 +87,6 @@ describe('uploadArtifact attribution', () => {
 
     expect(attributed.get('phase_event_id')).toBe('phase-1')
     expect(attributed.get('evidence_role')).toBe('seal_photo')
-    // An older-style call must stay byte-compatible with what the backend already accepts:
-    // a lone field would 422, so the unattributed form carries neither.
     expect(unattributed.has('phase_event_id')).toBe(false)
     expect(unattributed.has('evidence_role')).toBe(false)
   })

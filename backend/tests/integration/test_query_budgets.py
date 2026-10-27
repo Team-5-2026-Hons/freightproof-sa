@@ -63,7 +63,6 @@ from tests.integration._driver_substitution_world import (
 )
 from tests.integration._evidence_anchor_world import make_artifact
 
-# Warm-up routes: cheap, authenticated, one per audience.
 _DISPATCHER_WARM_UP = "/api/v1/auth/me"
 _DRIVER_WARM_UP = "/api/v1/drivers/me"
 
@@ -71,8 +70,6 @@ _EXCEPTION_COUNT = 6
 _PHOTOS_PER_PHOTOGRAPHED_EXCEPTION = 2
 _PARCELS_PER_CONSIGNMENT = 4
 
-# ── Ceilings ──────────────────────────────────────────────────────────────────
-# Today's measured statement counts (22 Oct 2026, before any Batch E reduction). Lower, never raise.
 BUDGET_TRIP_DETAIL = 27
 BUDGET_TRIP_LIST = 10
 BUDGET_REVIEW_QUEUE = 7
@@ -118,15 +115,13 @@ def stub_signed_urls(monkeypatch):
     monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", _fake)
 
 
-# ── The seeded trip ───────────────────────────────────────────────────────────
-
 
 @dataclass
 class BudgetWorld:
     sub: SubWorld
     incident_id: str
     dispatcher: dict[str, str]
-    driver: dict[str, str]  # the driver now holding custody (B), not the original (A)
+    driver: dict[str, str]
 
 
 async def _add_phases(db, world: SubWorld) -> list[TripStop]:
@@ -141,7 +136,6 @@ async def _add_phases(db, world: SubWorld) -> list[TripStop]:
     )
     db.add(dock_precinct)
     await db.flush()
-    # build_world numbers its stops 0 and 1; the cross-dock slots between them.
     destination.sequence = 2
     await db.flush()
     dock = TripStop(id=uuid.uuid4(), trip_id=world.trip_id, precinct_id=dock_precinct.id, sequence=1)
@@ -241,13 +235,10 @@ async def _seed(db, client: AsyncClient) -> BudgetWorld:
     stops = await _add_phases(db, world)
     await _add_cargo(db, world, stops)
     handover = await complete_handover(db, world, outgoing=world.a, incoming=world.b)
-    # A completed handover freezes what the system saw of the incoming driver's identity;
-    # the request read refuses a completed row without it.
     handover.incoming_identity_status = IdvsStatus.VERIFIED.value
     handover.incoming_identity_last_verified_at = datetime.now(UTC)
     handover.incoming_identity_observed_at = datetime.now(UTC)
     handover.completion_mode = SubstitutionCompletionMode.NORMAL.value
-    # Both drivers' confirmations, as the two-driver handover records them.
     for role, driver_id in (("outgoing", world.a), ("incoming", world.b)):
         db.add(DriverSubstitutionConfirmation(
             id=uuid.uuid4(), request_id=handover.request_id, role=role, driver_id=driver_id,
@@ -289,8 +280,6 @@ async def _seed(db, client: AsyncClient) -> BudgetWorld:
 async def budget_world(client: AsyncClient, db_session) -> BudgetWorld:
     return await _seed(db_session, client)
 
-
-# ── Measuring ─────────────────────────────────────────────────────────────────
 
 _FIRST_FROM = re.compile(r'\bFROM\s+("?[\w.]+"?)', re.IGNORECASE)
 _WRITE_TARGET = re.compile(r'^\s*(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+("?[\w.]+"?)', re.IGNORECASE)
@@ -343,8 +332,6 @@ async def _count(
 
 
 def _assert_within(statements: list[str], ceiling: int, endpoint: str) -> None:
-    # Opt-in (`QUERY_BUDGET_REPORT=1 pytest -s ...`): print the measured count, for the
-    # before/after table, without having to fail a test to see it.
     if os.environ.get("QUERY_BUDGET_REPORT"):
         print(f"\nQUERY_COUNT {endpoint}: {len(statements)} (ceiling {ceiling})")
     assert len(statements) <= ceiling, (
@@ -352,8 +339,6 @@ def _assert_within(statements: list[str], ceiling: int, endpoint: str) -> None:
         f"{describe_statements(statements)}"
     )
 
-
-# ── The budgets ───────────────────────────────────────────────────────────────
 
 
 async def test_dispatcher_trip_detail_stays_within_budget(client, db_session, budget_world):
@@ -408,9 +393,6 @@ async def test_driver_trip_detail_stays_within_budget(client, db_session, budget
 
     _assert_within(statements, BUDGET_DRIVER_TRIP_DETAIL, "GET /trips/me/{id}")
 
-
-# The dashboard fetches four resources: /trips, /exceptions/review-queue and /incidents (budgeted
-# above, the same calls) plus the two below.
 
 
 async def test_dashboard_precincts_stays_within_budget(client, db_session, budget_world):

@@ -40,19 +40,12 @@ export interface PhaseCheck {
 export interface PhaseChecksInput {
   phase: PhaseDescriptor
   allPhases: readonly PhaseDescriptor[]
-  /** Loading: manifest total. Unloading: expected at this stop. Null when there is no baseline. */
   expectedCount: number | null
-  /** The live warehouse scan for this stop. Used while a scan is running and, for unloading,
-   *  after it (nothing stamps unloading, so its count stays live). Loading's resolved figure
-   *  is the stamped `parcel_count_origin`, never this. */
   liveScannedCount: number | null
-  /** Confirmation: parcels scanned out at the pickup stop. */
   originScannedCount: number | null
   precinct: Precinct | undefined
 }
 
-// All wording lives here so a copy change is one edit and a test can pin it. Titles double as
-// the verdict's reasons, so each one must read on its own.
 export const CHECK_WORDING = {
   bypassed: {
     title: 'Checks bypassed',
@@ -87,8 +80,6 @@ export const CHECK_WORDING = {
     excessTitle: (n: number): string => `${countLabel(n, 'excess parcel')} scanned at destination`,
     figures: (origin: number, destination: number): string =>
       `${origin} scanned out at origin, ${destination} scanned in at destination`,
-    // The driver's blind count is evidence in its own right, kept out of the verdict so its
-    // independence is not spent. Task 9 renders this under Checked as static copy.
     blindCountNote: 'Counted blind: recorded as independent evidence, not reconciled against the scans above.',
   },
   liveScan: {
@@ -125,8 +116,6 @@ export const CHECK_WORDING = {
 
 const PARCELS_KEY = 'parcels'
 const COUNTS_KEY = 'counts'
-
-// ── Parcel comparisons ─────────────────────────────────────────────────────────
 
 interface CountWording {
   passTitle: string
@@ -180,8 +169,6 @@ function liveScanChecks(input: PhaseChecksInput): PhaseCheck[] {
   }]
 }
 
-// ── Location (D43): two checks, never merged ───────────────────────────────────
-
 function truckGeofenceCheck(evidence: LocationEvidence): PhaseCheck {
   const { truck } = CHECK_WORDING
   switch (evidence.verdict) {
@@ -215,8 +202,6 @@ function locationChecks(input: PhaseChecksInput): PhaseCheck[] {
   return proximity === null ? [truckGeofenceCheck(evidence)] : [truckGeofenceCheck(evidence), proximity]
 }
 
-// ── Seal (arrival) ─────────────────────────────────────────────────────────────
-
 function sealNumberCheck(departureSeal: string | null, arrivalSeal: string | null): PhaseCheck {
   const wording = CHECK_WORDING.sealNumber
   if (departureSeal === null) {
@@ -228,8 +213,6 @@ function sealNumberCheck(departureSeal: string | null, arrivalSeal: string | nul
   if (departureSeal === arrivalSeal) {
     return { key: 'seal_number', result: 'pass', title: wording.passTitle, detail: wording.passDetail(arrivalSeal) }
   }
-  // Two recorded numbers that differ are a fact, whether or not the backend also raised an
-  // exception (design note O8); flagging here is what makes it visible without one.
   return { key: 'seal_number', result: 'flag', title: wording.flagTitle, detail: wording.flagDetail(departureSeal, arrivalSeal) }
 }
 
@@ -255,8 +238,6 @@ function arrivalChecks(input: PhaseChecksInput): PhaseCheck[] {
     ...locationChecks(input),
   ]
 }
-
-// ── Phase types ────────────────────────────────────────────────────────────────
 
 function bypassedChecks(): PhaseCheck[] {
   return [{ key: 'bypassed', result: 'not_checked', ...CHECK_WORDING.bypassed }]

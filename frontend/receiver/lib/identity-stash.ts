@@ -10,13 +10,11 @@
 // substitution defence.
 export const IDENTITY_STASH_KEY = 'fp_handover_identity'
 
-// PII-free on purpose: a token and a state, never the typed name or ID number.
 export const CONFIRM_OUTCOME_KEY = 'fp_handover_outcome'
 
 export interface StashedIdentity {
   name: string
   idNumber: string
-  /** The mock vendor page carries no capability token, so the return path travels with the identity. */
   token: string
 }
 
@@ -39,9 +37,6 @@ function isConfirmOutcome(value: unknown): value is ConfirmOutcome {
   return value === 'attempted' || value === 'confirmed'
 }
 
-// Logs the error's name only. A JSON.parse SyntaxError quotes a slice of the text it choked
-// on, and this storage holds a stranger's name and ID number, so the object itself must not
-// reach the console.
 function warnStorage(action: string, err: unknown): void {
   console.warn(`[handover] sessionStorage ${action} failed:`, err instanceof Error ? err.name : 'unknown')
 }
@@ -50,7 +45,6 @@ export function stashIdentity(identity: StashedIdentity): void {
   try {
     sessionStorage.setItem(IDENTITY_STASH_KEY, JSON.stringify(identity))
   } catch (err: unknown) {
-    // Storage unavailable — the cross-check degrades to "nothing to compare".
     warnStorage('write', err)
   }
 }

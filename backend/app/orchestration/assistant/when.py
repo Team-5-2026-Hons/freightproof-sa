@@ -30,27 +30,19 @@ from app.analytics.fleet.periods import DAYS_PER_WEEK, OPERATIONS_TZ, start_of_d
 WhenPreset = Literal[
     "now", "today", "tomorrow", "this_weekend", "next_weekend", "this_week", "next_week",
     "next_n_days", "weekday", "date", "range",
-    # The past (coverage audit item 1, B35): history questions need them, and without them the model would
-    # have to work out a date itself (D12).
     "yesterday", "days_ago", "last_n_days", "this_week_so_far", "last_week", "this_month", "last_month",
     "last_weekday",
 ]
 Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-# Index = date.weekday() (Monday 0).
 WEEKDAYS: tuple[Weekday, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 SATURDAY = WEEKDAYS.index("saturday")
 
-# A dispatcher plans weeks ahead, not years: past a quarter, a request is far more likely a slip
-# (n=700 for "the next 7 days") than a real question, and it would scan every booking in the fleet.
 MAX_DAYS_AHEAD = 92
 MONTHS_PER_YEAR = 12
-# The width that turns an instant into a window, for the half-open overlap rule (module docstring).
 INSTANT_WIDTH = timedelta(seconds=1)
 _TIME_FORMAT = "%H:%M"
 _HH_MM = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 
-# Which optional field each preset uses. Any other field must be null, so a confused call is
-# corrected rather than half-read.
 _USES: dict[WhenPreset, frozenset[str]] = {
     "now": frozenset(),
     "today": frozenset({"time_of_day"}),
@@ -79,14 +71,9 @@ class WhenError(ValueError):
     """The `When` can't be read as one exact time. The message is for the model."""
 
 
-# A day or time the dispatcher named, as words. Every field is required (strict tool schema); the ones a
-# preset doesn't use are null. A comment, not a docstring: Pydantic would send a docstring to the model as the
-# schema's description, in every tool that takes a `when`, on every call (B26).
 class When(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    # Short on purpose: this object repeats in every tool that takes a time, on every model call, so the presets
-    # are explained once, in the system prompt's "Dates and times" (prompt.WHEN_GUIDE, B36).
     preset: WhenPreset = Field(description="See Dates and times.")
     n: int | None = Field(description="Days, 1-92.")
     weekday: Weekday | None
@@ -97,8 +84,6 @@ class When(BaseModel):
     @field_validator("time_of_day")
     @classmethod
     def _valid_time(cls, value: str | None) -> str | None:
-        # A validator, not a `pattern`: the schema then stays plain for every provider's tool format.
-        # Exactly two digits each side: strptime alone would accept "7:5".
         if value is not None and not _HH_MM.fullmatch(value):
             raise ValueError("time_of_day must be 24-hour HH:MM, e.g. 17:00.")
         return value
@@ -219,7 +204,6 @@ def _last_weekday(when: When, today: date) -> ResolvedWhen:
     return _on_day(today - timedelta(days=back), when.time_of_day)
 
 
-# Every preset's reader takes (when, the moment in SAST, today's SAST date), so resolve() is one lookup.
 _Reader = Callable[[When, datetime, date], ResolvedWhen]
 _READERS: dict[WhenPreset, _Reader] = {
     "now": lambda when, moment, today: ResolvedWhen(start=moment, end=None, is_instant=True),

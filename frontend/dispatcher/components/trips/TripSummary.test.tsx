@@ -126,7 +126,6 @@ it('transfer_action_sits_in_the_driver_label_row_and_keeps_its_label_when_not_co
   const action = screen.getByRole('button', { name: 'Transfer driver' })
   const name = screen.getByRole('button', { name: new RegExp(facts.driverName) })
 
-  // Beside the "Driver" label, so a narrow cell never wraps it under the name.
   expect(action.parentElement).toHaveTextContent('Driver')
   expect(action.parentElement).not.toBe(name.parentElement)
   expect(action).toHaveTextContent('Transfer driver')

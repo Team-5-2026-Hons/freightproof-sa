@@ -4,6 +4,5 @@
 export interface PositionFix {
   lat: number
   lng: number
-  /** Metres of horizontal uncertainty, when the platform reports one. */
   accuracyM: number | null
 }

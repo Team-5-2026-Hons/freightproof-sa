@@ -9,7 +9,6 @@ import { PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_CGY_JHB_ID, PREC
 const tripId = (v: string): TripId => v as unknown as TripId
 const excId = (v: string): ExceptionId => v as unknown as ExceptionId
 
-// Exported so exceptions.ts, checkpoints.ts, and manifests.ts can reference trips by ID.
 export const TRIP_0035_ID = tripId('7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b')
 export const TRIP_0038_ID = tripId('8f9a0b1c-2d3e-4f4a-8b6c-7d8e9f0a1b2c')
 export const TRIP_0039_ID = tripId('9a0b1c2d-3e4f-4a5b-8c7d-8e9f0a1b2c3d')
@@ -18,8 +17,6 @@ export const TRIP_0041_ID = tripId('1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f')
 export const TRIP_0042_ID = tripId('2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a')
 export const TRIP_0043_ID = tripId('3e4f5a6b-7c8d-4e9f-8a0b-1c2d3e4f5a6b')
 
-// Two-stop route matching the trip's origin/destination — the FP-112 degenerate case
-// every pre-multi-stop mock trip represents.
 function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at: string): TripStop[] {
   return [originPrecinct, destPrecinct].map((precinct_id, sequence) => ({
     id: `${trip}-stop-${sequence}`,
@@ -28,9 +25,6 @@ function twoStops(trip: TripId, originPrecinct: string, destPrecinct: string, at
   }))
 }
 
-// A trip's stops in the shape the plan generator needs. Every mock trip here is a
-// two-stop run (see twoStops above), so every plan is the 8-row single-leg shape —
-// the degenerate case of the multi-stop plan, not a special one.
 function planStops(stops: TripStop[]): PlanStopInput[] {
   return stops.map((s, i) => ({
     trip_stop_id: s.id,
@@ -40,16 +34,6 @@ function planStops(stops: TripStop[]): PlanStopInput[] {
   }))
 }
 
-// Mark the plan as walked through `throughSequence` inclusive, and attach the
-// evidence the dispatcher's panels read. Mirrors what the backend writes: the seal
-// at DEPARTURE (never at loading), the counts at LOADING.
-//
-// `count` and `scannedCount` are two different real-world figures now that
-// advance_loading was rewritten: `count` is the driver's own visual tally,
-// `scannedCount` is the warehouse's scanned-out total (parcel_count_origin).
-// `scannedCount` defaults to `count` because none of today's fixtures model a
-// discrepancy between the two — a mock that deliberately wants one (e.g. to
-// exercise a count-mismatch exception) can pass `scannedCount` explicitly.
 function walkPlan(
   plan: PhaseDescriptor[],
   throughSequence: number,
@@ -72,8 +56,6 @@ function walkPlan(
   })
 }
 
-// current_phase / current_stop, derived from the plan exactly as the backend derives
-// them — never set independently, or the mock would model a cache that had drifted.
 function positionOf(plan: PhaseDescriptor[]): {
   current_phase: PhaseType | null
   current_stop: number | null
@@ -84,8 +66,6 @@ function positionOf(plan: PhaseDescriptor[]): {
     current_stop: next?.stop_sequence ?? null,
   }
 }
-
-// ─── TRP-2026-0035 · closed · Dlamini · FedEx JHB → DBN ──────────────────────
 
 const STOPS_0035 = twoStops(TRIP_0035_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-03T06:00:00Z')
 
@@ -152,8 +132,6 @@ const RECEIPTS_0035: BlockchainReceipt[] = [
   },
 ]
 
-// ─── TRP-2026-0038 · created · Gultig · Courier Guy JHB → CT ─────────────────
-
 const STOPS_0038 = twoStops(TRIP_0038_ID, PRECINCT_CGY_JHB_ID, PRECINCT_CGY_CT_ID, '2026-05-09T06:00:00Z')
 
 const PLAN_0038 = walkPlan(
@@ -161,8 +139,6 @@ const PLAN_0038 = walkPlan(
   0,
   '2026-05-09T06:00:00Z',
 )
-
-// ─── TRP-2026-0039 · active (was origin_gate_in) · Kasongo · FedEx DBN → JHB ─
 
 const STOPS_0039 = twoStops(TRIP_0039_ID, PRECINCT_FEDEX_DBN_ID, PRECINCT_FEDEX_JHB_ID, '2026-05-09T04:30:00Z')
 
@@ -186,8 +162,6 @@ const EXCEPTIONS_0039: TripException[] = [
     merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T07:04:00Z', updated_at: '2026-05-09T07:04:00Z',
   },
 ]
-
-// ─── TRP-2026-0040 · active (was dest_gate_in) · Formby · FedEx JHB → DBN ────
 
 const STOPS_0040 = twoStops(TRIP_0040_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T06:00:00Z')
 
@@ -213,8 +187,6 @@ const EXCEPTIONS_0040: TripException[] = [
     merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-09T12:52:00Z', updated_at: '2026-05-09T13:10:00Z',
   },
 ]
-
-// ─── TRP-2026-0041 · active (was in_transit) · Dlamini · FedEx JHB → DBN (CANONICAL) ─
 
 const STOPS_0041 = twoStops(TRIP_0041_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-09T05:30:00Z')
 
@@ -252,8 +224,6 @@ const EXCEPTIONS_0041: TripException[] = [
   },
 ]
 
-// ─── TRP-2026-0042 · active (was in_transit) · Formby · FedEx JHB → DBN ──────
-
 const STOPS_0042 = twoStops(TRIP_0042_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-05-08T14:00:00Z')
 
 const PLAN_0042 = walkPlan(
@@ -290,8 +260,6 @@ const EXCEPTIONS_0042: TripException[] = [
   },
 ]
 
-// ─── TRP-2026-0043 · created, not yet started (upcoming for Dlamini) ────────
-
 const STOPS_0043 = twoStops(TRIP_0043_ID, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, '2026-06-22T09:00:00Z')
 
 const PLAN_0043 = walkPlan(
@@ -300,10 +268,7 @@ const PLAN_0043 = walkPlan(
   '2026-06-22T09:00:00Z',
 )
 
-// ─── Trip objects ──────────────────────────────────────────────────────────────
-
 const baseTrips: Trip[] = [
-  // TRP-2026-0035 — closed
   {
     id: TRIP_0035_ID,
     trip_reference: 'TRP-2026-0035',
@@ -334,7 +299,6 @@ const baseTrips: Trip[] = [
     updated_at: '2026-05-03T19:45:00Z',
   },
 
-  // TRP-2026-0038 — created
   {
     id: TRIP_0038_ID,
     trip_reference: 'TRP-2026-0038',
@@ -365,7 +329,6 @@ const baseTrips: Trip[] = [
     updated_at: '2026-05-09T06:00:00Z',
   },
 
-  // TRP-2026-0039 — active (was origin_gate_in)
   {
     id: TRIP_0039_ID,
     trip_reference: 'TRP-2026-0039',
@@ -405,7 +368,6 @@ const baseTrips: Trip[] = [
     updated_at: '2026-05-09T07:04:00Z',
   },
 
-  // TRP-2026-0040 — active (was dest_gate_in)
   {
     id: TRIP_0040_ID,
     trip_reference: 'TRP-2026-0040',
@@ -453,7 +415,6 @@ const baseTrips: Trip[] = [
     updated_at: '2026-05-09T17:05:00Z',
   },
 
-  // TRP-2026-0041 — active (was in_transit) (CANONICAL DEMO TRIP)
   {
     id: TRIP_0041_ID,
     trip_reference: 'TRP-2026-0041',
@@ -501,7 +462,6 @@ const baseTrips: Trip[] = [
     updated_at: '2026-05-09T13:35:00Z',
   },
 
-  // TRP-2026-0042 — active (was in_transit)
   {
     id: TRIP_0042_ID,
     trip_reference: 'TRP-2026-0042',
@@ -549,7 +509,6 @@ const baseTrips: Trip[] = [
     updated_at: '2026-05-09T07:41:00Z',
   },
 
-  // TRP-2026-0043 — created, not yet started (upcoming for Dlamini)
   {
     id: TRIP_0043_ID,
     trip_reference: 'TRP-2026-0043',
@@ -569,11 +528,6 @@ const baseTrips: Trip[] = [
     actual_arrival_at: null,
     closed_at: null,
     driver: mockDrivers.find(d => d.id === DRIVER_DLAMINI_ID) ?? null,
-    // HORSE_2_ID, not HORSE_1_ID: HORSE_1_ID is already committed to TRP-2026-0041
-    // (active, no actual_arrival_at/closed_at) — reusing it here would imply the
-    // same horse is simultaneously still on the road and assigned to a new future trip.
-    // HORSE_2_ID's only open assignment (TRP-2026-0040) is near the end of its plan,
-    // making it the most-resolved open conflict in the mock set.
     horse: mockHorses.find(h => h.id === HORSE_2_ID) ?? null,
     trailers: mockTrailers.filter(t => t.id === TRAILER_2_ID),
     phases: PLAN_0043,
@@ -586,11 +540,6 @@ const baseTrips: Trip[] = [
   },
 ]
 
-// FP-83: every trip above is an ordinary trip that has never been handed over, so it gets the
-// contract's no-substitution defaults — original driver = current driver, custody sequence 0,
-// nothing pending, new arrangements off. Applied once here rather than repeated per trip so a
-// future field cannot be forgotten on one of them. Substitution states live in
-// ./driver-substitutions.
 export const mockTrips: Trip[] = baseTrips.map(trip => ({
   ...trip,
   original_driver: trip.driver,

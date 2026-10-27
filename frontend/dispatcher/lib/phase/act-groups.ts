@@ -10,7 +10,6 @@ export interface EvidenceGroup {
   kind: 'evidence_group'
   key: string
   role: EvidenceRole
-  /** The submitted copy first, so the one row that stays visible is the one that counts. */
   acts: EvidenceAct[]
 }
 
@@ -41,7 +40,6 @@ export function groupActs(acts: readonly PhaseAct[]): ActItem[] {
     }
     if (placed.has(act.role)) continue
     placed.add(act.role)
-    // Array.prototype.sort is stable, so equal states keep their time order.
     items.push({ kind: 'evidence_group', key: `${act.key}:group`, role: act.role, acts: [...(byRole.get(act.role) ?? [])].sort(SUBMITTED_FIRST) })
   }
   return items

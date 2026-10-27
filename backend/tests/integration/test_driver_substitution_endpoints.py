@@ -95,7 +95,6 @@ async def arranged(client: AsyncClient, db: AsyncSession) -> tuple[SubWorld, dic
     """A pending A -> B arrangement, B holding a VERIFIED fleet identity (as `armed` does)."""
     w = await world_with_licences(db)
     await set_identity(db, w.b, IdvsStatus.VERIFIED)
-    # An in-flight v1 request was accepted before deployment; new HTTP creates are v2.
     from app.orchestration.substitutions.service import arrange_substitution
     from app.schemas.driver_substitutions import ArrangeSubstitutionRequest
     from tests.integration.test_driver_substitution_service import dispatcher as service_dispatcher
@@ -112,8 +111,6 @@ async def count_requests(db: AsyncSession, trip_id: uuid.UUID) -> int:
         select(func.count()).select_from(DriverSubstitutionRequest).where(DriverSubstitutionRequest.trip_id == trip_id)
     )).scalar_one()
 
-
-# ── dispatcher arrangement, auth and the flag ────────────────────────────────
 
 
 async def test_arrange_returns_201_and_an_exact_replay_returns_the_same_request(client: AsyncClient, db_session: AsyncSession):
@@ -164,8 +161,6 @@ async def test_disabled_flag_refuses_new_arrangements_but_keeps_existing_work(
     assert await count_requests(db_session, w.trip_id) == 1
 
 
-# ── driver confirmation and dispatcher completion ────────────────────────────
-
 
 async def test_two_confirmations_complete_and_a_stale_version_is_a_coded_conflict(client: AsyncClient, db_session: AsyncSession):
     w, pending = await arranged(client, db_session)
@@ -213,8 +208,6 @@ async def test_a_reused_key_with_a_changed_body_is_a_coded_conflict(client: Asyn
 
     assert changed.status_code == 409 and changed.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REUSED"
 
-
-# ── driver reads and notices ─────────────────────────────────────────────────
 
 
 async def test_notice_route_is_not_parsed_as_trip_uuid(client: AsyncClient, db_session: AsyncSession):
@@ -288,8 +281,6 @@ async def test_handover_upload_then_confirmation_citing_it(client: AsyncClient, 
     assert confirmed.status_code == 200, confirmed.text
 
 
-# ── after the handover: history, late evidence, corrections ─────────────────
-
 
 async def completed(client: AsyncClient, db: AsyncSession) -> tuple[SubWorld, dict[str, object]]:
     w, pending = await arranged(client, db)
@@ -357,8 +348,6 @@ async def test_a_correction_is_201_and_immutable(client: AsyncClient, db_session
     assert first.json()["anchor_status"] == "pending"
 
 
-# ── OpenAPI ──────────────────────────────────────────────────────────────────
-
 
 def test_route_operation_ids_are_unique_and_driver_literals_precede_trip_ids():
     schema = app.openapi()
@@ -414,7 +403,6 @@ async def test_completed_detail_names_the_people_instead_of_their_ids(client: As
     assert body["completion"]["completed_by_name"] == attester.full_name
     assert body["identity_attestation"]["attested_by_name"] == attester.full_name
     assert [c["recorded_by_name"] for c in body["corrections"]] == [arranger.full_name]
-    # The ids stay beside the labels: a name is a display aid, never the identity of the actor.
     assert body["arranged_by_user_id"] == str(arranger.id)
     assert body["completion"]["completed_by_user_id"] == str(attester.id)
 
@@ -431,7 +419,6 @@ async def test_a_driver_completed_transfer_names_the_completing_driver(client: A
 
 async def test_a_missing_name_is_null_not_an_error(client: AsyncClient, db_session: AsyncSession):
     w, done, arranger, _ = await attested_completion(client, db_session)
-    # A label that cannot be resolved must never fail the read: park the arranger in another organisation.
     arranger.organization_id = w.other_org_id
     await db_session.flush()
     url = f"{BASE}/{w.trip_id}/driver-substitutions/completed/{done['completed_substitution_id']}"

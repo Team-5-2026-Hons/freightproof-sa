@@ -41,7 +41,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_driver_substitutions"
 down_revision = "tim_add_audit_pack_email_codes"
 branch_labels = None
@@ -61,8 +60,6 @@ API_ROLES: tuple[str, ...] = ("anon", "authenticated")
 _QUALIFIED_TABLES = ", ".join(f"public.{table}" for table in NEW_TABLES)
 _ROLE_ARRAY = ", ".join(f"'{role}'" for role in API_ROLES)
 
-# Without a cap an adversarial tie could explode the search; two orderings already
-# prove ambiguity, so the search stops there.
 _AMBIGUITY_CAP = 2
 
 
@@ -394,11 +391,9 @@ def _extend_driver_substitutions(plan: list[tuple[uuid.UUID, int, uuid.UUID | No
     table = "driver_substitutions"
     now_column = sa.Column("updated_at", sa.DateTime(timezone=True), server_default=_NOW, nullable=False)
     op.add_column(table, now_column)
-    # A legacy row was last touched when it was created; do not claim it changed today.
     op.execute("UPDATE driver_substitutions SET updated_at = created_at")
 
     op.add_column(table, sa.Column("request_id", _UUID, nullable=True))
-    # Nullable only until the legacy chains are numbered below; NOT NULL afterwards.
     op.add_column(table, sa.Column("sequence_number", sa.Integer(), nullable=True))
     op.add_column(table, sa.Column("previous_substitution_id", _UUID, nullable=True))
     op.add_column(table, sa.Column("completed_by_driver_id", _UUID, nullable=True))
@@ -419,7 +414,6 @@ def _extend_driver_substitutions(plan: list[tuple[uuid.UUID, int, uuid.UUID | No
     op.add_column(table, sa.Column("event_hash", sa.String(length=64), nullable=True))
     op.add_column(table, sa.Column("anchor_status", sa.String(length=20), nullable=True))
 
-    # Number the validated legacy chains. The preflight already proved each is unique.
     bind = op.get_bind()
     for row_id, sequence, previous in plan:
         bind.execute(
@@ -471,8 +465,6 @@ def _add_actor_columns() -> None:
 
 
 def upgrade() -> None:
-    # Preflight first: a trip that cannot be migrated without guessing stops everything
-    # before a single change is made.
     plan = _plan_legacy_sequences(op.get_bind())
 
     _create_new_tables()
@@ -539,7 +531,5 @@ def downgrade() -> None:
     ):
         op.drop_column(table, column)
 
-    # Dependents before the tables they reference; dropping a table discards its indexes,
-    # RLS flag and privileges too.
     for new_table in reversed(NEW_TABLES):
         op.drop_table(new_table)

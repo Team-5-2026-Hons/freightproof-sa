@@ -26,12 +26,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 export default function PanicSubmittedPageClient() {
   const router = useRouter()
   const params = useSearchParams()
-  // Set by PanicPageClient (via ROUTES.panicSubmittedUrl) only when the alert couldn't
-  // reach the backend and was queued on-device instead — anything else means it sent.
-  // Never claim the dispatcher was notified when that hasn't actually happened yet.
   const queued = params.get(PANIC_QUEUED_PARAM) === '1'
-  // The alert's own instant and whether a position went with it. Absent (an old link,
-  // a cold reload of a bare URL) means those rows are left out, never invented.
   const at = params.get(PANIC_AT_PARAM)
   const located = params.get(PANIC_LOCATED_PARAM)
 

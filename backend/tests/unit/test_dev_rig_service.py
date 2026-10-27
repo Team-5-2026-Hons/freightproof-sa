@@ -18,5 +18,4 @@ def test_uncoupled_offset_is_at_least_the_floor():
 
 
 def test_uncoupled_offset_doubles_a_large_threshold():
-    # A threshold raised in config must not silently break the demo scenario.
     assert uncoupled_offset_metres(4_000.0) == 8_000.0

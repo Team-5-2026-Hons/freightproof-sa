@@ -15,7 +15,6 @@ from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.orchestration.consignments.manifest_reads import load_creation_snapshot
 from app.orchestration.verification.errors import _UnsupportedPhasePayloadVersion
 
-# Journey locks anchored before stops were committed carry no payload_version key.
 _LEGACY_TRIP_PAYLOAD_VERSION = 1
 
 
@@ -59,8 +58,6 @@ async def _reconstruct_trip_payload(
         )
     ).scalars().all()
     if trip.origin_precinct_id is None or trip.destination_precinct_id is None:
-        # Precincts are set at trip creation; a receipt shouldn't exist before that,
-        # but treat it like the other reconstruct_* helpers' not-found case either way.
         return None
 
     manifest_key: PPManifestKey | None = None
@@ -74,7 +71,6 @@ async def _reconstruct_trip_payload(
             trip.pp_manifest_issuer_account, trip.pp_manifest_origin_hub, trip.pp_manifest_number,
         )
         snapshot = await load_creation_snapshot(db, trip_id)
-        # A deleted snapshot leaves the hash null, which cannot match what was anchored.
         snapshot_sha256 = compute_snapshot_sha256(snapshot) if snapshot is not None else None
 
     fields: dict[str, Any] = dict(

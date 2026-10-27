@@ -43,15 +43,12 @@ export interface ReportPrefill {
 interface Props {
   trip: Trip
   open: boolean
-  /** Exceptions already grouped under another incident; they cannot be grouped twice. */
   takenExceptionIds: ReadonlySet<string>
-  /** Opening from an exception (a panic alert, a short count) fills these in. */
   prefill?: ReportPrefill
   onClose: () => void
   onReported: (incident: IncidentDetail) => void
 }
 
-// Dispatcher notes are the dispatcher's own record of an action, not an observation to investigate.
 const NOT_GROUPABLE = new Set(['dispatcher_note'])
 
 /**
@@ -61,7 +58,6 @@ const NOT_GROUPABLE = new Set(['dispatcher_note'])
  */
 export function ReportIncidentDialog(props: Props): React.JSX.Element | null {
   if (!props.open) return null
-  // Mounted only while open, so every opening starts from a fresh draft and its prefill.
   return <ReportIncidentForm {...props} />
 }
 

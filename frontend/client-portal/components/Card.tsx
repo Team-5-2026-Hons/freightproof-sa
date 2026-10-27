@@ -7,13 +7,10 @@ interface CardProps {
   children: ReactNode
 }
 
-// min-w-0: a grid item defaults to min-width:auto, so a wide table inside its scroll box
-// would otherwise stretch the whole column past a phone's screen.
 export function Card({ title, id, aside, children }: CardProps) {
   return (
     <section id={id} aria-labelledby={id ? `${id}-title` : undefined} className="min-w-0 rounded-lg bg-surf-lowest p-4 shadow-card sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        {/* h3: every card sits under a numbered section's h2. */}
         <h3 id={id ? `${id}-title` : undefined} className="text-subhead font-bold">{title}</h3>
         {aside}
       </div>

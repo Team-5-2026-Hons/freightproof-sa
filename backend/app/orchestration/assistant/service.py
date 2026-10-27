@@ -89,22 +89,13 @@ from app.schemas.people import UserRead
 
 logger = logging.getLogger(__name__)
 
-# Booking an empty leg takes find-the-crew → their bookings → route time → (Stage 6) the form: four or
-# five tool calls over three or four model calls. These leave room for one corrected mistake, not a loop.
 MAX_MODEL_CALLS = 7
 MAX_TOOL_CALLS = 8
-# A reply this short that ends in "?" is a question back ("Which Tim?"), not an answer.
 FOLLOW_UP_MAX_CHARS = 300
-# More cards than this is a page, not a chat answer; the trips list is one click away.
 MAX_CARDS = 8
-# A reply offers one thing to do next, two at most; a row of buttons is a menu, not an answer.
 MAX_ACTIONS = 3
-# The whole question's time limit. The browser gives up at 60 s (useAssistant.ts ASSISTANT_TIMEOUT_MS), and one
-# model call alone may take 30 s plus a retry when the provider is busy, so without this a slow provider or
-# database ends in a browser timeout with the answer lost. Under it, the dispatcher always gets a reply.
 QUESTION_DEADLINE_SECONDS = 45.0
 
-# Built once, in a fixed order: the tool list is part of the cached prompt prefix.
 TOOL_SPECS: tuple[ToolSpec, ...] = tuple(
     ToolSpec(name=tool.name, description=tool.description, input_schema=tool.input_schema()) for tool in TOOLS
 )
@@ -123,8 +114,6 @@ class _Question:
     provider: ChatProvider
     price: ModelPrice
     now: datetime
-    # The dispatcher's words, this question's and the conversation's: numbers in them may honestly
-    # appear in a reply that ran no tool.
     typed: tuple[str, ...]
     hints: tuple[str, ...]
 
@@ -135,7 +124,6 @@ class _Progress:
 
     messages: list[ProviderMessage]
     refs: RefBook
-    # How many records the conversation brought in: the ones after that are this answer's own.
     seeded: int
     cards: list[AssistantCard] = field(default_factory=list)
     actions: list[AssistantAction] = field(default_factory=list)
@@ -143,12 +131,9 @@ class _Progress:
     ran_tool: bool = False
     model_calls: int = 0
     cost_micro_usd: int = 0
-    # Token totals over the question's model calls, for the log: shows whether the provider's caching of the
-    # fixed prompt and tool menu is working (B26).
     input_tokens: int = 0
     cached_tokens: int = 0
     output_tokens: int = 0
-    # Whether the model has already been sent back once for stating facts without a tool.
     corrected: bool = False
 
 
@@ -215,9 +200,6 @@ async def _run_tools(question: _Question, progress: _Progress, calls: tuple[Tool
     return ToolResults(results=tuple(results))
 
 
-# A record tag the model copied into its reply: "Sipho Dlamini [d1]", "(p2)", "[d1, v3]" (Tom's browser test, 22 Oct,
-# B39). Tags are for tool calls; the dispatcher never sees one. Deleted in code, as em dashes are, so a slip of the
-# model's can't reach the screen.
 _REF_IN_TEXT = re.compile(r"\s?[\[(][dvtp]\d{1,3}(?:,\s*[dvtp]\d{1,3})*[\])]")
 
 
@@ -234,7 +216,6 @@ def _kind(progress: _Progress, text: str) -> AnswerKind:
 
 def _final(question: _Question, progress: _Progress, reply: ModelReply) -> tuple[str, AnswerKind] | None:
     """The answer for a reply with no tool calls, or None to send the model back once to fix it."""
-    # Em dashes come out first, so what is checked is what is shown.
     text = _without_refs(without_em_dashes(reply.text.strip())) or CUT_OFF_MESSAGE
     invented = [] if progress.ran_tool else unmatched_numbers(text, [*question.typed, *question.hints])
     if invented and not progress.corrected:
@@ -361,14 +342,11 @@ async def ask(
         hints=hints_for(request.question, now=moment),
     )
     progress = _Progress(messages=messages, refs=refs, seeded=len(refs.records()))
-    # The sign-in check opened a transaction; don't hold its connection through the first model call.
     await _release_connection(db)
     try:
         async with asyncio.timeout(QUESTION_DEADLINE_SECONDS):
             text, kind = await _answer(question, progress)
     except TimeoutError:
-        # Finished model calls are already recorded; one cut off mid-call is not (its usage never arrived).
-        # No cards either: the reply states no facts.
         logger.warning(
             "Assistant stopped at its %.0f s limit: org=%s model=%s tools=%s model_calls=%d",
             QUESTION_DEADLINE_SECONDS, user.organization_id, chosen.model, progress.tools_used, progress.model_calls,

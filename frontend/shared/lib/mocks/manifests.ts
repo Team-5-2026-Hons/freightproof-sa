@@ -26,8 +26,6 @@ function parcel(
   }
 }
 
-// ─── TRP-2026-0041 · 27 parcels · FedEx JHB → DBN (canonical) ────────────────
-
 const CONSIGNMENT_0041 = 'cons-pp-2026-0041'
 
 const CONSIGNMENT_MANIFEST_0041: ConsignmentManifest = {
@@ -95,8 +93,6 @@ export const mockManifest0041: Manifest = {
   consignments: [CONSIGNMENT_MANIFEST_0041],
 }
 
-// ─── TRP-2026-0042 · 42 parcels · FedEx JHB → DBN ────────────────────────────
-
 const CONSIGNMENT_0042 = 'cons-pp-2026-0042'
 
 const CONSIGNMENT_MANIFEST_0042: ConsignmentManifest = {
@@ -142,8 +138,6 @@ export const mockManifest0042: Manifest = {
   pp_manifest_snapshot: null,
   consignments: [CONSIGNMENT_MANIFEST_0042],
 }
-
-// ─── TRP-2026-0040 · 32 parcels · FedEx JHB → DBN (dest_gate_in) ─────────────
 
 const CONSIGNMENT_0040 = 'cons-pp-2026-0040'
 

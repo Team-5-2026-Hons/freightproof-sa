@@ -8,8 +8,6 @@ import { precinctName } from '@/lib/utils/precinct-name'
 const MS_PER_MINUTE = 60_000
 const MINUTES_PER_HOUR = 60
 
-// The server resolves precinct names; demo rows and a deleted precinct fall back to the
-// local lookup, then to a plain label — never a truncated UUID.
 export function placeOf(name: string | null, id: string | null): string {
   if (name !== null) return name
   return id !== null ? precinctName(id) : 'Unknown'
@@ -20,8 +18,6 @@ export interface PlaceParts {
   detail: string | null
 }
 
-// Precinct names arrive as "FedEx JHB · Linbro Park": the place a driver says, then the
-// area. Rows and titles lead with the place and put the area underneath.
 export function placeParts(fullName: string): PlaceParts {
   const { place, area } = splitPrecinctName(fullName)
   return { name: place, detail: area }
@@ -51,9 +47,6 @@ export interface PastOutcome {
  */
 export function pastOutcome(trip: DriverTripSummary): PastOutcome {
   if (trip.status === 'cancelled') return { tone: 'neutral', text: 'Cancelled' }
-  // Before the delivery checks: a driver who handed the load over did not deliver it —
-  // even once the trip closes — and it may not have arrived yet. The delivery outcome
-  // belongs to whoever finished it; this row only records that this driver's part ended.
   if (trip.participation === 'former') {
     return { tone: 'neutral', text: 'Handed over' }
   }
@@ -70,9 +63,6 @@ export function pastOutcome(trip: DriverTripSummary): PastOutcome {
   return { tone: 'neutral', text: `Delivered · ${late} late` }
 }
 
-// Built on first use, not at import: this module is on every screen's load path and the
-// two formatters were a measurable slice of the cold-start module-evaluation task (see
-// lib/utils/format-time.ts for the same reasoning).
 let weekdayFormat: Intl.DateTimeFormat | null = null
 let dayFormat: Intl.DateTimeFormat | null = null
 
@@ -85,7 +75,6 @@ export function dayTile(iso: string | null): { weekday: string; day: string } | 
   return { weekday: weekdayFormat.format(date).toUpperCase().replace('.', ''), day: String(Number(dayFormat.format(date))) }
 }
 
-// Built on first use, like the tile formatters above.
 let monthFormat: Intl.DateTimeFormat | null = null
 function monthLabel(iso: string): string {
   monthFormat ??= new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' })

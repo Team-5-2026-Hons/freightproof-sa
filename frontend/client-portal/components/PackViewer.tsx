@@ -21,17 +21,12 @@ import { Cargo, Coverage, DataProtection, Driver, Exceptions, Incident, Integrit
 import { Timeline } from './Timeline'
 import { VerificationPanel } from './VerificationPanel'
 
-// Leaflet reads `window` at import, so the map only ever renders in the browser.
 const RouteMap = dynamic(() => import('./RouteMap'), {
   ssr: false,
   loading: () => <div className="h-[380px] animate-pulse rounded-md bg-surf-low sm:h-[460px]" />,
 })
 
-// Below the `xl` breakpoint the Evidence card is stacked under the timeline and off-screen after a
-// pick; from `xl` up (where the contents sidebar leaves room for two columns) it sits beside the
-// timeline and is already in view.
 const STACKED_LAYOUT_QUERY = '(max-width: 1279px)'
-// A failed load worth offering again: the network dropped, the server hiccupped, or we were rate limited.
 const HTTP_TOO_MANY_REQUESTS = 429
 const HTTP_SERVER_ERROR = 500
 const CHAPTER_LIST = Object.values(CHAPTERS)
@@ -45,10 +40,7 @@ type Load =
 export function PackViewer({ token }: { token: string }) {
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // Bumped after the mailed password is accepted, so the pack is fetched again with the grant.
   const [attempt, setAttempt] = useState(0)
-  // The browser's own check of the pack seal, reported by the verification panel, so the PDF
-  // check can say whether the fingerprint it matches was itself confirmed on Hedera.
   const [sealCheck, setSealCheck] = useState<AnchorCheckResult | null>(null)
 
   useEffect(() => {
@@ -163,7 +155,6 @@ export function PackViewer({ token }: { token: string }) {
           <Chapter chapter={CHAPTERS.journey} lede="Every event in time order. Pick one to see it on the map and open its evidence.">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,360px)_1fr]">
               <Card title="Timeline" id="timeline">
-                {/* Capped on wide screens so a long trip scrolls inside its card instead of stretching the page. */}
                 <div className="lg:max-h-[70vh] lg:overflow-y-auto print:max-h-none print:overflow-visible">
                   <Timeline items={items} selectedId={selectedId} onSelect={select} />
                 </div>

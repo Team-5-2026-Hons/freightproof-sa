@@ -38,8 +38,6 @@ def _at(minutes: int = 0) -> datetime:
     return datetime.now(UTC) + timedelta(minutes=minutes)
 
 
-# ── replay ──────────────────────────────────────────────────────────────────
-
 def test_replay_opened_only_is_open():
     state = replay([_opened(IncidentConfidence.SUSPECTED)])
 
@@ -153,8 +151,6 @@ def test_apply_is_replay_step_by_step():
     assert stepped == replay(facts)
 
 
-# ── transitions ─────────────────────────────────────────────────────────────
-
 def test_check_status_change_open_to_investigating_allowed():
     check_status_change(IncidentStatus.OPEN, IncidentStatus.INVESTIGATING, incident_id=uuid.uuid4())
 
@@ -162,7 +158,6 @@ def test_check_status_change_open_to_investigating_allowed():
 @pytest.mark.parametrize(("current", "target"), [
     (IncidentStatus.INVESTIGATING, IncidentStatus.OPEN),
     (IncidentStatus.OPEN, IncidentStatus.OPEN),
-    # Closing has its own action with an outcome and a reason; a bare status move can't do it.
     (IncidentStatus.OPEN, IncidentStatus.CLOSED),
     (IncidentStatus.INVESTIGATING, IncidentStatus.CLOSED),
 ])
@@ -185,8 +180,6 @@ def test_ensure_open_closed_raises():
     with pytest.raises(IncidentClosedError):
         ensure_open(state, incident_id=uuid.uuid4())
 
-
-# ── closing ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("reason", ["", "   ", None])
 def test_check_close_without_reason_raises(reason):

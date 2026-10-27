@@ -19,16 +19,10 @@ class DriverSession(Base):
 
     __tablename__ = "driver_sessions"
 
-    # driver_id IS the primary key (not a plain FK): a schema that could hold two rows
-    # for one driver would let a race create the state this table exists to prevent.
     driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), primary_key=True
     )
-    # Supabase's session_id claim, stored as a string not UUID since it's another
-    # system's identifier.
     session_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    # `iat` of the claiming token — decides which of two competing sessions is newer,
-    # since the backend never sees a login event, only requests.
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -49,15 +43,11 @@ class UserSession(Base):
 
     __tablename__ = "user_sessions"
 
-    # Supabase's session_id claim; same string-not-UUID reasoning as DriverSession.session_id.
     session_id: Mapped[str] = mapped_column(String(255), primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
     )
-    # `iat` of the opening token — the only activity floor available for a session
-    # with no row yet.
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Indexed because the retention sweep filters on it.
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

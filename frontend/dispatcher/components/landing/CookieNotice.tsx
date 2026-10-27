@@ -16,8 +16,6 @@ export const COOKIE_NOTICE_KEY = 'fp:cookie-notice-seen'
  * other non-essential storage is ever added, this has to become a real opt-in first.
  */
 export function CookieNotice() {
-  // Starts hidden so the server render and first client render agree, and so a visitor
-  // who already dismissed it never sees it flash.
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -25,11 +23,9 @@ export function CookieNotice() {
     try {
       seen = window.localStorage.getItem(COOKIE_NOTICE_KEY) === '1'
     } catch {
-      // Storage blocked (private mode, site data off): show the notice every visit.
       seen = false
     }
     if (!seen) {
-      // One frame later, so the hidden state paints first and the entrance animates.
       const frame = requestAnimationFrame(() => setVisible(true))
       return () => cancelAnimationFrame(frame)
     }
@@ -40,7 +36,6 @@ export function CookieNotice() {
     try {
       window.localStorage.setItem(COOKIE_NOTICE_KEY, '1')
     } catch {
-      // Can't remember the dismissal. It shows again next visit, which is harmless.
     }
   }
 

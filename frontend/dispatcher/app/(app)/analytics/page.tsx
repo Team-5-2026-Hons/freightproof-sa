@@ -41,9 +41,6 @@ import { useChatStatus } from '@/lib/hooks/useAnalyticsChat'
 import { useFleetTiles } from '@/lib/hooks/useFleetAnalytics'
 import type { Basis, ChatPageView } from '@shared/lib/types/analytics-chat'
 
-// Fleet-wide patterns and trends. Per-entity numbers live on each
-// vehicle, driver and precinct detail page, so this page answers "how is the whole
-// operation doing": headline tiles, then one tab per section.
 const TABS = [
   { id: 'activity', label: 'Activity' },
   { id: 'on-time', label: 'On time' },
@@ -59,11 +56,9 @@ type TabId = (typeof TABS)[number]['id']
 const DEFAULT_TAB: TabId = 'activity'
 const PANEL_ID = 'fleet-analytics-panel'
 const CHAT_BUTTON_ID = 'analytics-chat-open'
-// The design system's size for a button's leading icon (DESIGN_SYSTEM.md §6).
 const CHAT_ICON_SIZE = 13
 const CHAT_PANEL_ID = 'analytics-chat-panel'
 
-// Routes & sites shows distributions over the whole period, never a time axis.
 const TABS_WITHOUT_GRAIN: readonly TabId[] = ['routes']
 
 const DEFAULT_CONTROLS: TabControls = { grain: 'week', period: { preset: 'last_12_weeks' } }
@@ -78,7 +73,6 @@ const INITIAL_CONTROLS: Record<TabId, TabControls> = {
   cost: DEFAULT_CONTROLS,
 }
 
-// Every tab shares the page's two notes; a few add one of their own after them.
 const PAGE_NOTES: readonly string[] = [FLEET_COPY.scopeNote, FLEET_COPY.dataNote]
 const TAB_NOTES: Partial<Record<TabId, string>> = {
   problems: FLEET_COPY.problems.tabNote,
@@ -91,7 +85,6 @@ function notesFor(tab: TabId): readonly string[] {
   return tabNote === undefined ? PAGE_NOTES : [...PAGE_NOTES, tabNote]
 }
 
-// Busy patterns need lots of history to mean anything, so they default to All time.
 const DEFAULT_PATTERN_PERIOD: PeriodSelection = { preset: 'all_time' }
 
 function isTabId(id: string | null): id is TabId {
@@ -117,7 +110,6 @@ function initialControls(tab: TabId, search: URLSearchParams): Record<TabId, Tab
 }
 
 export default function AnalyticsPage() {
-  // useSearchParams needs a Suspense boundary, or `next build` refuses to prerender the route.
   return (
     <Suspense fallback={<div className="flex flex-1 items-center justify-center"><Spinner size="lg" /></div>}>
       <FleetAnalytics />
@@ -130,28 +122,20 @@ function FleetAnalytics() {
   const pathname = usePathname()
   const search = useSearchParams()
   const requested = search.get(TAB_PARAM)
-  // The tab lives in the URL so a link can open one directly (e.g. Back from a report opened on the map).
   const active: TabId = isTabId(requested) ? requested : DEFAULT_TAB
 
   const tiles = useFleetTiles()
   const chatStatus = useChatStatus()
   const [chatOpen, setChatOpen] = useState(false)
-  // The dispatcher assistant's "Ask in Analytics" (assistant spec B30): open the chat with that question typed, once
-  // the chat is known to be on. Never sent for them: sending costs money and starts this page's own conversation.
   const [askedElsewhere, setAskedElsewhere] = useState<string | null>(() => search.get(ANALYTICS_ASK_PARAM))
   if (askedElsewhere !== null && chatStatus.enabled && !chatOpen) setChatOpen(true)
   const [controls, setControls] = useState<Record<TabId, TabControls>>(() => initialControls(active, search))
   const [patternPeriod, setPatternPeriod] = useState<PeriodSelection>(DEFAULT_PATTERN_PERIOD)
-  // Seeded from the address once, so /analytics?tab=routes&map=today opens on Today and Back
-  // from a report returns to it. The tidy-address effect below then drops the parameter: the
-  // choice lives in state from here on, exactly as the View by and Period choices do.
   const [mapWindow, setMapWindow] = useState<MapWindow>(() => mapWindowFromSearch(search))
   const today = todaySast()
   const allTimeStart = tiles.data?.all_time_start ?? null
   const activeControls = controls[active]
   const query = resolveTabQuery(activeControls.period, activeControls.grain, today, allTimeStart)
-  // What's on screen, sent with each chat question (B45): the View by actually drawn, which may be coarser than the
-  // one chosen, and none on Routes & sites.
   const period = activeControls.period
   const pageView: ChatPageView = {
     tab: active,
@@ -160,8 +144,6 @@ function FleetAnalytics() {
     grain: TABS_WITHOUT_GRAIN.includes(active) ? null : query.grain,
   }
 
-  // Once the returned-to choices are in state, tidy the address back to just the tab, so a
-  // later refresh follows what's on screen rather than what the dispatcher came back with.
   useEffect(() => {
     if (hasReturnedControls(search) || search.get(ANALYTICS_ASK_PARAM) !== null) {
       router.replace(`${pathname}?${TAB_PARAM}=${active}`, { scroll: false })
@@ -170,15 +152,12 @@ function FleetAnalytics() {
 
   function selectTab(id: string): void {
     if (!isTabId(id)) return
-    // replace, not push: flicking between tabs shouldn't fill the Back button's history.
     router.replace(`${pathname}?${TAB_PARAM}=${id}`, { scroll: false })
   }
 
   const closeChat = useCallback(() => {
     setChatOpen(false)
     setAskedElsewhere(null)
-    // Back to the button that opened it, so keyboard users don't lose their place.
-    // By id because the shared Button takes no ref; it stays on screen while the panel is open.
     document.getElementById(CHAT_BUTTON_ID)?.focus()
   }, [])
 
@@ -204,14 +183,10 @@ function FleetAnalytics() {
             id={CHAT_BUTTON_ID}
             variant="secondary"
             size="sm"
-            // The sparkle is the common mark for an AI feature, so the button says what it opens
-            // at a glance. Decorative: the words already name the button for screen readers.
             iconLeft={<Sparkles aria-hidden="true" data-testid="chat-sparkle" fill="currentColor" size={CHAT_ICON_SIZE} />}
             aria-expanded={chatOpen}
             aria-controls={chatOpen ? CHAT_PANEL_ID : undefined}
             onClick={() => {
-              // Re-read this month's spend: the page's own read is from when it loaded, so a panel
-              // opened later would otherwise show an old figure until its first answer arrives.
               chatStatus.refetch()
               setChatOpen(true)
             }}
@@ -221,7 +196,6 @@ function FleetAnalytics() {
         )}
       </TopBar>
 
-      {/* The chat panel sits beside the scrolling page, not over it, so charts stay visible. */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 min-h-0 overflow-auto">
           <div className="flex flex-col gap-4 px-6 py-4">
@@ -239,7 +213,6 @@ function FleetAnalytics() {
                 allTimeStart={allTimeStart}
                 notes={notesFor(active)}
               />
-              {/* Only the open tab is mounted, so only its requests run. */}
               {active === 'activity' && (
                 <ActivityTab
                   query={query}

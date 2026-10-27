@@ -10,10 +10,6 @@ from dataclasses import dataclass
 
 from app.db.models.enums import PhaseType
 
-# The phases that carry a Hedera receipt: all of them. Every phase is custody
-# evidence, so every completion is anchored. Kept as a named constant rather than
-# deleted so the rule stays one testable fact, and rows are still created PENDING
-# from it.
 ANCHORED_PHASES: frozenset[PhaseType] = frozenset(PhaseType)
 
 
@@ -35,7 +31,7 @@ class PlanStop:
 class PlannedPhase:
     sequence_number: int
     phase_type: PhaseType
-    stop_sequence: int | None  # None only for trip_creation
+    stop_sequence: int | None
 
 
 def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
@@ -87,9 +83,6 @@ def build_phase_plan(stops: list[PlanStop]) -> list[PlannedPhase]:
             emit(PhaseType.DEPARTURE, stop)
             emit(PhaseType.IN_TRANSIT, stop)
         else:
-            # The final stop always closes the custody chain, even on an empty leg
-            # where nothing is dropped — otherwise a repositioning run would end
-            # with no unloading row and the ledger would not be a complete story.
             if i != 0 and not stop.drops_off:
                 emit(PhaseType.UNLOADING, stop)
             emit(PhaseType.CONFIRMATION, stop)

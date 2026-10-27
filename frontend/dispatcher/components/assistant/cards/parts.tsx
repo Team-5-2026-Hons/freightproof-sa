@@ -21,7 +21,6 @@ export function hrefFor(record: Pick<RecordRef, 'kind' | 'id'>): string {
 }
 
 export interface CardProps {
-  /** Called when a link in the card is followed, so the pop-up can get out of the way (spec D6). */
   onNavigate: NavigateTo
 }
 
@@ -58,7 +57,6 @@ export function Muted({ children, className }: { children: ReactNode; className?
 export function ReviewCounts({ counts, empty }: { counts: NeedsReview; empty?: string }) {
   const parts = (['critical', 'warning', 'info'] as const)
     .filter((severity) => counts[severity] > 0)
-    // "47 warnings", "1 warning"; critical and info read as adjectives ("2 critical"), so they stay as they are.
     .map((severity) => `${counts[severity]} ${severity === 'warning' && counts[severity] !== 1 ? 'warnings' : severity}`)
   if (parts.length === 0) return empty ? <Muted>{empty}</Muted> : null
   return (

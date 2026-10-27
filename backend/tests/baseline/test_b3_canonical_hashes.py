@@ -53,7 +53,6 @@ TRAILER_B_ID = uuid.UUID("77777777-7777-4777-8777-777777777777")
 ORIGIN_PRECINCT_ID = uuid.UUID("88888888-8888-4888-8888-888888888888")
 DESTINATION_PRECINCT_ID = uuid.UUID("99999999-9999-4999-8999-999999999999")
 
-# Stand-ins for file digests; the builders treat them as opaque strings.
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
@@ -69,7 +68,6 @@ def _v2(phase_type: str, **extra: Any) -> dict[str, Any]:
     return {**_BASE_V2, "phase_type": phase_type, **extra}
 
 
-# (builder output, expected canonical payload, expected SHA-256)
 _PHASE_VECTORS: dict[str, tuple[dict[str, Any], dict[str, Any], str]] = {
     "activation_v2": (
         compute_activation_canonical_payload_v2(phase_event_id=PHASE_EVENT_ID, trip_id=TRIP_ID),
@@ -188,7 +186,6 @@ def test_there_is_one_golden_vector_for_each_of_the_eleven_payload_builders() ->
 def _trip_payload() -> dict[str, Any]:
     return compute_trip_canonical_payload(
         trip_id=TRIP_ID, driver_id=DRIVER_ID, horse_id=HORSE_ID,
-        # Deliberately out of order: the payload sorts trailers, so insertion order must not matter.
         trailer_ids=[TRAILER_B_ID, TRAILER_A_ID],
         origin_precinct_id=ORIGIN_PRECINCT_ID, destination_precinct_id=DESTINATION_PRECINCT_ID,
         created_by_user_id=USER_ID,
@@ -196,7 +193,6 @@ def _trip_payload() -> dict[str, Any]:
         trip_type="linehaul",
         pp_manifest=PPManifestKey(issuer_account="ACC1", origin_hub="CPT", number=1234),
         pp_manifest_snapshot_sha256=DIGEST_C,
-        # +02:00 and naive inputs: both must normalise to UTC, the form Postgres returns on verify.
         planned_departure_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2))),
         planned_arrival_at=datetime(2026, 1, 16, 6, 0, 0),
     )
@@ -228,10 +224,6 @@ def test_trip_journey_lock_hash_is_the_golden_sha256() -> None:
     assert compute_journey_lock_hash(payload) == "a3b87bb27053cf4437ec035929dbdfdec6d95bc2ebe1cf2ab2aca4f431e97e7a"
 
 
-# ── Journey lock v2 (commits to the ordered stops). The v1 vector above stays as it is:
-# receipts anchored before v2 must keep verifying. Payload and hash below were written once,
-# the hash computed from the hand-written payload with hashlib rather than from the builder.
-
 MIDDLE_PRECINCT_ID = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 
 
@@ -247,7 +239,6 @@ def _trip_payload_v2() -> dict[str, Any]:
         pp_manifest_snapshot_sha256=DIGEST_C,
         planned_departure_at=datetime(2026, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2))),
         planned_arrival_at=datetime(2026, 1, 16, 6, 0, 0),
-        # Deliberately out of order, one stop without a slot and one with a +02:00 slot.
         stops=[
             StopCommitment(2, DESTINATION_PRECINCT_ID, datetime(2026, 1, 16, 6, 0, 0)),
             StopCommitment(0, ORIGIN_PRECINCT_ID, datetime(2026, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=2)))),

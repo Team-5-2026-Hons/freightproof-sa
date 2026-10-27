@@ -29,10 +29,8 @@ from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import DriverEventRead
 from app.schemas.people import DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody
 
-# POPIA: these fields must never appear in JSONB event audit logs.
 _DRIVER_PII_FIELDS: frozenset[str] = frozenset({"license_number", "phone_number"})
 
-# Uses sha256-keyed names because update_driver diffs hashed values, not plaintext.
 _DRIVER_CRITICAL_HASHED: frozenset[str] = frozenset({
     "license_number_sha256",
     "license_expiry",
@@ -58,12 +56,6 @@ async def create_driver(
     data: DriverCreateBody,
     current_user_id: uuid.UUID,
 ) -> DriverRead:
-    # Refuse a known-duplicate ID number BEFORE provisioning anything in Supabase.
-    # The auth account has to be created first (drivers.id must reference
-    # auth.users(id)), so if the DB constraint were the only guard, every duplicate
-    # would leave an orphaned auth user behind that nothing in this system cleans up.
-    # Advisory only — the unique constraint below is still what decides it if two
-    # dispatchers submit the same ID number at once.
     existing = await db.execute(
         select(Driver.id).where(
             Driver.organization_id == organization_id,
@@ -73,8 +65,6 @@ async def create_driver(
     if existing.scalar_one_or_none() is not None:
         raise DuplicateResourceError("Driver", "id_number", data.id_number)
 
-    # Provision a Supabase Auth account first — drivers.id must reference
-    # auth.users(id) per the FK constraint added in migration 0003.
     driver_id = await create_driver_auth_user(
         phone=data.phone_number,
         full_name=data.full_name,
@@ -96,12 +86,9 @@ async def create_driver(
         if not is_unique_violation(exc):
             raise
         if violated_constraint(exc) != UQ_DRIVERS_ORG_ID_NUMBER:
-            # Some other uniqueness failed. Reporting it as a duplicate ID number
-            # would point the dispatcher at a field that is not the problem.
             raise
         raise DuplicateResourceError("Driver", "id_number", data.id_number) from exc
 
-    # POPIA: license_number is hashed before going on chain. Plaintext stays in DB only.
     license_number_sha256 = hashlib.sha256(
         driver.license_number.encode("utf-8")
     ).hexdigest()
@@ -149,8 +136,6 @@ async def update_driver(
     if driver is None:
         raise ResourceNotFoundError("Driver", str(driver_id))
 
-    # POPIA: compare hashed license numbers so plaintext never enters the diff.
-    # _DRIVER_CRITICAL_HASHED uses sha256-keyed names — see module-level constant.
     old = {
         "license_number_sha256": hashlib.sha256(
             driver.license_number.encode("utf-8")
@@ -180,10 +165,7 @@ async def update_driver(
         elif "is_active" in diff and not new["is_active"]:
             event_type = DriverEventType.DEACTIVATED
 
-    # Exclude license_number plaintext from the cosmetic patch record stored in DB.
     safe_patch = {k: v for k, v in patched.items() if k not in _DRIVER_PII_FIELDS}
-    # diff is dict[str, dict[...]]; the no-change fallback mixes bool/dict values. Give the
-    # fallback its own dict[str, Any] type so `or` doesn't infer it from diff's stricter type.
     _fallback: dict[str, Any] = {"_no_critical_change": True, "_patch": safe_patch}
     changed_fields: dict[str, Any] = diff or _fallback
     event = DriverEvent(
@@ -244,11 +226,9 @@ async def get_driver_detail(
     else:
         receipts = []
 
-    # Include org filter so trips from other organisations never appear in this driver's detail.
     trips = (
         await db.execute(
             select(Trip).where(
-                # FP-83: every trip the driver took part in, original assignment or a handover.
                 or_(Trip.driver_id == driver_id, Trip.id.in_(select(DriverSubstitution.trip_id).where(or_(
                     DriverSubstitution.original_driver_id == driver_id,
                     DriverSubstitution.substituting_driver_id == driver_id,

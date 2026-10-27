@@ -13,18 +13,14 @@ DatabaseOperation = Literal["connect", "checkout", "command", "rollback", "close
 
 DATABASE_UNAVAILABLE_DETAIL = "Database temporarily unavailable."
 
-# PostgreSQL SQLSTATEs (https://www.postgresql.org/docs/current/errcodes-appendix.html).
-CONNECTION_EXCEPTION_CLASS = "08"  # connection_exception and every subclass
+CONNECTION_EXCEPTION_CLASS = "08"
 SERVER_UNAVAILABLE_SQLSTATES = frozenset({
-    "57P01",  # admin_shutdown
-    "57P02",  # crash_shutdown
-    "57P03",  # cannot_connect_now (starting up or in recovery)
+    "57P01",
+    "57P02",
+    "57P03",
 })
 TOO_MANY_CONNECTIONS = "53300"
 INTERNAL_ERROR = "XX000"
-# Supabase's Supavisor pooler refuses a connection it has no room for with a generic
-# FATAL XX000 whose message starts with its own code, e.g. "(EMAXCONNSESSION) max
-# clients reached in session mode". The prefix is the only way to tell it apart.
 SUPAVISOR_CAPACITY_PREFIXES = ("(EMAXCONN", "(ECHECKOUTTIMEOUT)")
 
 
@@ -50,7 +46,7 @@ def database_unavailable(
     Integrity, SQL syntax and authentication/configuration failures keep their own handling.
     """
     if not isinstance(exc, Exception):
-        return None  # Cancellation/SystemExit stay control flow, even on a dead socket.
+        return None
     if isinstance(exc, DatabaseUnavailableError):
         return exc
     if isinstance(exc, PoolTimeoutError):
@@ -78,8 +74,6 @@ def _server_reason(original: object, operation: DatabaseOperation) -> DatabaseFa
         return None
     if sqlstate == TOO_MANY_CONNECTIONS:
         return "server_capacity"
-    # XX000 is Postgres's catch-all internal error, so only Supavisor's coded refusal of a
-    # new connection counts; any other XX000 keeps its ordinary 500 handling.
     if operation == "connect" and sqlstate == INTERNAL_ERROR and str(original).startswith(SUPAVISOR_CAPACITY_PREFIXES):
         return "server_capacity"
     if sqlstate.startswith(CONNECTION_EXCEPTION_CLASS) or sqlstate in SERVER_UNAVAILABLE_SQLSTATES:

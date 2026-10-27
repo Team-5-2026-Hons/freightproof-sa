@@ -16,15 +16,12 @@ const HEAP_LIMIT_MB = 3072
 const PORT = '3000'
 
 const require = createRequire(import.meta.url)
-// Resolving Next's own bin and running it with this Node avoids a shell, so signals
-// reach Next directly on every OS.
 const nextBin = require.resolve('next/dist/bin/next')
 
 const nodeOptions = [process.env.NODE_OPTIONS, `--max-old-space-size=${HEAP_LIMIT_MB}`]
   .filter(Boolean)
   .join(' ')
 
-// Extra args pass through, e.g. `npm run dev:capped -- --turbopack`.
 const child = spawn(process.execPath, [nextBin, 'dev', '--port', PORT, ...process.argv.slice(2)], {
   stdio: 'inherit',
   env: { ...process.env, NODE_OPTIONS: nodeOptions },

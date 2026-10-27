@@ -76,10 +76,6 @@ async def test_unknown_subject_type_raises() -> None:
         )
 
 
-# ── PRECINCT_EVENT branch — exercised against a real DB session, not a mock,   ──
-# ── because the visibility rule here (owner-only, is_shared never grants read) ──
-# ── is a security boundary worth proving against actual query semantics.      ──
-
 
 async def _seed_precinct_event(db: AsyncSession, *, is_shared: bool = False):
     """Return (event_id, owner_org_id, other_org_id)."""

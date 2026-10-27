@@ -1,11 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-// Imported by next.config.ts, which runs outside the app's `@/` alias, so this file uses
-// only relative imports and node built-ins.
-
 const PAGE_FILE = 'page.tsx'
-// Dev-only pages must never reach the production service-worker precache.
 const EXCLUDED_TOP_LEVEL_DIR = 'dev'
 
 /**

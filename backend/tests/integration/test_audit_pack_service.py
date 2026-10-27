@@ -26,7 +26,6 @@ from app.storage.supabase_storage import UploadResult
 
 from tests.integration.audit_pack_seed import T0, AuditTrip, seed_audit_trip
 
-# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
 pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 NOW = T0 + timedelta(days=1)
@@ -69,12 +68,10 @@ async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> life
     )
 
 
-@pytest.mark.real_pdf  # reads the rendered PDF itself
+@pytest.mark.real_pdf
 async def test_issue_audit_pack_stores_sealed_first_version(db_session, audit_trip, stored_pdfs):
-    # Act
     issued = await _issue(db_session, audit_trip)
 
-    # Assert
     pack = issued.pack
     assert pack.pack_version == 1
     assert pack.issued_at == NOW
@@ -87,41 +84,33 @@ async def test_issue_audit_pack_stores_sealed_first_version(db_session, audit_tr
 
 
 async def test_issue_audit_pack_stores_only_token_hash(db_session, audit_trip, stored_pdfs):
-    # Act
     issued = await _issue(db_session, audit_trip)
 
-    # Assert
     assert len(issued.raw_token) >= 40
     assert issued.pack.token_hash == hashlib.sha256(issued.raw_token.encode()).hexdigest()
     assert issued.raw_token not in str(issued.pack.manifest_json)
 
 
 async def test_issue_audit_pack_manifest_hash_survives_reload(db_session, audit_trip, stored_pdfs):
-    # Arrange
     pack_id = (await _issue(db_session, audit_trip)).pack.id
     await db_session.flush()
     db_session.expire_all()
 
-    # Act
     reloaded = (await db_session.execute(select(AuditPack).where(AuditPack.id == pack_id))).scalar_one()
 
-    # Assert
     assert compute_payload_hash(reloaded.manifest_json) == reloaded.manifest_sha256
 
 
 async def test_issue_audit_pack_seal_receipt_matches_reconstructed_payload(db_session, audit_trip, stored_pdfs):
-    # Arrange
     pack_id = (await _issue(db_session, audit_trip)).pack.id
     await db_session.flush()
     db_session.expire_all()
     pack = (await db_session.execute(select(AuditPack).where(AuditPack.id == pack_id))).scalar_one()
 
-    # Act
     receipt = (await db_session.execute(
         select(BlockchainReceipt).where(BlockchainReceipt.id == pack.blockchain_receipt_id)
     )).scalar_one()
 
-    # Assert
     assert receipt.subject_type == "audit_pack"
     assert receipt.receipt_type == "audit_pack_issued"
     assert receipt.data_hash == compute_payload_hash(seal_payload(pack))
@@ -131,37 +120,30 @@ async def test_issue_audit_pack_seal_receipt_matches_reconstructed_payload(db_se
 
 
 async def test_issue_audit_pack_second_issue_is_next_version(db_session, audit_trip, stored_pdfs):
-    # Act
     await _issue(db_session, audit_trip)
     second = await _issue(db_session, audit_trip, purpose="police_report")
 
-    # Assert
     assert second.pack.pack_version == 2
 
 
 async def test_issue_audit_pack_anchor_failure_still_issues(db_session, audit_trip, stored_pdfs, monkeypatch):
-    # Arrange
     async def failing_anchor(*_args: object, **_kwargs: object) -> BlockchainReceipt:
         raise HederaServiceError("mirror down")
 
     monkeypatch.setattr(lifecycle, "anchor_subject", failing_anchor)
 
-    # Act
     issued = await _issue(db_session, audit_trip)
 
-    # Assert
     assert issued.pack.anchor_status == "failed"
     assert issued.pack.blockchain_receipt_id is None
 
 
 async def test_issue_audit_pack_records_scope_and_choices(db_session, audit_trip, stored_pdfs):
-    # Act
     issued = await _issue(
         db_session, audit_trip, scope_consignment_id=str(audit_trip.consignment_a.id),
         include_location_trail=False, include_full_driver_id=True, expires_in_days=7,
     )
 
-    # Assert
     pack = issued.pack
     assert pack.consignment_id == audit_trip.consignment_a.id
     assert pack.include_location_trail is False
@@ -171,7 +153,6 @@ async def test_issue_audit_pack_records_scope_and_choices(db_session, audit_trip
 
 
 async def test_issue_audit_pack_other_org_trip_raises(db_session, audit_trip, stored_pdfs):
-    # Act / Assert
     with pytest.raises(ResourceNotFoundError):
         await issue_audit_pack(
             db_session, trip_id=audit_trip.trip.id,
@@ -181,33 +162,27 @@ async def test_issue_audit_pack_other_org_trip_raises(db_session, audit_trip, st
 
 
 async def test_revoke_audit_pack_is_idempotent(db_session, audit_trip, stored_pdfs):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
     first_at = NOW + timedelta(hours=1)
 
-    # Act
     await revoke_audit_pack(db_session, pack_id=issued.pack.id, organization_id=audit_trip.org.id,
                             user_id=audit_trip.dispatcher.id, now=first_at)
     again = await revoke_audit_pack(db_session, pack_id=issued.pack.id, organization_id=audit_trip.org.id,
                                     user_id=audit_trip.dispatcher.id, now=first_at + timedelta(hours=1))
 
-    # Assert
     assert again.revoked_at == first_at
     assert again.revoked_by_user_id == audit_trip.dispatcher.id
 
 
 async def test_revoke_audit_pack_other_org_raises(db_session, audit_trip, stored_pdfs):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act / Assert
     with pytest.raises(ResourceNotFoundError):
         await revoke_audit_pack(db_session, pack_id=issued.pack.id, organization_id=uuid.uuid4(),
                                 user_id=audit_trip.dispatcher.id)
 
 
 async def test_list_audit_packs_reports_status_label_and_views(db_session, audit_trip, stored_pdfs):
-    # Arrange
     first = await _issue(db_session, audit_trip)
     await _issue(db_session, audit_trip, expires_in_days=7)
     await revoke_audit_pack(db_session, pack_id=first.pack.id, organization_id=audit_trip.org.id,
@@ -220,11 +195,9 @@ async def test_list_audit_packs_reports_status_label_and_views(db_session, audit
     ])
     await db_session.flush()
 
-    # Act
     packs = await list_audit_packs(db_session, trip_id=audit_trip.trip.id, organization_id=audit_trip.org.id,
                                    now=NOW + timedelta(days=8))
 
-    # Assert
     by_version = {p.pack_label: p for p in packs}
     assert set(by_version) == {"FP-AUDIT-AP1", "FP-AUDIT-AP2"}
     assert by_version["FP-AUDIT-AP1"].status == "revoked"
@@ -236,11 +209,8 @@ async def test_list_audit_packs_reports_status_label_and_views(db_session, audit
 
 
 async def test_list_audit_packs_other_org_sees_nothing(db_session, audit_trip, stored_pdfs):
-    # Arrange
     await _issue(db_session, audit_trip)
 
-    # Act
     packs = await list_audit_packs(db_session, trip_id=audit_trip.trip.id, organization_id=uuid.uuid4())
 
-    # Assert
     assert packs == []

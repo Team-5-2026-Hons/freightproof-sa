@@ -12,15 +12,12 @@ import type { PrecinctId } from './precinct'
 export interface CostProfile {
   diesel_price_per_litre: number
   litres_per_100km: number
-  /** Derived by the backend: diesel price × consumption ÷ 100. */
   fuel_per_km: number
   running_cost_per_km: number
   driver_cost_per_hour: number
   delay_cost_per_hour: number
   fixed_cost_per_trip: number
-  /** Used only for legs whose road route couldn't be looked up. */
   road_factor: number
-  /** True until an admin first saves: the starting rates from Bruce's figures apply. */
   is_default: boolean
   updated_at: string | null
   updated_by_name: string | null
@@ -45,7 +42,6 @@ export interface OperatingCost {
   fixed: number
   total: number
   trips_costed: number
-  /** Closed trips with no final arrival time, so no driving time: not costed at all. */
   trips_not_costed: number
   distance_km: number
   legs_routed: number
@@ -57,7 +53,6 @@ export interface DelayCost {
   late_hours: number
   problem_trips: number
   late_problem_trips: number
-  /** Problem trips with no planned or actual arrival: lateness can't be measured. */
   lateness_unknown: number
 }
 
@@ -92,7 +87,6 @@ export interface LaneCost {
   destination_name: string | null
   trip_count: number
   operating_total: number
-  /** null when no trip on the lane could be costed. */
   operating_per_trip: number | null
   delay_cost: number
   value_exposed: number
@@ -106,6 +100,5 @@ export interface FleetCost {
   delay: DelayCost
   exposure: ValueExposed
   buckets: CostBucket[]
-  /** Highest operating cost first. */
   lanes: LaneCost[]
 }

@@ -28,8 +28,6 @@ export function availabilityWindow(shown: TimeInputs): AvailabilityWindow | null
   if (!shown.departure || !shown.arrival) return null
   const startIso = sastInputToIso(shown.departure)
   const endIso = sastInputToIso(shown.arrival)
-  // An arrival before departure is already a schedule error under the field; asking the server
-  // would only earn a 422.
   return new Date(endIso).getTime() > new Date(startIso).getTime() ? { startIso, endIso } : null
 }
 
@@ -50,7 +48,6 @@ function freesLater(a: BusyEntry, b: BusyEntry): boolean {
   return new Date(a.busy_until).getTime() > new Date(b.busy_until).getTime()
 }
 
-// Weekday, day, month and 24-hour time, in SAST whatever the dispatcher's machine says.
 const FREE_AT_FORMAT = new Intl.DateTimeFormat('en-GB', {
   timeZone: OPERATIONS_TIMEZONE,
   weekday: 'short',

@@ -10,7 +10,6 @@ const COPY = FLEET_COPY.controls
 interface GrainToggleProps {
   value: Grain
   onChange: (grain: Grain) => void
-  /** Grains that would draw too many bars for the period: shown, but not selectable. */
   disabled: readonly Grain[]
 }
 

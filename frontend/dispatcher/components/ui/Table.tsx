@@ -7,16 +7,13 @@ import { SkeletonBar } from './Skeleton'
 import { KEYBOARD_RESIZE_STEP, useTableColumns, type ColumnSpec } from '@/lib/hooks/useTableColumns'
 
 export interface TableRenderContext {
-  /** Ids of columns hidden at this width, so a cell can absorb what a hidden one carried. */
   hidden: ReadonlySet<string>
 }
 
 export interface TableColumn<T> extends ColumnSpec {
   label: string
-  /** Header becomes a button that calls `onSort`. The owner sorts; this table never reorders. */
   sortable?: boolean
   render: (row: T, context: TableRenderContext) => ReactNode
-  /** What this column's cell looks like while loading. Omit for a generic bar. */
   skeleton?: ReactNode
 }
 
@@ -35,26 +32,18 @@ export interface TableSort { id: string; dir: 'asc' | 'desc' }
 export type TableDensity = 'comfortable' | 'compact'
 
 interface TableProps<T> {
-  /** Names the stored column widths; unique per table instance. */
   tableId: string
-  /** Screen-reader name for the table (visually hidden). */
   caption: string
   columns: readonly TableColumn<T>[]
-  /** A flat list… */
   rows?: readonly T[]
-  /** …or sections, each with its own header row. */
   groups?: readonly TableGroup<T>[]
   getRowKey: (row: T) => string
   /** Replaces the row's default background and hover (e.g. to flash a changed row); undefined keeps them. */
   rowClassName?: (row: T) => string | undefined
   sort?: TableSort
   onSort?: (columnId: string) => void
-  /** Initial load: show the real header over placeholder rows instead of data. Pass it only while
-   *  there is nothing to show; a background refetch must keep the rows on screen. */
   isLoading?: boolean
-  /** Announced to screen readers while loading, e.g. "Loading exceptions". */
   loadingLabel?: string
-  /** How many placeholder rows to show while loading. */
   skeletonRows?: number
   /** Receives the scrolling element, for owners that restore scroll position. A callback,
    *  not a RefObject, because a component must not write to a ref it was handed. */
@@ -63,22 +52,12 @@ interface TableProps<T> {
   className?: string
 }
 
-// Enough rows to fill a laptop screen, so the table doesn't visibly grow when data arrives.
 const DEFAULT_SKELETON_ROWS = 6
-// Ceiling on measured filler, so an absurdly tall or mis-measured area cannot render thousands of rows.
 const MAX_SKELETON_ROWS = 100
-// z-20, above any cell content: a cell may lift part of itself (z-10) over its row's click overlay, and
-// that must still scroll underneath the sticky header rather than paint over it.
-// border-t: a faint rule between whatever sits above the table (a SecHead title) and the column headers.
 const HEADER_CELL = 'sticky top-0 z-20 bg-surf-low border-t border-t-outline-v/15 text-left text-[10px] font-[700] uppercase tracking-[0.1em] text-on-surf-v border-b border-outline-v/10'
 const BODY_CELL = 'break-words border-b border-outline-v/10'
-// A line between neighbouring columns, header and body alike. Padding is symmetric, so it sits
-// centred between the text either side. On the cell, not the row: a <tr> takes no border in a
-// border-separate table, and a group's full-width header cell must not get one.
 const COLUMN_DIVIDER = '[&:not(:first-child)]:border-l [&:not(:first-child)]:border-l-outline/30'
 const DENSITY_CLASSES: Record<TableDensity, { header: string; body: string }> = {
-  // Compact also trims the side padding: with dividers every cell pays it twice, and a
-  // dense list should spend that width on content.
   comfortable: { header: 'px-4 py-[10px]', body: 'px-4 py-4 align-top' },
   compact: { header: 'px-3 py-[7px]', body: 'px-3 py-3 align-middle' },
 }
@@ -95,7 +74,6 @@ export function Table<T>({
   const byId = new Map(columns.map(column => [column.id, column]))
   const visibleColumns = visible.map(spec => byId.get(spec.id)).filter((column): column is TableColumn<T> => !!column)
 
-  // The page needs the scroller (restoration) and the hook needs it too (width); one ref feeds both.
   const { containerRef } = layout
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
   const setContainer = useCallback((el: HTMLDivElement | null): void => {
@@ -104,9 +82,6 @@ export function Table<T>({
     setScroller(el)
   }, [containerRef, onScroller])
 
-  // Placeholder rows needed to reach the bottom of the scroll area. A fixed count leaves white space
-  // under a tall window, and short rows (dashboard, drivers, history) leave the most. Measured from the
-  // real placeholder row rather than assumed, because row height depends on density and column content.
   const [fillRows, setFillRows] = useState(0)
   useEffect(() => {
     if (!isLoading || !scroller) return
@@ -149,7 +124,6 @@ export function Table<T>({
 
   function renderBodies(): ReactNode {
     if (isLoading) {
-      // Decorative, so hidden from assistive tech: the status line above says what is happening.
       return (
         <tbody aria-hidden>
           {Array.from({ length: Math.max(skeletonRows, fillRows) }, (_, index) => (
@@ -176,12 +150,9 @@ export function Table<T>({
     })
   }
 
-  // Clipped while loading: the filler deliberately overshoots by up to a row, and a scrollbar would show it.
   return (
     <div ref={setContainer} className={cn('w-full', isLoading ? 'overflow-hidden' : 'overflow-auto', className)}>
-      {/* Always mounted: a live region added at the same moment as its text is often not announced. */}
       <p role="status" className="sr-only">{isLoading ? loadingLabel : ''}</p>
-      {/* border-separate, not collapse: sticky header cells keep their own bottom border only this way. */}
       <table aria-busy={isLoading} className="border-separate border-spacing-0 text-left" style={{ tableLayout: 'fixed', width: layout.tableWidth }}>
         <caption className="sr-only">{caption}</caption>
         <colgroup>{visibleColumns.map(column => <col key={column.id} style={{ width: widths[column.id] }} />)}</colgroup>
@@ -195,8 +166,6 @@ export function Table<T>({
                 <th
                   key={column.id}
                   scope="col"
-                  // Named by its label only: the resize handle inside the cell has its own name,
-                  // which would otherwise be read as part of every column heading.
                   aria-labelledby={labelId}
                   aria-sort={sortable ? (sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none') : undefined}
                   className={cn(HEADER_CELL, DENSITY_CLASSES[density].header, COLUMN_DIVIDER, 'relative')}

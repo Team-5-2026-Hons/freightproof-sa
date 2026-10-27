@@ -103,8 +103,6 @@ describe('useExceptionDetail', () => {
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalled())
 
-    // Before the fetch resolves, useLiveResource is called with id '' — but the
-    // assertion that matters is the LATEST call, once trip_id is known.
     await waitFor(() => {
       const lastCall = mockedUseLiveResource.mock.calls[mockedUseLiveResource.mock.calls.length - 1]
       expect(lastCall).toEqual([

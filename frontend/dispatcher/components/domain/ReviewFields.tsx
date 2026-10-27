@@ -6,9 +6,6 @@ import { FieldLabel, fieldClass } from '@/components/trips/new/form-parts'
 import { COPY }   from '@shared/lib/constants/copy'
 import type { DispatcherReviewOutcome, ExceptionContactMethod } from '@shared/lib/types/exception'
 
-// Labels for the 5 real, submittable review outcomes, mirrors the old resolve-flow
-// file's RESOLUTION_METHOD_LABELS pattern (a plain Record so a missing case is a
-// compile error, not a silently-blank option).
 export const REVIEW_OUTCOME_LABELS: Record<DispatcherReviewOutcome, string> = {
   no_action_required:     'No action required',
   handled_externally:     'Handled externally',
@@ -17,21 +14,13 @@ export const REVIEW_OUTCOME_LABELS: Record<DispatcherReviewOutcome, string> = {
   referred_for_follow_up: 'Referred for follow-up',
 }
 
-// Reused verbatim from the old resolve-flow file's CONTACT_METHOD_LABELS, these already
-// read correctly, and the review endpoint's ExceptionContactMethod is the exact same
-// three values.
 export const CONTACT_METHOD_LABELS: Record<ExceptionContactMethod, string> = {
   phone:     'Phoned the driver',
   whatsapp:  'WhatsApp',
   in_person: 'In person',
 }
 
-// The outcome field's unselected state, a placeholder, never a real value, so the
-// option is rendered `disabled` below and can never be submitted.
 export const NO_OUTCOME_CHOSEN = '' as const
-// The contact-method field's blank state, NOT a placeholder. Unlike the outcome above,
-// leaving this blank is a genuine, submittable answer ("no contact happened, reviewed
-// from evidence alone"), so its option is deliberately not disabled.
 export const NO_CONTACT_CHOSEN = '' as const
 
 export interface ReviewFieldsProps {
@@ -44,8 +33,6 @@ export interface ReviewFieldsProps {
   onContact: (value: ExceptionContactMethod | typeof NO_CONTACT_CHOSEN) => void
 }
 
-/** The three review inputs, shared by the exception detail page and the trip-level batch
- *  review so the two can never word or validate the same fields differently. */
 /** Native select in the same filled, underlined skin as the trip creation form, so the
  *  review form no longer carries its own heavier boxed borders. */
 function ReviewSelect({ id, label, required = false, value, onChange, children }: {
@@ -92,8 +79,6 @@ export function ReviewFields({
           className={`${fieldClass(false)} min-h-28 resize-y py-3 leading-relaxed placeholder:text-on-surf-v/60`} />
         <p id={`${prefix}-note-help`} className="mt-1 text-xs text-on-surf-v">Record what you checked and why you chose this outcome.</p>
       </div>
-      {/* Optional. Blank is a real, submittable answer here, not a placeholder, so its
-          option is not `disabled`, unlike the outcome field above. */}
       <ReviewSelect id={`${prefix}-contact`} label="Contact method (optional)" value={contact}
         onChange={value => onContact(value as ExceptionContactMethod | typeof NO_CONTACT_CHOSEN)}>
         <option value={NO_CONTACT_CHOSEN}>No contact, reviewed from evidence alone</option>

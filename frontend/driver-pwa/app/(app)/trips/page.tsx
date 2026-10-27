@@ -23,12 +23,9 @@ import { TAB_BAR_SPACER } from '@/components/layout/AppShell'
 import { cn } from '@/lib/utils'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 
-// Matches TripRow's min-h-[76px] plus the 1px rule between rows.
 const TRIP_ROW_PX = 77
-// Upcoming is a glance — the next trip or two; Past takes whatever height is left.
 const UPCOMING_PREVIEW_WITH_ACTIVE = 1
 const UPCOMING_PREVIEW = 2
-// What Past shows before layout can be measured (first paint, jsdom).
 const PAST_PREVIEW_FALLBACK = 2
 
 function SeeAll({ onClick, label }: { onClick: () => void; label: string }) {
@@ -48,8 +45,6 @@ export default function TripsPage() {
   const router = useRouter()
   const { trip: sessionTrip } = useTrip()
   const { active, upcoming, past, isLoading, loadError, reload } = useGroupedTrips()
-  // An incoming collection is not in /trips/me until custody actually transfers, so "No
-  // trips yet" would be false for a driver whose only work is a pending handover.
   const { pending: pendingHandovers } = useDriverSubstitutions()
   const pastRef = useRef<HTMLDivElement>(null)
   const pastFits = useRowsThatFit(pastRef, TRIP_ROW_PX, PAST_PREVIEW_FALLBACK)
@@ -112,13 +107,11 @@ export default function TripsPage() {
             title="Past"
             action={<SeeAll label="past" onClick={() => router.push(ROUTES.tripsPast)} />}
           />
-          {/* Measured, not scrolled: only whole rows that fit are rendered. */}
           <div ref={pastRef} className="min-h-0 flex-1 overflow-hidden">
             <TripList trips={past.slice(0, pastFits)} kind="past" onSelect={open} />
           </div>
         </section>
       )}
-      {/* Clearance for the floating tab bar (see AppShell's TAB_BAR_SPACER). */}
       <div aria-hidden className={cn('shrink-0', TAB_BAR_SPACER)} />
     </div>
   )

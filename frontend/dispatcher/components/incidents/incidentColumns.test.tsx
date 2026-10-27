@@ -15,7 +15,6 @@ describe('incident columns', () => {
 
     render(<>{received.render(incident, NOTHING_HIDDEN)}</>)
 
-    // 10:00Z is 12:00 SAST.
     expect(screen.getByText('2 h ago')).toHaveAttribute('title', '22 Oct 2026, 12:00 SAST')
   })
 
@@ -27,8 +26,6 @@ describe('incident columns', () => {
     expect(screen.getByText('—')).toBeInTheDocument()
   })
 
-  // The clipped Received column came from the visible columns adding up to more than the container,
-  // which makes the table scroll sideways. Every column that is shown must fit at every width.
   it.each([800, 900, 1000, 1100, 1150, 1280, 1440])('fits_without_scrolling_sideways_at_a_%ipx_container', containerWidth => {
     const layout = computeColumnLayout(buildIncidentColumns(NOW), {}, containerWidth)
 

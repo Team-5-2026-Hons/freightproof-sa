@@ -15,19 +15,10 @@ interface Props {
   artifactLoading?: boolean
   artifactError?: string | null
   onRetryArtifacts?: () => void
-  // Every seal finding recorded on THIS row: a single arrival
-  // can carry seal_compromised (broken/missing) AND seal_mismatch (wrong number)
-  // together, so this is a list, never a single exception like UnloadingDetail's was.
   sealExceptions?: readonly Pick<TripException, 'exception_type' | 'severity'>[]
   phase: PhaseDescriptor
-  // Needed to find THIS leg's own departure — see departureSealForLeg. A cross-dock
-  // trip has one departure per leg, so a plain "the trip's departure" lookup would
-  // compare a later leg's arrival against an earlier leg's seal.
   allPhases: readonly PhaseDescriptor[]
   artifactsById: Map<string, EvidenceArtifactWithUrl>
-  // The precinct this phase is anchored to (the destination stop), resolved by the
-  // page from the phase's stop. Arrival is a stop-anchored phase,
-  // so it gets the same geofence verdict as unloading, never in_transit's "no verdict".
   precinct: Precinct | undefined
 }
 
@@ -62,7 +53,6 @@ function sealFindings(
       tone: exception.severity === 'critical' ? 'err' : 'warn',
     }))
   }
-  // No recorded finding: clean only when there is something to compare and it matches.
   if (departureSeal && phase.seal_number && phase.status === 'completed' && departureSeal === phase.seal_number) {
     return [{ key: 'match', text: 'Recorded seals match ✓', tone: 'ok' }]
   }

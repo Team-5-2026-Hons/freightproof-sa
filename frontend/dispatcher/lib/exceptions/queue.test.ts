@@ -76,7 +76,6 @@ describe('sortQueue', () => {
     expect(ids('raised', 'asc')).toEqual(['a', 'b', 'c', 'bad'])
   })
   it('orders incidents most severe first when ascending', () => {
-    // Same severity and type ('a' and 'bad') keep their chronological order.
     expect(ids('incident', 'asc')).toEqual(['b', 'a', 'bad', 'c'])
     expect(ids('incident', 'desc')[0]).toBe('c')
   })

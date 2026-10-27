@@ -7,7 +7,6 @@ export interface PPManifestRef {
   issuer_account: string
   origin_hub: string
   number: number
-  /** "CGY Logistics · JNB 69": the client, then the manifest as PP staff say it. */
   display: string
 }
 
@@ -35,19 +34,14 @@ export type PPManifestErrorCode =
 export interface PPManifestWarning {
   code: PPManifestWarningCode
   message: string
-  /** True for the five codes that refuse creation (spec §10.1). */
   blocking: boolean
-  /** The trip holding the manifest or its waybills. Null when that trip belongs to
-   *  another organisation: the conflict still blocks, but its identity is private. */
   trip_id: string | null
   trip_reference: string | null
-  /** WAYBILL_CLIENT_MISMATCH and WAYBILL_ON_OTHER_TRIP name their waybills. */
   waybills: string[]
 }
 
 export interface PPManifestHub {
   hub_code: string
-  /** Null when no precinct of the issuing client, visible to this dispatcher, has this hub code. */
   precinct_id: string | null
   precinct_name: string | null
 }
@@ -77,7 +71,6 @@ export interface PPManifestPreview {
   pp_manifest: PPManifestRef
   snapshot_sha256: string
   client_organization_id: string | null
-  /** The linked organisation's name, else PP's issuer name. */
   client_name: string
   origin: PPManifestHub
   destination: PPManifestHub
@@ -106,14 +99,6 @@ export interface TripFromPPManifestPayload {
   origin_precinct_id: string | null
   destination_precinct_id: string | null
 }
-
-// ── The H0 snapshot ───────────────────────────────────────────────────────────
-// The PP manifest as it stood at creation, stored on the trip's trip_creation phase row and
-// hashed into the journey lock (spec §7.3, §9). GET /trips/{id}/manifest sends it to the
-// dispatcher summarised for display (schemas/pp_manifest.py PPManifestSnapshotRead): the
-// lines and totals are built by the same backend helper as the preview's, so the panel and
-// the create screen describe a manifest identically. The stored JSON, which also holds
-// receiver contact details, never leaves the server.
 
 export interface PPManifestSnapshot {
   manifest_number: number

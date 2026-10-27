@@ -23,7 +23,6 @@ from app.orchestration.trips.availability import format_when
 from app.schemas.assistant import ParcelCard, ParcelJourneyRow, RecordRef
 from app.schemas.parcel_trace import ParcelJourney, ParcelLookupQuery, ParcelTraceQuery
 
-# A waybill is normally on one trip; more means it was moved. The newest few are what matters.
 MAX_WAYBILL_TRIPS = 10
 BARCODE_DETAIL = "One parcel's journey, from the parcel trace."
 WAYBILL_DETAIL = (

@@ -95,7 +95,6 @@ async def test_anchor_commits_the_outcome_and_disposes_its_engine(monkeypatch):
 
     result = await tasks._anchor(event_id=uuid.uuid4())
 
-    # A failed attempt is a state worth keeping (anchor_status=failed), so it is committed.
     assert result is False
     session.commit.assert_awaited_once()
     engine.dispose.assert_awaited_once()

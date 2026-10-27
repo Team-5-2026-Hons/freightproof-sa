@@ -67,7 +67,6 @@ def cited_attribution_error(
     if artifact_phase_event_id != phase_event_id:
         return f"The {cited_role.value} was captured for a different phase."
     if artifact_role != cited_role:
-        # artifact_role is non-None here: the CHECK constraint sets the pair together.
         label = artifact_role.value if artifact_role is not None else "unattributed"
         return f"The artifact was captured as '{label}', not '{cited_role.value}'."
     return None

@@ -7,11 +7,8 @@ import { Chip } from '@/components/ui/Chip'
 import { initialsOf, roleLabel } from '@/lib/format/dispatcher-identity'
 import type { DispatcherUser } from '@/lib/types/user'
 
-// Long enough to read "Copied", short enough that a second copy is not blocked by it.
 const COPIED_FLASH_MS = 1_500
 
-// What the role means in this app, stated from the code: the forensic view is the one thing
-// the admin role adds, so that is the only difference claimed.
 const ROLE_DESCRIPTION: Record<DispatcherUser['role'], string> = {
   admin_dispatcher: 'Standard dispatcher access, plus the forensic view of blockchain receipts and the audit trail.',
   dispatcher: 'Standard dispatcher access. The forensic view is limited to admin dispatchers.',
@@ -24,8 +21,6 @@ interface CopyValueProps {
   value: string
 }
 
-// A reference ID is read out to support or pasted into a ticket, so it gets a copy control.
-// The clipboard API needs a secure context; when it refuses, the value stays selectable.
 function CopyValue({ label, value }: CopyValueProps) {
   const [state, setState] = useState<CopyState>('idle')
 
@@ -55,7 +50,6 @@ function CopyValue({ label, value }: CopyValueProps) {
       >
         {state === 'copied' ? 'Copied' : state === 'failed' ? 'Copy failed' : null}
       </Button>
-      {/* aria-label on the button hides its changing text, so the outcome is announced here. */}
       <span role="status" className="sr-only">
         {state === 'copied' ? `${label} copied` : state === 'failed' ? `Could not copy ${label}` : ''}
       </span>

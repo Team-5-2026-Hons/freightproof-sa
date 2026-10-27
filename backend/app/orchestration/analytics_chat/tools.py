@@ -53,7 +53,6 @@ from app.orchestration.analytics_chat.totals import (
     routes_totals,
 )
 
-# What a tool hands back to the model: a response model dumped to JSON-ready values.
 JsonObject = dict[str, object]
 
 
@@ -68,8 +67,6 @@ class NoInput(ToolInput):
 
 
 class PeriodInput(ToolInput):
-    # No defaults: strict tool schemas need every field listed as required, so optional
-    # dates are required-but-nullable instead.
     preset: PeriodPreset = Field(
         description=(
             "The page's Period choice. Weeks start on Monday; a preset ends today and includes "
@@ -90,21 +87,17 @@ class ExplainInput(ToolInput):
     topic: Topic = Field(description="The part of the page to explain; the tool's description lists what each covers.")
 
 
-# runner(db, organisation, period, now, inputs): period is None for tools that take none (the tiles, explain);
-# inputs is the checked input, which only explain reads.
 ToolRunner = Callable[[AsyncSession, uuid.UUID, Period | None, datetime, ToolInput], Awaitable[JsonObject]]
 
 
 @dataclass(frozen=True)
 class ChatTool:
     name: str
-    # The page's tab id (?tab=…); None for the tiles above the tabs.
     tab: str | None
     label: str
     description: str
     input_model: type[ToolInput]
     runner: ToolRunner
-    # False for explain: it states no fleet figures, so its answers get no "Based on" chip (basis.py).
     gives_figures: bool = True
 
     def input_schema(self) -> JsonObject:
@@ -133,15 +126,12 @@ def _with_totals(totals: JsonObject, model: BaseModel) -> JsonObject:
 
 
 def _require(period: Period | None) -> Period:
-    # A period tool always gets a period from run_tool; reaching this is a defect.
     if period is None:
         raise ValueError("this tool needs a period")
     return period
 
 
 async def _activity(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
-    # The Activity tab shows trips and cancellations over time AND the busy patterns, so the
-    # tool returns both. Patterns have no time axis, hence no grain.
     resolved = _require(period)
     activity = await get_activity(db, organization_id=org, period=resolved)
     patterns = await get_patterns(db, organization_id=org, period=replace(resolved, grain=None))
@@ -197,8 +187,6 @@ async def _right_now(db: AsyncSession, org: uuid.UUID, period: Period | None, no
 
 
 async def _explain(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
-    # The page guide needs no period (B45). For Cost, the organisation's rates in force today come too, so "how do we
-    # come up with operating cost?" is answered with the real numbers the estimates use.
     if not isinstance(inputs, ExplainInput):
         raise TypeError("explain takes an ExplainInput")
     result: JsonObject = {"guide": guide_for(inputs.topic)}
@@ -213,12 +201,8 @@ def _topic_menu() -> str:
     return "; ".join(f"{topic}: {', '.join(entry.title for entry in entries)}" for topic, entries in GUIDE.items())
 
 
-# The licence tile skips expiries beyond its last band.
 MAX_EXPIRY_BAND_DAYS = EXPIRY_BAND_EDGES_DAYS[-1]
 
-# Said once and appended to every period tool, so all of them describe the scope the same way.
-# "Unless `about` says otherwise": cancellations (dated when cancelled) and busy patterns (any
-# trip status) are exceptions on the page itself, and used to be described wrongly here (B43).
 _SCOPE = (
     " Unless the result's `about` lines say otherwise, counts closed trips, grouped by the day of their first "
     "departure in South African time. Buckets marked is_partial are not a whole week, month or year. A null "
@@ -371,5 +355,4 @@ async def run_tool(
     result = await tool.runner(db, organization_id, period, moment, inputs)
     if tool.name not in ABOUT_BY_TOOL:
         return ToolOutcome(tool=tool, result=result, error=None, period=period)
-    # The page's own explanation of each figure goes first, so the model reads it before the numbers.
     return ToolOutcome(tool=tool, result={"about": about(tool.name), **result}, error=None, period=period)

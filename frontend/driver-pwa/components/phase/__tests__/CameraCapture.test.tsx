@@ -6,16 +6,11 @@ import { __resetRestoredPhotoForTests, captureKey, markCapturePending, receiveRe
 
 const SAMPLE_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
-// The component surfaces capture failures via useToast — mock the hook (same pattern
-// as the page-client suites) so these tests don't need a full ToastProvider tree.
 const mockNotify = vi.fn()
 vi.mock('@/lib/hooks/useToast', () => ({
   useToast: () => ({ notify: mockNotify }),
 }))
 
-// Drive the NATIVE branch deterministically: platform reports native, and getPhoto is a
-// controllable mock so each test can simulate the Capacitor bridge's real rejection
-// messages (see classifyCameraFailure in the component).
 const mockIsNativePlatform = vi.fn()
 vi.mock('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: () => mockIsNativePlatform() },
@@ -27,9 +22,6 @@ vi.mock('@capacitor/camera', () => ({
   CameraResultType: { DataUrl: 'dataUrl' },
   CameraSource: { Camera: 'CAMERA' },
 }))
-
-// Task 2c: the captured photo must read as a framed control, not merge with the page. The image
-// sits in a fixed aspect-video frame and fills it via object-cover (no free-height max-h-48).
 
 describe('CameraCapture captured branch', () => {
   it('renders the image with object-cover inside an aspect-video frame', () => {
@@ -91,9 +83,6 @@ describe('CameraCapture empty tile', () => {
   })
 })
 
-// Audit fix: handleCapture previously had try/finally with NO catch — a permission
-// denial or any native failure silently reset the button with zero driver feedback.
-
 describe('CameraCapture native capture failures', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -115,7 +104,6 @@ describe('CameraCapture native capture failures', () => {
   })
 
   it('shows the settings-pointing toast when camera permission is denied', async () => {
-    // Exact string the Capacitor camera plugin rejects with on Android/iOS.
     mockGetPhoto.mockRejectedValue(new Error('User denied access to camera'))
 
     render(<CameraCapture label="Selfie" dataUrl={null} onCapture={vi.fn()} />)
@@ -134,14 +122,11 @@ describe('CameraCapture native capture failures', () => {
 
   it('stays silent when the driver cancels the camera on purpose', async () => {
     const onCapture = vi.fn()
-    // Exact string the plugin rejects with when the user backs out of the camera.
     mockGetPhoto.mockRejectedValue(new Error('User cancelled photos app'))
 
     render(<CameraCapture label="Selfie" dataUrl={null} onCapture={onCapture} />)
     fireEvent.click(screen.getByText('Take Photo'))
 
-    // The button must return to its idle state (finally ran) with no toast fired —
-    // a cancel is an intentional action, not a failure.
     await waitFor(() => expect(screen.getByText('Take Photo')).toBeInTheDocument())
     expect(mockNotify).not.toHaveBeenCalled()
     expect(onCapture).not.toHaveBeenCalled()
@@ -186,10 +171,6 @@ describe('CameraCapture native capture failures', () => {
   })
 })
 
-// FP-150 hardening. Two gaps this suite had: the browser file-input branch had NO
-// coverage at all (every test above drives the native Capacitor path), and a driver who
-// denied camera permission was dead-ended on a toast with no way to attach a photo.
-
 /**
  * Captures the detached <input type="file"> the component builds and clicks, so a test
  * can inspect it and drive its change handler. Returns a getter, since the element does
@@ -202,7 +183,6 @@ function interceptFileInput(): () => HTMLInputElement | null {
     const el = realCreateElement(tag)
     if (tag === 'input') {
       captured = el as HTMLInputElement
-      // jsdom would otherwise try to open a file dialog it has no implementation for.
       ;(el as HTMLInputElement).click = vi.fn()
     }
     return el
@@ -232,7 +212,6 @@ describe('CameraCapture browser fallback', () => {
     expect(input).not.toBeNull()
     expect(input!.type).toBe('file')
     expect(input!.accept).toBe('image/*')
-    // The hint that makes a phone open the camera rather than the gallery.
     expect(input!.capture).toBe('environment')
     expect(input!.click).toHaveBeenCalled()
     expect(mockGetPhoto).not.toHaveBeenCalled()
@@ -241,8 +220,6 @@ describe('CameraCapture browser fallback', () => {
   it('hands the page a data URL for the photo the driver picked', async () => {
     const onCapture = vi.fn()
     const getInput = interceptFileInput()
-    // Decode succeeds; jsdom has no canvas 2D context, so the component falls through to
-    // its FileReader path — the same route a WebView takes when compression fails.
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({
       width: 4000, height: 3000, close: vi.fn(),
     }))
@@ -284,8 +261,6 @@ describe('CameraCapture falls back to the picker when the native camera cannot o
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
     fireEvent.click(screen.getByText('Take Photo'))
 
-    // The driver is told how to fix it AND given a way through right now — a driver at a
-    // gate cannot stop to change OS settings, and the photo is the evidence.
     await waitFor(() => expect(screen.getByText('Choose a Photo Instead')).toBeInTheDocument())
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'error', title: 'Camera access is blocked' }),
@@ -293,14 +268,11 @@ describe('CameraCapture falls back to the picker when the native camera cannot o
 
     fireEvent.click(screen.getByText('Choose a Photo Instead'))
 
-    // Second tap goes to the file picker; re-asking the plugin would only reproduce the
-    // same refusal.
     expect(getInput()).not.toBeNull()
     expect(mockGetPhoto).toHaveBeenCalledTimes(1)
   })
 
   it('offers the picker on a device whose camera fails for any other reason', async () => {
-    // A device with no camera at all surfaces here like any other plugin error.
     mockGetPhoto.mockRejectedValue(new Error('No camera available'))
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
@@ -315,7 +287,6 @@ describe('CameraCapture falls back to the picker when the native camera cannot o
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
     fireEvent.click(screen.getByText('Take Photo'))
 
-    // Backing out is not a failure — the control must not degrade to a picker for it.
     await waitFor(() => expect(screen.getByText('Take Photo')).toBeInTheDocument())
     expect(screen.queryByText('Choose a Photo Instead')).not.toBeInTheDocument()
   })
@@ -383,9 +354,6 @@ describe('CameraCapture after Android reclaimed the WebView mid-capture', () => 
   })
 })
 
-// Tim, 21 Oct: after the linehaul scan the sheet sat there looking finished while the PDF
-// was still building, and the only sign of the wait was the swipe's label — which the
-// driver is not looking at. The veil puts the wait on the thing causing it.
 describe('CameraCapture busy veil', () => {
   it('test_lays_a_veil_and_a_spinner_over_the_capture_while_it_is_being_processed', () => {
     render(
@@ -401,7 +369,6 @@ describe('CameraCapture busy veil', () => {
     const veil = screen.getByRole('status', { name: 'Preparing the PDF' })
 
     expect(veil).toBeInTheDocument()
-    // Faint, not opaque: the driver must still be able to read the sheet they captured.
     expect(veil.className).toContain('bg-black/35')
   })
 

@@ -43,7 +43,6 @@ describe('usePermissionStatus', () => {
   })
 
   it('test_returns_null_when_the_platform_cannot_say', async () => {
-    // e.g. iOS Safari has no Permissions API for the camera: show nothing, never a guess.
     geoCheck.mockRejectedValue(new Error('Permissions API not available in this browser'))
 
     render(<Probe kind="location" />)
@@ -53,7 +52,6 @@ describe('usePermissionStatus', () => {
   })
 
   it('test_rechecks_when_the_driver_comes_back_to_the_app', async () => {
-    // The usual fix for "denied" is the phone's Settings app; returning must refresh it.
     geoCheck.mockResolvedValueOnce({ location: 'denied' }).mockResolvedValueOnce({ location: 'granted' })
     render(<Probe kind="location" />)
     await waitFor(() => expect(screen.getByText('denied')).toBeInTheDocument())

@@ -63,12 +63,7 @@ def _geofence_snapshot(precinct: Precinct) -> dict[str, Any]:
         "geofence_radius_metres": precinct.geofence_radius_metres,
         "is_shared": precinct.is_shared,
     }
-    # Only present when an outline exists, so a circle precinct's anchored payload stays
-    # byte-identical to the one anchored before outlines existed (its hash is pinned in
-    # test_fleet_anchor_payload_pins). diff_critical_fields reads a missing key as None,
-    # so drawing or removing an outline still shows up as a change.
     if precinct.geofence_polygon is not None:
-        # Already JSON-safe [lat, lng] lists (see schemas.organisations._normalise_polygon).
         snapshot["geofence_polygon"] = precinct.geofence_polygon
     return snapshot
 
@@ -154,32 +149,11 @@ async def create_precinct(
         event_type=PrecinctEventType.CREATED.value,
         changed_fields=snapshot,
         changed_by_user_id=current_user_id,
-        # Stamped explicitly rather than left to the column's server_default=func.now():
-        # Postgres's now() is constant for the lifetime of the enclosing DB transaction,
-        # so two PrecinctEvent rows written in the same transaction (e.g. a create
-        # immediately followed by an update sharing one session) would otherwise get an
-        # IDENTICAL created_at and make get_precinct_detail's chronological ordering
-        # non-deterministic. datetime.now(UTC) reads the real wall clock at construction
-        # time instead.
-        #
-        # NOTE the deliberate asymmetry: created_at is app-clock authoritative here, while
-        # updated_at on the same row stays database-clock authoritative — its onupdate
-        # fires when blockchain_receipt_id is set just below, so it cannot be pinned from
-        # Python. Under app/database clock skew a row's updated_at can therefore precede
-        # its created_at. Nothing orders across the two columns today; do not "restore
-        # symmetry" by reverting this to server_default without re-reading the paragraph
-        # above, and see the follow-up note about a monotonic ordering key.
-        # PrecinctEvent is the only one of the three event tables that does this —
-        # VehicleEvent and DriverEvent still take created_at from server_default.
         created_at=event_timestamp,
     )
     db.add(event)
     await db.flush()
 
-    # No hashing, unlike create_vehicle's pulsit_device_id. A precinct holds a business
-    # address and a business coordinate — no personal data — so nothing here is subject
-    # to the POPIA rule that keeps identifiers off-chain. The geofence is anchored in the
-    # clear precisely so a later verification can reproduce it.
     await anchor_fleet_event(
         db,
         anchor=anchor_subject,
@@ -231,8 +205,6 @@ async def _validate_precinct_patch(
     db: AsyncSession, *, precinct: Precinct, organization_id: uuid.UUID, data: PrecinctUpdateBody,
 ) -> dict[str, Any]:
     """The fields a PATCH sets, after the name-uniqueness and pin-in-outline checks."""
-    # exclude_unset, not exclude_none: a PATCH that explicitly sets address to null is a
-    # deliberate clear, and must not be confused with one that omitted the field.
     patched = data.model_dump(exclude_unset=True)
     if "name" in patched:
         await _assert_name_free(
@@ -242,8 +214,6 @@ async def _validate_precinct_patch(
             exclude_precinct_id=precinct.id,
         )
 
-    # The schema checks pin-vs-outline only when both arrive in one body. A PATCH may move
-    # just one of them, so the check is repeated here on the merged result, before any write.
     merged_polygon = patched.get("geofence_polygon", precinct.geofence_polygon)
     if merged_polygon is not None:
         try:
@@ -287,8 +257,6 @@ async def update_precinct(
         old, new, PRECINCT_CRITICAL_FIELDS | PRECINCT_COSMETIC_FIELDS
     )
 
-    # Nothing actually changed — a PATCH that set every field to its current value, or
-    # an empty body. Recording it would fill the history with rows that say nothing.
     if full_diff is None:
         await db.refresh(precinct)
         return PrecinctRead.model_validate(precinct)
@@ -305,22 +273,12 @@ async def update_precinct(
         event_type=event_type.value,
         changed_fields=full_diff,
         changed_by_user_id=current_user_id,
-        # See create_precinct for why this is stamped explicitly rather than left to
-        # server_default=func.now(), and for the created_at/updated_at clock asymmetry.
         created_at=event_timestamp,
     )
     db.add(event)
     await db.flush()
 
-    # Cosmetic-only changes are logged and left unanchored — same fee logic as
-    # update_vehicle. No hashing on this path either; see create_precinct.
     if critical_diff is not None:
-        # The payload carries the FULL diff, not just the critical half, even though only a
-        # critical change gets us here. The verification package rebuilds it from the event
-        # row's changed_fields column through the same fleet.canonical builder, so anchoring a
-        # subset of that column would make a legitimate mixed edit — move a depot and rename
-        # it in one PATCH — hash differently on verification and report tampering that never
-        # happened. create_precinct anchors its whole snapshot for the same reason.
         await anchor_fleet_event(
             db,
             anchor=anchor_subject,
@@ -371,8 +329,6 @@ async def get_precinct_detail(
     if precinct is None:
         raise ResourceNotFoundError("Precinct", str(precinct_id))
 
-    # Visible but not owned — reachable only via is_shared. Return the current geofence
-    # (that is what sharing is for) and nothing about how it came to be.
     if precinct.principal_organization_id != organization_id:
         return PrecinctDetailResponse(
             **PrecinctRead.model_validate(precinct).model_dump(), events=[], receipts=[]

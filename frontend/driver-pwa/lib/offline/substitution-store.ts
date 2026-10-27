@@ -23,20 +23,16 @@ const LATE = 'late'
 const QUOTA_ERROR_NAME = 'QuotaExceededError'
 
 export interface CapturePhoto {
-  /** Local id, stable for the photo's life. */
   id: string
   dataUrl: string
   capturedAt: string
-  /** Sent as the upload's client_request_id on every attempt, so a lost response never duplicates it. */
   uploadRequestId: string
-  /** Persisted the moment the upload lands, so a crash never re-uploads. */
   uploadedArtifactId: string | null
 }
 
 export interface CaptureSealCheck {
   vehicleId: string
   condition: SubstitutionSealCondition | null
-  /** As typed; normalised when the body is built. */
   sealNumber: string
   notApplicableReason: string
   photos: CapturePhoto[]
@@ -57,18 +53,14 @@ export interface CapturePosition {
 export type CaptureStatus = 'draft' | 'sending' | 'saved' | 'retained'
 
 export interface SubstitutionCapture {
-  /** `${actorId}:${requestId}` — one capture per driver per arrangement. */
   key: string
   actorId: string
   tripId: string
   requestId: string
   role: SubstitutionRole
   status: CaptureStatus
-  /** The arrangement version this declaration was made against. */
   expectedVersion: number
-  /** The confirmation's client_request_id. Replaced only by a new intentional submit. */
   clientRequestId: string
-  /** Exactly what was (or is being) sent. null while still a draft. */
   submittedBody: ConfirmSubstitutionRequest | ConfirmSubstitutionObservationRequest | null
   captureFormat?: 'observation_v2' | null
   locationObservedAt?: string | null
@@ -76,27 +68,20 @@ export interface SubstitutionCapture {
   confirmedVehicleIds: string[]
   sealChecks: CaptureSealCheck[]
   discrepancyNote: string
-  /** When the driver confirmed, on this device. Set once per intentional submit. */
   capturedAt: string | null
-  /** null means the phone could not give a position — recorded as unavailable, never invented. */
   position: CapturePosition | null
-  /** The server's last answer to the submission. */
   result: SubstitutionRequestRead | null
-  /** Why a retained/blocked capture is not progressing, in the driver's words. */
   note: string | null
   createdAt: string
   updatedAt: string
 }
 
 export interface LateEvidenceProgress {
-  /** The retained item this sends: a queue entry id or an exception report id. */
   sourceId: string
   actorId: string
   tripId: string
   custodySequence: number
-  /** The late-evidence client_request_id. Fixed for this item for good. */
   clientRequestId: string
-  /** Per photo slot: the upload's client_request_id and, once landed, its artifact id. */
   uploads: Record<string, { requestId: string; artifactId: string | null }>
   receipt: LateEvidenceRead | null
   createdAt: string
@@ -167,14 +152,12 @@ function openDatabase(): Promise<IDBDatabase> {
     }
   })
   connection = opening
-  // A failed open must not be cached, or one blocked attempt would poison the session.
   opening.catch(() => {
     if (connection === opening) connection = null
   })
   return opening
 }
 
-// Resolves once the transaction has COMMITTED, not merely when the request succeeded.
 async function transact<T>(
   storeName: StoreName,
   mode: IDBTransactionMode,

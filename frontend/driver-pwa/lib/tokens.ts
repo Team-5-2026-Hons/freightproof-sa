@@ -11,29 +11,12 @@ export const QR_CANVAS_COLOURS = {
   light: '#ffffff',
 } as const
 
-/**
- * The Appearance tiles' miniature screens (components/settings/ThemeSelect). Literal
- * light and dark faces, not tokens: each tile shows what a choice LOOKS like, so it must
- * not change with the current theme. Kept as full class strings so Tailwind's content
- * scan (which includes lib/) emits them. System is split light|dark because it is both.
- */
 export const THEME_PREVIEW_CLASSES = {
   system: 'bg-[linear-gradient(90deg,#f3f3f3_50%,#1c1c1e_50%)]',
   light: 'bg-[#f3f3f3]',
   dark: 'bg-[#1c1c1e]',
 } as const
 
-// Google Maps JS API styling for the dark theme. The basemap does not follow the app's
-// theme on its own, so at night the map stayed a bright white panel in an otherwise dark
-// screen — a glare source in a dark cab, the exact situation the dark theme exists for.
-//
-// Lives here, not in lib/constants: like the QR colours above, these are raw values for a
-// surface Tailwind classes cannot reach, and this is the file the raw-hex lint rule exempts.
-//
-// Derived from Google's published "night" style, trimmed to the features a driving map
-// shows. Values are the basemap's own palette, not app tokens: the Maps API takes literal
-// colour strings and these tones are tuned for map legibility (roads lighter than land,
-// water darker), not for UI surfaces.
 export const MAP_STYLES_DARK: google.maps.MapTypeStyle[] = [
   { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
@@ -51,9 +34,6 @@ export const MAP_STYLES_DARK: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
 ]
 
-// Points of interest are noise on an evidence map: restaurant and school pins competed with
-// the one thing the map is for — where the truck is. Applied in both themes, under the dark
-// palette at night. Roads, place names and Google's attribution stay.
 export const MAP_STYLES_QUIET: google.maps.MapTypeStyle[] = [
   { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
   { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },

@@ -12,7 +12,6 @@ const EMPTY: TripExceptionListItem[] = []
 export interface UseExceptionQueueResult {
   items: TripExceptionListItem[]
   isLoading: boolean
-  // MUST be surfaced: a failed load renders identically to a genuinely empty queue.
   error: string | null
   refetch: () => void
   refetchSilent: () => void
@@ -25,7 +24,6 @@ export interface UseExceptionQueueResult {
  * itself has no filters.
  */
 export function useExceptionQueue(): UseExceptionQueueResult {
-  // Stable identity, or a new closure per render would refetch every render.
   const fetchQueue = useCallback(
     () => api.get<TripExceptionListItem[]>('/api/v1/exceptions/review-queue'),
     [],
@@ -36,9 +34,6 @@ export function useExceptionQueue(): UseExceptionQueueResult {
     EMPTY,
   )
 
-  // 'any' trip: this queue spans the whole org. Silent so it updates in place, not with
-  // a spinner. Filtered to exception kinds (claims too — a colleague claiming must move the row
-  // between tabs) so unrelated phase/close events don't re-poll it.
   useLiveResource('trip', 'any', refetchSilent, {
     kinds: ['exception_raised', 'exception_reviewed', 'exception_claimed'],
   })

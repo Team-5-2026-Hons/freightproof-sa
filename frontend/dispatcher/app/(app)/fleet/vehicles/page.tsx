@@ -90,7 +90,6 @@ const EMPTY_FORM: VehicleFormState = {
 export default function FleetVehiclesPage(): React.JSX.Element {
   const router = useRouter()
   const { all: vehicles, horses, trailers, isLoading, error: fetchError, refetch } = useVehicles()
-  // Skeleton cards only for the first load: a refetch (after adding a vehicle) keeps the cards on screen.
   const initialLoad = isLoading && vehicles.length === 0
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
@@ -98,7 +97,6 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   const [touched, setTouched] = useState<Set<VehicleField>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  // The assistant's "add a vehicle" button opens this page with the pop-up open, empty (assistant spec B41).
   useAddFormLink(ROUTES.fleetVehicles, () => setModalOpen(true))
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
@@ -107,13 +105,8 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   const [sortOption, setSortOption] = useState<SortOption>('registration-asc')
   const [search, setSearch] = useState('')
 
-  // Derived on every render — validateVehicleForm is pure and cheap. `form`
-  // (VehicleFormState) satisfies VehicleFormValues directly since every
-  // VehicleField key is typed string on VehicleFormState too.
   const errors = validateVehicleForm(form)
   const hasErrors = Object.values(errors).some((e) => e !== null)
-  // VIN gets live feedback the moment the user types (not touched-gated): a neutral
-  // character count while still entering, a red error only once it's the wrong shape.
   const vinFeedback = vinFieldFeedback(form.vin_number)
 
   useEffect(() => {
@@ -154,8 +147,6 @@ export default function FleetVehiclesPage(): React.JSX.Element {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  // FormField's onChange is (name: string, value: string) => void; this adapts
-  // it to the generic setter above and marks the field touched for error gating.
   function handleFieldChange(name: string, value: string): void {
     handleChange(name as keyof VehicleFormState, value)
     setTouched((prev) => new Set(prev).add(name as VehicleField))
@@ -169,8 +160,6 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   }
 
   async function handleSubmit(): Promise<void> {
-    // Defensive re-validate: the disabled Save button already blocks this
-    // in the common path, but guard here too (e.g. a future Enter-key submit).
     if (hasErrors) {
       setTouched(new Set(VEHICLE_FIELD_ORDER))
       const firstInvalidField = VEHICLE_FIELD_ORDER.find((field) => errors[field] !== null)
@@ -216,7 +205,6 @@ export default function FleetVehiclesPage(): React.JSX.Element {
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Type filter — compact segmented control, matches Label-S table-header scale */}
           <div className="flex items-center gap-[2px] bg-surf-low rounded-md p-[3px] shrink-0">
             {([
               { id: 'all', label: `All (${vehicles.length})` },
@@ -238,7 +226,6 @@ export default function FleetVehiclesPage(): React.JSX.Element {
             ))}
           </div>
 
-          {/* Search */}
           <div className="relative flex-1 min-w-[140px]">
             <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
             <input

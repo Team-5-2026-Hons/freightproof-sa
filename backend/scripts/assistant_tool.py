@@ -49,10 +49,8 @@ def _with_nulls(arguments: JsonObject, schema: JsonObject, defs: JsonObject) -> 
         if isinstance(value, dict) and ref is not None:
             value = _with_nulls(cast(JsonObject, value), cast(JsonObject, defs[ref]), defs)
         if value is None and spec.get("type") == "boolean":
-            # A yes/no the caller didn't mention means no.
             value = False
         if value is None and spec.get("type") == "array":
-            # A list the caller didn't mention is empty.
             value = []
         filled[name] = value
     return filled
@@ -86,7 +84,6 @@ async def _run(tool_name: str, arguments: JsonObject, organization_id: uuid.UUID
             outcome = await run_tool(context, name=tool_name, arguments=filled)
             await db.rollback()
     finally:
-        # route_time may have opened the shared Redis client; close it before asyncio.run closes the loop.
         await get_redis().aclose()
     if outcome.error is not None:
         print(f"ERROR (the model would be told): {outcome.error}")

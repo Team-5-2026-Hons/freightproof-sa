@@ -115,7 +115,5 @@ def test_findings_come_back_in_a_deterministic_vehicle_order():
 
 
 def test_captures_covering_different_vehicles_are_a_caller_error():
-    # The service's capture validation guarantees both cover the same set; reaching here
-    # without it would silently skip a vehicle, so it is refused loudly instead.
     with pytest.raises(ValueError):
         compare_seal_captures(outgoing=[intact(uuid.uuid4())], incoming=[intact(uuid.uuid4())])

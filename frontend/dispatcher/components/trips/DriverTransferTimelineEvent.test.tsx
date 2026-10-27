@@ -31,7 +31,6 @@ it('keeps_legacy_unknown_facts_and_equal_times_explicit', () => {
 
   expect(screen.getByText('Same recorded time')).toBeInTheDocument()
   expect(screen.getByText('Not recorded · Not recorded')).toBeInTheDocument()
-  // The time sits top right, in the phase cards' own clock, not in a line of its own.
   const clock = screen.getByLabelText(/^Effective /)
   expect(clock.tagName).toBe('TIME')
   expect(clock.getAttribute('dateTime')).toBe(event.effective_at)

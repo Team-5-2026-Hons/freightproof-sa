@@ -51,16 +51,6 @@ async def advance_confirmation(
     event.pod_photo_artifact_id = payload.pod_photo_artifact_id
     event.pod_signature_artifact_id = payload.pod_signature_artifact_id
 
-    # Per consignment delivered at THIS stop, not per leg. A consignment picked up at
-    # stop 1 and delivered at stop 3 has its scan-out at stop 1; the old leg-based
-    # lookup this replaced would have resolved stop 2's loading row instead and
-    # manufactured a mismatch on a healthy cross-dock trip. Consignment.pickup_stop_id
-    # / delivery_stop_id (FP-112) is the partition that makes this correct.
-    #
-    # trip_stop_id is Optional on PhaseEvent (only TRIP_CREATION is ever NULL, per
-    # its own uq_phase_events_trip_stop_type comment) — a CONFIRMATION row always
-    # carries one, so the None branch is unreachable in practice. Narrowed
-    # explicitly rather than asserted, matching advance_loading's own precedent.
     consignments = (
         await scan_service.load_consignments_at_stop(
             db, trip_id=trip_id, trip_stop_id=event.trip_stop_id,
@@ -79,9 +69,6 @@ async def advance_confirmation(
         scanned_in_total += counts.scanned_in
 
         if counts.scanned_out == 0 and counts.scanned_in == 0:
-            # No baseline at either end — nothing to compare. Covers empty-leg trips
-            # and dispatcher-overridden loadings alike, without either needing its own
-            # branch keyed on a field that no longer exists.
             continue
 
         if counts.scanned_out != counts.scanned_in:
@@ -101,8 +88,6 @@ async def advance_confirmation(
             ))
 
     if mismatched:
-        # Once, after the loop — a three-waybill discrepancy is still one trip to
-        # refetch, and three identical events would only make the client do it thrice.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -116,9 +101,6 @@ async def advance_confirmation(
 
     canonical_payload = compute_confirmation_canonical_payload_v2(
         phase_event_id=event.id, trip_id=trip_id,
-        # Key name unchanged — see the schema comment. Its provenance is now the
-        # warehouse feed rather than Parcel Perfect; its name is a mild misnomer and
-        # stays, because verification_service rebuilds every historical anchor from it.
         pp_scan_in_count=scanned_in_total,
         driver_visual_count=payload.driver_visual_count,
         pod_photo_sha256=artifact_hashes[payload.pod_photo_artifact_id],
@@ -126,10 +108,6 @@ async def advance_confirmation(
     )
     event.event_hash = compute_payload_hash(canonical_payload)
 
-    # Anchors unconditionally, fail-open — a Hedera outage no longer
-    # blocks delivery confirmation from completing; the anchor path records the debt on
-    # event.anchor_status instead of raising. Queued rather than awaited (see
-    # _dispatch_anchor) so the driver isn't held on the swipe for the Hedera round trip.
     _dispatch_anchor(
         db, event=event, canonical_payload=canonical_payload,
         receipt_type=BlockchainReceiptType.DELIVERY,
@@ -137,10 +115,6 @@ async def advance_confirmation(
 
     event.status = PhaseStatus.EXCEPTION if mismatched else PhaseStatus.COMPLETED
 
-    # No explicit trip.status = CLOSED / closed_at here anymore — this is
-    # confirmation's real point: recompute_position (called inside
-    # _finish_phase) finds no unresolved rows left and closes the trip
-    # generically, instead of this wrapper hardcoding "I am always last."
     return await _finish_phase(
         db, trip=trip, event=event, idempotency_key=payload.idempotency_key,
         horse_fix=horse_fix, driver_accuracy_metres=payload.driver_accuracy_metres,

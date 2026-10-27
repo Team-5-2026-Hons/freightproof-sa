@@ -37,8 +37,6 @@ class EvidenceArtifactCommitment:
 class EvidencePayloadState:
     payload: dict[str, Any]
     artifacts: tuple[EvidenceArtifactCommitment, ...] = ()
-    # What a review payload is built from, kept so the photo hashes inside the record it
-    # commits to by reference can be swapped for live ones.
     record: canonical.ExceptionRecord | None = None
     review: canonical.ReviewRecord | None = None
 
@@ -56,8 +54,6 @@ async def reconstruct_evidence_event(
     if event is None:
         raise _EvidenceMissing("anchored evidence event is missing")
     try:
-        # An unknown persisted kind is a ValueError here; it must surface as an unsupported
-        # contract (verify -> error), never as an unhandled crash.
         kind = BlockchainReceiptType(event.receipt_type)
         canonical.validate_payload_version(anchored_payload, kind.value)
     except (ValueError, canonical.UnsupportedEvidencePayloadError) as error:
@@ -76,8 +72,6 @@ async def _load_exception_and_photos(
     db: AsyncSession, event: EvidenceAnchorEvent,
 ) -> tuple[TripException, list[EvidenceArtifact]]:
     exception = await db.get(TripException, event.exception_id)
-    # event.trip_id is checked against the exception's own trip: an event pointed at some
-    # other trip's exception must not verify as that exception's record.
     if exception is None or exception.trip_id != event.trip_id:
         raise _EvidenceMissing("anchored exception is missing or belongs to another trip")
     try:
@@ -117,7 +111,6 @@ async def _rebuild_cancelled(db: AsyncSession, event: EvidenceAnchorEvent) -> Ev
     payload = canonical.trip_cancelled_payload(
         event_id=event.id, cancellation=build_cancellation_record(exception, trip),
     )
-    # A cancellation commits no photo bytes: the cause is the note's text, as a hash.
     return EvidencePayloadState(payload=payload)
 
 
@@ -144,8 +137,6 @@ async def payload_with_live_artifact_hashes(state: EvidencePayloadState) -> dict
         for c in state.artifacts
     }
     if state.record is not None and state.review is not None:
-        # A review commits to the record by hash, so the live photo hashes go into the record
-        # and the whole review payload is rebuilt from it.
         record = dataclasses.replace(state.record, photos=tuple(
             canonical.PhotoCommitment(photo.artifact_id, live[photo.artifact_id])
             for photo in state.record.photos

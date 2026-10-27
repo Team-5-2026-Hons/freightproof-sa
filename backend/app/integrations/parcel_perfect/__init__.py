@@ -5,9 +5,6 @@ imports keep resolving. New code imports from the submodule that owns the name; 
 the module that looks a name up, never this one (check B8).
 """
 
-# Order matters: the three fixture modules each add their waybills to MOCK_WAYBILLS when first
-# imported, and the mock lists waybills in that dict's order. unassigned_fixtures must come
-# before manifest_fixtures to keep the order the single-file module produced.
 from app.integrations.parcel_perfect.errors import (
     PPManifestNotFoundError,
     PPUnsupportedError,

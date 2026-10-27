@@ -11,8 +11,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Only the network functions are replaced; HandoverError and the two predicates stay real
-// so the page's branching is tested against the same logic production runs.
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   confirmHandover: vi.fn(),
@@ -23,8 +21,6 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   startVerification: vi.fn(),
 }))
 
-// jsdom has no 2D canvas, so the renderer returns null there. The attestation image is not
-// what is under test.
 vi.mock('@shared/lib/utils/render-attestation', async (importOriginal) => ({
   ...await importOriginal<typeof import('@shared/lib/utils/render-attestation')>(),
   renderAttestation: vi.fn(),
@@ -117,7 +113,6 @@ beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(renderAttestation).mockReturnValue(ATTESTATION_DATA_URL)
   sessionStorage.clear()
-  // The page logs every recoverable failure; the logs are noise here.
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
@@ -250,7 +245,6 @@ describe('HandoverPageClient confirm failures', () => {
     expect(screen.getByDisplayValue(TYPED_ID)).toBeInTheDocument()
     expect(api.confirmHandover).toHaveBeenCalledTimes(1)
 
-    // The same control, no reload: the guard that stopped a double-spend must have let go.
     pressSwipe()
 
     await waitFor(() => expect(api.confirmHandover).toHaveBeenCalledTimes(2))
@@ -360,8 +354,6 @@ describe('HandoverPageClient confirm failures', () => {
 
 describe('HandoverPageClient signing can never hang', () => {
   it('goes ahead without a position when the receiver ignores the location prompt', async () => {
-    // The browser accepts the request and then waits for an answer that never comes — its
-    // own timeout does not start until permission is granted.
     vi.stubGlobal('navigator', { ...navigator, geolocation: { getCurrentPosition: vi.fn() } })
     await reachReady()
     vi.mocked(api.confirmHandover).mockResolvedValue(CONFIRMED)
@@ -390,7 +382,6 @@ describe('HandoverPageClient signing can never hang', () => {
       'The signature could not be generated on this device. Please try again.',
     )
     expect(api.confirmHandover).not.toHaveBeenCalled()
-    // Back on the form, not stuck on "Confirming…".
     expect(screen.getByLabelText(SWIPE_LABEL)).toHaveAttribute('aria-disabled', 'false')
     expect(screen.getByDisplayValue(TYPED_NAME)).toBeEnabled()
   })
@@ -421,8 +412,6 @@ describe('HandoverPageClient return from the identity vendor', () => {
 
     render(<HandoverPageClient token={TOKEN} />)
 
-    // While the cross-check runs the receiver sees why they are waiting, and the stash is
-    // already gone: it is cleared on read, not after the call returns.
     expect(await screen.findByText('Checking your identity result…')).toBeInTheDocument()
     expect(api.resolveVerification).toHaveBeenCalledWith(TOKEN, TYPED_NAME, TYPED_ID)
     expect(sessionStorage.getItem(IDENTITY_STASH_KEY)).toBeNull()
@@ -510,7 +499,6 @@ describe('HandoverPageClient vendor redirect', () => {
 
   function stubLocation(): ReturnType<typeof vi.fn> {
     const assign = vi.fn()
-    // jsdom's location.assign cannot be spied on or reassigned; the whole object is swapped.
     vi.stubGlobal('location', { origin: ORIGIN, href: `${ORIGIN}/h/${TOKEN}`, assign })
     return assign
   }
@@ -618,7 +606,6 @@ describe('HandoverPageClient expiry', () => {
     expect(await screen.findByText(
       'This code may have expired. If the confirmation is refused, ask the driver for a fresh one.',
     )).toBeInTheDocument()
-    // The server decides: it may have extended the expiry, so the swipe stays live.
     expect(swipeTrack()).toHaveAttribute('aria-disabled', 'false')
     vi.mocked(api.confirmHandover).mockResolvedValue(CONFIRMED)
     pressSwipe()
@@ -628,7 +615,6 @@ describe('HandoverPageClient expiry', () => {
   it('allows a minute of clock skew before warning', async () => {
     await reachConsentGate(scanResponse({ expires_at: new Date(Date.now() - 10_000).toISOString() }))
 
-    // Expired 10 seconds ago, well inside the grace.
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)) })
 
     expect(screen.queryByText(/may have expired/i)).not.toBeInTheDocument()
@@ -648,7 +634,6 @@ describe('HandoverPageClient form fields', () => {
     expect(idInput).toHaveAttribute('maxlength', '60')
     expect(idInput).toHaveAttribute('autocapitalize', 'characters')
     expect(idInput).toHaveClass('tabular-nums')
-    // Passports and company registrations contain letters.
     expect(idInput).not.toHaveAttribute('inputmode')
   })
 

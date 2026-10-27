@@ -35,8 +35,6 @@ from app.schemas.driver_substitutions import SealCheck, SubstitutionSealConditio
 
 logger = logging.getLogger(__name__)
 
-# CRITICAL like arrival's seal findings: a seal that changed between two drivers minutes apart
-# is the theft indicator this product exists to record, not a warning-tier quality gate.
 SEAL_FINDING_SEVERITY = ExceptionSeverity.CRITICAL
 _BROKEN = frozenset({SubstitutionSealCondition.DAMAGED, SubstitutionSealCondition.MISSING})
 
@@ -99,8 +97,6 @@ async def record_seal_findings(
 async def record_incoming_seal_findings(
     db: AsyncSession, *, trip: Trip, confirmation_id: uuid.UUID, incoming: Sequence[SealCheck],
 ) -> list[uuid.UUID]:
-    # No outgoing observation was requested: a real damaged/missing seal is evidence,
-    # but a pairwise disagreement cannot be inferred from one driver's capture.
     findings = [SealDiscrepancy(check.vehicle_id, ExceptionType.SEAL_COMPROMISED,
         f"Incoming driver found seal {_reading(check)} at takeover.")
         for check in incoming if check.condition in _BROKEN]
@@ -122,7 +118,6 @@ async def _record_discrepancies(
         finding_id = uuid.uuid4()
         try:
             async with db.begin_nested():
-                # register_exception, not a bare add: a CRITICAL finding owes its evidence anchor.
                 await register_exception(db, TripException(
                     id=finding_id, trip_id=trip.id, substitution_confirmation_id=confirmation_id,
                     vehicle_id=discrepancy.vehicle_id, exception_type=discrepancy.exception_type,

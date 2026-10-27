@@ -10,9 +10,6 @@ vi.mock('../BottomNav', () => ({ BottomNav: () => <nav aria-label="Main navigati
 vi.mock('../SubpageHeader', () => ({ SubpageHeader: () => <header /> }))
 
 describe('TabSubpage floating action', () => {
-  // Regression: the offset was `80px + inset`. The tab pill sits max(inset, 16px) above the
-  // screen edge, so where the inset is 0 (Android, browser PWA) the offset was 16px short
-  // and the action sat 2px above the bar. Both offsets are now written against max().
   it('test_positions_the_action_against_the_tab_bars_max_floor_not_a_bare_inset', () => {
     render(
       <TabSubpage title="Trip" backLabel="Trips" onBack={() => {}} action={<button type="button">Continue Driving</button>}>

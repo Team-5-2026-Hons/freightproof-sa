@@ -22,7 +22,6 @@ import type {
 } from '@shared/lib/auth/port'
 
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() } }))
-// A stub that records any call: the assertions below require it to stay untouched.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: {
     auth: {

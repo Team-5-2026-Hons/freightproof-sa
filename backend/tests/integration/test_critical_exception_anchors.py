@@ -44,8 +44,6 @@ async def world(db_session) -> World:
 
 
 async def _post(client: AsyncClient, world: World, body: dict):
-    # One token per driver: a second make_token() opens a new session, and the one-device rule
-    # would then reject the first device's token mid-test.
     token = world.__dict__.setdefault("token", make_token(sub=str(world.driver.id), role="driver"))
     return await client.post(
         f"/api/v1/trips/{world.trip.id}/exceptions",
@@ -273,7 +271,6 @@ async def test_replay_that_loses_the_insert_race_returns_the_winner_with_no_extr
     })
     before = await _counts(db_session)
 
-    # The pre-check is blind exactly once, as it is for a loser of the race.
     from app.orchestration.exceptions import creation
     real_find = creation._find_by_client_report_id
     calls = {"n": 0}

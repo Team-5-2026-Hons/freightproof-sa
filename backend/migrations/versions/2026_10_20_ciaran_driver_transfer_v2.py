@@ -37,7 +37,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Dropping accepted policy/observations would destroy evidence; require a human-led decision.
     connection = op.get_bind()
     if connection.scalar(sa.text("SELECT EXISTS (SELECT 1 FROM driver_substitution_requests WHERE request_format <> 'planned_v1')")):
         raise RuntimeError('Cannot downgrade while immediate-v2 transfer records exist')

@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from app.orchestration.assistant.when import INSTANT_WIDTH, MAX_DAYS_AHEAD, When, WhenError, resolve
 
 SAST = timezone(timedelta(hours=2))
-# Wednesday 21 Oct 2026, 14:32 SAST: the day the module was written.
 _NOW = datetime(2026, 10, 21, 14, 32, tzinfo=SAST)
 
 

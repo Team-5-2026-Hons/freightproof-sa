@@ -32,7 +32,6 @@ export function useHasEdgeBack(): boolean {
 
 /** Registers `handler` as the edge-swipe back action while the calling component is mounted. */
 export function useEdgeBackHandler(handler: BackHandler): void {
-  // Latest handler without re-registering every render: callers pass inline closures.
   const latest = useRef(handler)
   latest.current = handler
 
@@ -41,7 +40,6 @@ export function useEdgeBackHandler(handler: BackHandler): void {
     current = registered
     emit()
     return () => {
-      // Only clear our own registration: the next screen may already have taken over.
       if (current === registered) {
         current = null
         emit()

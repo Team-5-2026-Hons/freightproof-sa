@@ -22,8 +22,6 @@ from app.db.models.driver_substitutions import DriverSubstitutionNotice, DriverS
 from app.db.models.trips import Trip
 from app.schemas.driver_substitutions import SubstitutionNoticeKind, SubstitutionNoticeRead
 
-# A bounded newest-first page: the app only ever shows recent notices, and an unbounded list
-# would grow with every handover a long-serving driver was ever named on.
 NOTICE_PAGE_LIMIT = 50
 
 

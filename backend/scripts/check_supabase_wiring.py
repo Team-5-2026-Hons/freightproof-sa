@@ -69,7 +69,6 @@ def key_identity(key: str) -> tuple[str | None, str | None]:
 
 
 def project_ref_from_supabase_url(url: str) -> str | None:
-    # https://<ref>.supabase.co
     m = re.match(r"https://([a-z0-9]+)\.supabase\.(co|in)", url.strip())
     return m.group(1) if m else None
 
@@ -110,7 +109,6 @@ def check_database_url() -> tuple[str | None, bool]:
     else:
         report(OK, "DATABASE_URL driver", "postgresql+asyncpg")
 
-    # Transaction-mode pooler (6543) disables prepared statements, which asyncpg relies on.
     if port == 6543:
         report(BAD, "DATABASE_URL pooler mode", "port 6543 = transaction mode — use session mode (5432)")
     elif port == 5432:
@@ -150,7 +148,6 @@ async def check_db_connection() -> None:
             ).scalar_one()
             report(OK, "public tables", f"{n_tables}")
 
-            # auth.users must exist and is what migration 0002's FKs point at.
             n_auth = (
                 await conn.execute(
                     text("SELECT count(*) FROM auth.users")
@@ -173,7 +170,6 @@ def check_supabase_api(db_ref: str | None) -> None:
     report(OK, "SUPABASE_URL", url)
     report(OK, "SUPABASE_URL project ref", api_ref or "<could not parse>")
 
-    # The single most important check in this script.
     if db_ref and api_ref:
         if db_ref == api_ref:
             report(OK, "SAME PROJECT?", f"yes — both '{db_ref}'")
@@ -185,8 +181,6 @@ def check_supabase_api(db_ref: str | None) -> None:
                 "Migration 0002's auth FK is intra-database; this will fail confusingly.",
             )
 
-    # Decoding each key's own `ref` claim is what turns an unexplained 401 into
-    # "this key belongs to the other project".
     for label, value, unused in (
         ("SUPABASE_ANON_KEY", settings.SUPABASE_ANON_KEY, "  (declared-but-unused by the backend)"),
         ("SUPABASE_SERVICE_ROLE_KEY", settings.SUPABASE_SERVICE_ROLE_KEY, ""),
@@ -207,8 +201,6 @@ def check_supabase_api(db_ref: str | None) -> None:
         else:
             report(OK, label, f"{mask(value)} role={key_role} ref={key_ref}{unused}")
 
-    # JWKS proves SUPABASE_URL is a live project — this exact endpoint verifies every JWT
-    # (app/auth/dependencies.py:83), so if it 404s, all authentication is broken.
     try:
         resp = httpx.get(f"{url}/auth/v1/.well-known/jwks.json", timeout=10.0)
         keys = resp.json().get("keys", []) if resp.status_code == 200 else []
@@ -219,7 +211,6 @@ def check_supabase_api(db_ref: str | None) -> None:
     except Exception as exc:  # noqa: BLE001
         report(BAD, "JWKS endpoint", f"{type(exc).__name__}: {str(exc)[:100]}")
 
-    # service_role is what the seeder uses to provision auth users.
     if settings.SUPABASE_SERVICE_ROLE_KEY:
         try:
             resp = httpx.get(
@@ -248,7 +239,6 @@ def check_frontend_env() -> None:
         if not path.exists():
             report(BAD, f"{app}/.env.local", "missing")
             continue
-        # Read key NAMES only — values are never printed.
         names = {
             line.split("=", 1)[0].strip()
             for line in path.read_text().splitlines()

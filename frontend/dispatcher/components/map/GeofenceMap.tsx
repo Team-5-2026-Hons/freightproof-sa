@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Map as LeafletMap, Marker, Circle, DivIcon, TileLayer, Polygon as LeafletPolygon, LatLng } from 'leaflet'
 
-// Static side-effect imports (not dynamic, unlike the JS below): inline cleanly into this
-// chunk and type-check under this project's `moduleResolution: "bundler"` with no cast.
 import 'leaflet/dist/leaflet.css'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 
@@ -15,22 +13,14 @@ import { GeofenceSchematic } from './GeofenceSchematic'
 
 const DEFAULT_ZOOM = 16
 
-// Matches PrecinctForm's 5dp click/drag rounding (CLICK_COORDINATE_PRECISION), so an
-// echoed gesture compares equal without relying on exact float equality.
 const POSITION_ECHO_EPSILON_DEGREES = 0.00001
 
-// Leaflet's color/fillColor options need a literal CSS colour, not a Tailwind class —
-// styled via `className` instead so the `sec` token stays the single source of truth.
 const GEOFENCE_CIRCLE_CLASS = 'fill-sec stroke-sec'
 
-// Matches the centre dot GeofenceSchematic/StaticGeofenceThumbnail draw (r=4).
 const PIN_DIAMETER_PX = 16
 
-// Matches the backend's Numeric(10, 7) rounding of outline corners, so an edited corner
-// echoes back from the form unchanged and the echo check below can recognise it.
 const OUTLINE_COORDINATE_DECIMALS = 7
 
-// Breathing room around an outline when the map frames it.
 const OUTLINE_FIT_PADDING_PX = 24
 
 function roundCoordinate(value: number): number {
@@ -57,12 +47,11 @@ function sameOutline(a: readonly LatLngPair[] | null, b: readonly LatLngPair[] |
  */
 function createPinIcon(L: typeof import('leaflet')): DivIcon {
   return L.divIcon({
-    className: '', // suppresses Leaflet's default .leaflet-div-icon box/border
+    className: '',
     html:
       `<div style="width:${PIN_DIAMETER_PX}px;height:${PIN_DIAMETER_PX}px" ` +
       `class="rounded-full bg-sec border-2 border-surf-lowest shadow-level-1"></div>`,
     iconSize: [PIN_DIAMETER_PX, PIN_DIAMETER_PX],
-    // Centred, not tip-anchored: the pin is a dot ON the coordinate.
     iconAnchor: [PIN_DIAMETER_PX / 2, PIN_DIAMETER_PX / 2],
   })
 }
@@ -84,14 +73,12 @@ export function attachTileFailureTracking(
 
   const handleTileError = (): void => {
     consecutiveErrors += 1
-    // Fire once per failure episode, not on every error past the threshold.
     if (consecutiveErrors >= TILE_ERROR_FALLBACK_THRESHOLD && !exceeded) {
       exceeded = true
       onExceeded()
     }
   }
 
-  // A success resets the streak so edge-of-coverage 404s don't accumulate across a healthy session.
   const handleTileLoad = (): void => {
     consecutiveErrors = 0
     if (exceeded) {
@@ -109,19 +96,13 @@ export function attachTileFailureTracking(
   }
 }
 
-// Wheel zoom on: placing a pin or tracing an outline needs quick zooming, and Leaflet only
-// takes the wheel while the pointer is over the map, so the page still scrolls elsewhere.
 export const GEOFENCE_MAP_INTERACTION = { scrollWheelZoom: true } as const
 
 interface GeofenceMapProps {
   latitude: number
   longitude: number
   radiusMetres: number
-  /** The property outline. When it has 3+ corners it is drawn INSTEAD of the circle,
-   *  because it replaces the circle in every verdict. */
   polygon?: readonly LatLngPair[] | null
-  /** False hides the circle even with no outline — the form's outline mode before one is
-   *  drawn, where a circle would read as the fence when it isn't. Defaults to true. */
   showCircle?: boolean
   /** Supplied only by the create/edit form. Omit for a read-only view. */
   onPositionChange?: (next: { latitude: number; longitude: number }) => void
@@ -153,21 +134,14 @@ export function GeofenceMap({
   const circleRef = useRef<Circle | null>(null)
   const tileRef = useRef<TileLayer | null>(null)
   const polygonRef = useRef<LeafletPolygon | null>(null)
-  // The loaded Leaflet module, kept so the outline effect can build layers after init.
   const leafletRef = useRef<typeof import('leaflet') | null>(null)
-  // Detaches the active tile layer's listeners; re-armed whenever the layer is (re)created.
   const tileFailureCleanupRef = useRef<(() => void) | null>(null)
 
   const [source, setSource] = useState<TileSourceKey>('satellite')
   const [failed, setFailed] = useState(false)
-  // Bumped by "Retry map" to re-run init: a failed Leaflet import leaves no map at all,
-  // so clearing `failed` alone wouldn't reveal a map (unlike a recovered tile outage).
   const [initAttempt, setInitAttempt] = useState(0)
-  // True once the map exists. Needed as a dependency below so a tile-source toggle
-  // pressed mid-import still gets applied once the map is ready.
   const [mapReady, setMapReady] = useState(false)
 
-  // Ref avoids re-initialising Leaflet (and fighting the user's pan) on every parent render.
   const onPositionChangeRef = useRef(onPositionChange)
   useEffect(() => {
     onPositionChangeRef.current = onPositionChange
@@ -178,24 +152,16 @@ export function GeofenceMap({
     onPolygonChangeRef.current = onPolygonChange
   }, [onPolygonChange])
 
-  // Set on every outline edit, so the outline effect can tell the form echoing this map's
-  // own drag back from a new outline (a picked candidate) that must replace the layer.
-  // Rebuilding on an echo would drop the edit handles mid-drag.
   const lastEmittedPolygonRef = useRef<LatLngPair[] | null>(null)
 
-  // Set on every click/drag so the follow-effect can distinguish an echo of this map's
-  // own gesture from a coordinate that came from the form fields.
   const lastEmittedPositionRef = useRef<{ latitude: number; longitude: number } | null>(null)
 
-  // Runs once; position/radius/tile changes are applied by the effects below.
   useEffect(() => {
     let cancelled = false
 
     async function init(): Promise<void> {
       try {
         const L = await import('leaflet')
-        // Editing only: Geoman is an IIFE that patches the global `L` Leaflet sets, and its
-        // init hooks must be in place BEFORE the map and layers are constructed.
         if (onPolygonChangeRef.current !== undefined) {
           await import('@geoman-io/leaflet-geoman-free')
         }
@@ -248,7 +214,6 @@ export function GeofenceMap({
         mapRef.current = map
         setMapReady(true)
       } catch {
-        // Chunk or tiles unreachable — fall back to the schematic.
         if (!cancelled) setFailed(true)
       }
     }
@@ -268,11 +233,9 @@ export function GeofenceMap({
       polygonRef.current = null
       leafletRef.current = null
     }
-    // Only initAttempt: re-running on a coordinate change would reset the user's pan mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initAttempt])
 
-  // Pan to a typed/pasted coordinate, but not to one that echoes this map's own click/drag.
   useEffect(() => {
     markerRef.current?.setLatLng([latitude, longitude])
     circleRef.current?.setLatLng([latitude, longitude])
@@ -292,8 +255,6 @@ export function GeofenceMap({
     circleRef.current?.setRadius(radiusMetres)
   }, [radiusMetres])
 
-  // The outline: drawn instead of the circle whenever it has enough corners, rebuilt (and
-  // framed) when a new one arrives, left alone when the change is this map's own edit.
   useEffect(() => {
     const map = mapRef.current
     const L = leafletRef.current
@@ -321,8 +282,6 @@ export function GeofenceMap({
     }).addTo(map)
 
     if (onPolygonChangeRef.current !== undefined) {
-      // A crossing outline has no meaningful inside; Geoman refuses the drag that would
-      // make one, so the dispatcher can't save a shape the server would reject.
       layer.pm.enable({ allowSelfIntersection: false })
       layer.on('pm:edit', () => {
         const next = ringFromLayer(layer)
@@ -336,9 +295,6 @@ export function GeofenceMap({
   }, [polygon, showCircle, mapReady])
 
   useEffect(() => {
-    // Re-checked after each await: mapRef.current can be nulled mid-flight (e.g. the
-    // dispatcher navigates away), and without this the resumed callback would call
-    // `.addTo(null)` and throw.
     let cancelled = false
 
     async function swapTiles(): Promise<void> {
@@ -366,11 +322,8 @@ export function GeofenceMap({
     return () => {
       cancelled = true
     }
-    // mapReady as a dependency ensures a source chosen before Leaflet finishes loading is still applied.
   }, [source, mapReady])
 
-  // Leaflet measures its container once, so a resized frame would leave grey, untiled
-  // bands until something else nudged it. Re-measure whenever the box changes size.
   useEffect(() => {
     const container = containerRef.current
     if (!mapReady || container === null || typeof ResizeObserver === 'undefined') return
@@ -379,8 +332,6 @@ export function GeofenceMap({
     return () => observer.disconnect()
   }, [mapReady])
 
-  // The schematic is an overlay, not a replacement — the map stays mounted beneath it,
-  // so a tile that succeeds after an outage resets the streak and the overlay lifts on its own.
   return (
     <div className={`relative ${className ?? ''}`}>
       <div ref={containerRef} className="w-full h-full rounded-lg overflow-hidden" />

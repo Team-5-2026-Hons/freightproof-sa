@@ -9,22 +9,14 @@ import type { ExceptionSource } from '@shared/lib/types/exception'
 export interface PositionDisagreementProps {
   phase: PhaseDescriptor
   precinct: Precinct | undefined
-  // A driver-raised gps_mismatch carries no tracker verdict, so the trigger sentence must
-  // never render for it. Required (not defaulted) so callers can't forget to pass it.
   source: ExceptionSource
-  /** Forwarded to the inner LocationEvidencePanel: suppresses its "View on map" button
-   *  for a caller that already shows an equivalent button elsewhere on the same card.
-   *  Defaults to false. */
   hideMapButton?: boolean
 }
 
-// The backend raises `gps_mismatch` only when the vehicle tracker's fix fell outside the
-// stop's geofence — exported so the exception-detail page states the same trigger verbatim.
 export const GPS_MISMATCH_TRIGGER = 'Vehicle tracker outside the facility boundary'
 
 const LINKED_PHASE_LOCATIONS_LABEL = 'Linked phase locations'
 const PHASE_NOT_COMPLETED = 'Phase not completed'
-// These are the linked phase's own fixes, not a separate position recorded for the exception.
 const LINKED_PHASE_LOCATIONS_NOTE =
   "These are the phase's own recorded fixes, captured when the phase completed, not a separate position for this exception."
 
@@ -40,7 +32,6 @@ export function PositionDisagreement({ phase, precinct, source, hideMapButton = 
 
   return (
     <div className="mt-[8px] pt-[8px] border-t border-warn/20">
-      {/* Only a system-raised exception carries the tracker's own geofence verdict. */}
       {source === 'system' && (
         <p data-testid="gps-mismatch-trigger" className="text-[12px] font-[700] text-on-surf">
           {GPS_MISMATCH_TRIGGER}

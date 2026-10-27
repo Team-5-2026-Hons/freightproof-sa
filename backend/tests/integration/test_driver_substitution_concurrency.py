@@ -47,10 +47,7 @@ from tests.integration._driver_substitution_world import (
     SubWorld, add_pending, add_trip, build_world, tear_down,
 )
 
-# Long enough to decide a transaction is queued rather than slow; short enough not to drag.
 _QUEUED_PROBE_SECONDS = 0.5
-# Upper bound for anything that must finish once released. Postgres breaks a true deadlock
-# after deadlock_timeout (1s), so anything near this limit is a hang, not a slow test.
 _TIMEOUT_SECONDS = 10
 
 HOUR = timedelta(hours=1)
@@ -68,8 +65,6 @@ async def world(sessionmaker) -> AsyncGenerator[SubWorld, None]:
     async with sessionmaker() as db:
         built = await build_world(db, departure=now, arrival=now + 8 * HOUR)
         await add_pending(db, built, outgoing=built.a, incoming=built.b, expected_at=now + 6 * HOUR)
-        # B is a verified, licensed driver, so the real completion is decided by the lock order
-        # and availability under test and not by identity or licence.
         incoming = await db.get(Driver, built.b)
         incoming.license_expiry = now.date() + timedelta(days=30)
         incoming.idvs_status = IdvsStatus.VERIFIED.value
@@ -166,8 +161,6 @@ async def _phase(sessionmaker, phase_event_id: uuid.UUID) -> PhaseEvent:
         return (await db.execute(select(PhaseEvent).where(PhaseEvent.id == phase_event_id))).scalar_one()
 
 
-# ── named regression cases ───────────────────────────────────────────────────
-
 
 async def test_stale_actor_is_rechecked_after_trip_lock(sessionmaker, world):
     """A request queued behind a handover must not write as A once B holds the trip.
@@ -240,8 +233,6 @@ async def test_anchor_worker_receipt_insert_does_not_deadlock_handover(sessionma
                 await asyncio.sleep(0.05)
             assert inside_hedera.is_set(), "the worker never reached Hedera"
             handover = asyncio.create_task(_committed(sessionmaker, lambda db: _handover(db, world)))
-            # The real handover never locks a phase row, so it does not wait for the worker that
-            # holds one; it cannot sit in a cycle with it.
             await asyncio.wait_for(asyncio.shield(handover), _TIMEOUT_SECONDS)
             replay = asyncio.create_task(_committed(sessionmaker, _complete(world, world.a, _activation(key, 0))))
         finally:
@@ -255,8 +246,6 @@ async def test_anchor_worker_receipt_insert_does_not_deadlock_handover(sessionma
     event = await _phase(sessionmaker, world.activation_id)
     assert event.blockchain_receipt_id is not None
 
-
-# ── creation / activation / handover compose ─────────────────────────────────
 
 
 async def test_activation_waits_for_a_handover_then_is_refused_for_the_driver_who_took_over(sessionmaker, world):
@@ -394,14 +383,11 @@ async def test_two_trips_cannot_both_reserve_one_driver(sessionmaker, world, mon
     now = datetime.now(UTC)
     async with sessionmaker() as db:
         t2, _ = await add_trip(db, world, driver_id=world.c, status=TripStatus.ACTIVE, departure=now, arrival=now + 8 * HOUR)
-        # T1 already holds a pending takeover by B (the fixture); cancel it so the race is
-        # between two fresh arrangements.
         await db.execute(DriverSubstitutionRequest.__table__.update().where(
             DriverSubstitutionRequest.trip_id == world.trip_id).values(state="cancelled"))
         await db.commit()
     await _license(sessionmaker, world.b)
 
-    # Park the first arrangement after it holds B's lock but before it decides B is free.
     hold = Hold()
     original = service.require_arrangeable
     calls = 0

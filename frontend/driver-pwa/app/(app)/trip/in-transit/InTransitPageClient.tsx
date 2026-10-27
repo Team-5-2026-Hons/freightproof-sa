@@ -50,32 +50,16 @@ import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// How often the map re-reads the phone's position while this screen is open. A truck at
-// 100 km/h covers ~400 m in this window, which at street zoom is about a screen height —
-// often enough to read as "following", rare enough not to hold the GPS radio awake.
 const POSITION_REFRESH_MS = 15_000
 
-// Cap on the open-exceptions list before it scrolls inside itself. This is what keeps the
-// panic button on screen no matter how many exceptions a bad leg has accumulated.
 const EXCEPTION_LIST_MAX_HEIGHT = 'max-h-36'
 
-// At accessibility text sizes the rem-based sheet alone is taller than the screen's lower
-// two thirds and, being shrink-0 inside an overflow-hidden column, it squeezed the map slot
-// to nothing and hid whatever the map slot held. Capping it and letting it scroll inside
-// itself keeps a real share of the screen for the map, the same way the exceptions list is
-// capped above. Panic is not in the sheet, so this never puts it behind a scroll.
 const LARGE_TEXT_SHEET_MAX_HEIGHT = 'max-h-[60dvh] overflow-y-auto overscroll-contain'
 
-// The fallback cards (no key, tiles unreachable, no fix) are centred columns inside a
-// scroll box. `justify-center` on a box that can overflow clips the top of the content with
-// no way to scroll up to it, which put the card's heading under the Back and Panic buttons
-// on short or large-text screens. Auto margins on the first and last child centre the
-// content when it fits and collapse to a plain top-anchored scroll when it does not.
 const FALLBACK_SAFE_CENTRE = 'justify-start [&>:first-child]:mt-auto [&>:last-child]:mb-auto'
 
 interface DriverFix {
   position: DriverPosition
-  /** When this fix was taken, so a stale one can be labelled as last known. */
   capturedAt: string
 }
 
@@ -97,23 +81,14 @@ export default function InTransitPageClient() {
   const [arrivalOffline, setArrivalOffline] = useState(false)
 
   const tripIsOpen = trip !== null
-  // Called above the early returns, with a nullable id, so hook order never changes.
   const route = useTripRoute(trip === null ? null : String(trip.id))
 
   const refreshFix = useCallback(async (): Promise<void> => {
     const position = await capturePosition()
-    // A failed fix must never erase the last good one. A driver in a cutting or under a
-    // bridge still needs to see where they last were — and DriverMap labels an old fix
-    // as last known rather than passing it off as current.
     if (position === null) return
     setFix({ position, capturedAt: new Date().toISOString() })
   }, [capturePosition])
 
-  // POPIA (see the constraints in lib/context/LocationContext.tsx's header): this is the
-  // narrowest possible tracking window. It runs only while a trip is OPEN, only while
-  // this screen is MOUNTED, and only while the app is in the FOREGROUND — no
-  // watchPosition subscription, no background-location permission, and nothing captured
-  // here is transmitted anywhere. It is a display read for the driver's own map.
   useEffect(() => {
     if (!tripIsOpen) return
 
@@ -138,52 +113,23 @@ export default function InTransitPageClient() {
     )
   }
 
-  // Read the CONTEXT exceptions list, not trip.exceptions: the context value is the
-  // trip's fetched/mock exceptions plus everything logged this session (TripContext
-  // appends on logException), so a just-submitted exception shows up here immediately.
-  // trip.exceptions is only a fetch-time snapshot and would silently drop it.
-  //
-  // System-detected exceptions (source: 'system' — gps_mismatch, route_deviation,
-  // checkpoint_timeout and the rest) are withheld from the driver's own screen. These are
-  // automated detections ABOUT the driver, raised without human review, and several of
-  // them read as an accusation: gps_mismatch says the phone and the truck disagree about
-  // where they are. Surfacing an unreviewed detection to the person it concerns invites
-  // them to react to it on the road, which is the opposite of what this hub is for. The
-  // dispatcher sees every exception regardless — nothing is hidden from the evidence
-  // trail, only from this one screen. Driver- and dispatcher-raised exceptions stay
-  // visible: those the driver either filed themselves or is meant to act on.
   const openExceptions = openDriverExceptions(exceptions)
 
-  // Captured here, in component scope, rather than read off `trip` inside the nested
-  // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but
-  // does not carry that narrowing into a function declaration's body.
   const tripId = String(trip.id)
   const phases = trip.phases
 
-  // The in_transit row this hub is standing on. currentPhase, not actionablePhase:
-  // actionablePhase deliberately skips stepless rows and would hand back `unloading`,
-  // which is the row the driver has NOT reached yet.
   const arrivalPhase = currentPhase(phases)
 
-  // The leg being driven and the ETA along it. Recomputed on every render, which is every
-  // fresh fix (POSITION_REFRESH_MS) — cheap: one pass over a few thousand points.
   const leg = legForPhase(route, arrivalPhase)
   const estimate = leg !== null && fix !== null
     ? estimateArrival({ leg, position: fix.position, departedAt: trip.actual_departure_at, now: new Date() })
     : null
 
-  // Runs from wherever the driver has since navigated to (background submitter model —
-  // see PhaseStepPageClient's identical handleOutcome for the reference implementation).
-  // Takes phaseEventId as a parameter (rather than closing over arrivalPhase directly) so
-  // the caller narrows arrivalPhase to non-null once, at the swipe guard, instead of this
-  // function asserting it.
   function handleArrivalOutcome(outcome: PhaseSubmissionOutcome, phaseEventId: string) {
     switch (outcome.kind) {
       case 'recorded': {
         if (outcome.trip !== null) {
           adoptTrip(outcome.trip)
-          // Reconcile: the real plan already shows this phase resolved, so dropping the
-          // optimistic marker changes nothing the driver can see.
           clearPhaseSyncing(phaseEventId)
         }
         const assessment = outcome.addressedPhase?.action_location_assessment
@@ -201,17 +147,6 @@ export default function InTransitPageClient() {
         return
       }
       case 'hold': {
-        // Split from 'recorded' rather than folded into it, mirroring
-        // PhaseStepPageClient.handleOutcome. The arrival itself is recorded, but the
-        // swipe has already pushed the driver onto the unloading step — and a held trip
-        // can only 409 there. Landing them on a capture screen they cannot submit, with
-        // no explanation, is the wrong failure direction; the trip screen is where the
-        // hold reason is visible.
-        //
-        // Unreachable today: advance_in_transit never holds, and nothing in backend app/
-        // writes TripStatus.EXCEPTION_HOLD at all (see _is_resolved's note). Kept in step
-        // with the reference implementation anyway, so a future manual dispatcher hold
-        // does not have to remember this one screen diverged.
         adoptTrip(outcome.trip)
         clearPhaseSyncing(phaseEventId)
         notify({
@@ -223,21 +158,15 @@ export default function InTransitPageClient() {
         return
       }
       case 'queued': {
-        // Optimistic advance deliberately KEPT: the queue holds the attestation and will
-        // replay it, so re-offering the swipe would only invite a second copy.
         return
       }
       case 'conflict':
       case 'failed': {
-        // No draft to preserve or roll back to — an arrival carries no captured
-        // evidence, only a timestamp and a position. Rolling the marker back just makes
-        // the row unresolved again so the swipe can be offered a second time.
         clearPhaseSyncing(phaseEventId)
         notify({ kind: 'error', title: 'Could not record arrival', body: outcome.message })
         return
       }
       case 'retained': {
-        // Custody moved on first. The arrival is kept for review, not recorded live.
         clearPhaseSyncing(phaseEventId)
         notify({ kind: 'error', title: 'Arrival not recorded on the trip', body: outcome.message })
         if (outcome.handedOver && trip !== null) noteTripHandedOver(String(trip.id))
@@ -255,20 +184,12 @@ export default function InTransitPageClient() {
     driverCapturedAt: string,
     acknowledgement: LocationWarningAcknowledgement | null,
   ): void {
-    // Defensive against a stale tab whose ledger has already moved on (e.g. arrival was
-    // recorded from another device/tab). Navigating is still right — the arrival is
-    // already recorded, there is simply nothing left here to submit.
     if (arrivalPhase === null || arrivalPhase.phase_type !== 'in_transit') {
       router.push(currentStepRoute(phases))
       return
     }
 
     const phaseEventId = arrivalPhase.phase_event_id
-    // The same "swipe instant" evidence.capturedAt below already stamps — reused
-    // here rather than taken a second time, so both fields describe the identical moment.
-    // Return value deliberately ignored: `false` means a submission for this row is
-    // already running, and the right response is still to navigate — the attestation is
-    // already on its way.
     startPhaseSubmission({
       tripId,
       phaseEventId,
@@ -276,20 +197,6 @@ export default function InTransitPageClient() {
       evidence: { capturedAt: driverCapturedAt },
       idempotencyKey: crypto.randomUUID(),
       driverCapturedAt,
-      // Un-awaited: a cold GPS fix can take ten seconds and must never sit between the
-      // swipe and the transition. The submitter awaits it internally, so the fix still
-      // travels WITH the evidence, including into the offline queue.
-      //
-      // Known race, accepted: the submitter holds this POST for up to
-      // POSITION_CAPTURE_BUDGET_MS (12s) waiting on the fix, while the driver is already
-      // on the unloading step. Submitting unloading inside that window 409s, because the
-      // backend now enforces ledger ordering and the arrival has not landed yet. It is
-      // recoverable — phase-submitter refetches, sees unloading unresolved, returns
-      // `conflict`, and PhaseStepPageClient keeps the draft and rolls back — so the cost
-      // is one spurious error toast, not lost evidence. Left as-is rather than awaited:
-      // this screen has been refreshing position every POSITION_REFRESH_MS while open, so
-      // the fix is warm and the real window is sub-second, and unloading's first step
-      // needs a seal photograph before it can submit at all.
       position: Promise.resolve(position),
       acknowledgement,
       enqueuePhase,
@@ -297,8 +204,6 @@ export default function InTransitPageClient() {
       onOutcome: (outcome) => handleArrivalOutcome(outcome, phaseEventId),
     })
 
-    // Order matters: mark before navigating, so Home's very first render already sees
-    // this row resolved rather than still pending with isDriving() still true.
     markPhaseSyncing(phaseEventId)
     router.push(currentStepRoute(phases))
   }
@@ -326,8 +231,6 @@ export default function InTransitPageClient() {
     setArrivalPosition(position)
     setArrivalCapturedAt(coords.capturedAt)
     if (offline) {
-      // The preview is an online advisory check only. The exact offline capture still
-      // belongs to this arrival evidence and is queued with its original timestamp.
       setArrivalPreviewLoading(false)
       return
     }
@@ -345,10 +248,6 @@ export default function InTransitPageClient() {
       if (requiresAcknowledgement || assessment.proximity === 'unverified') {
         setArrivalAssessment(assessment)
       } else {
-        // Cleared before hand-off, not left for the next handleArrivalSwipe() call —
-        // see PhaseStepPageClient's identical reset for why a stale arrivalCapturedAt
-        // would otherwise reopen LocationCheckModal against a `null` assessment one
-        // render after a clean pass.
         setArrivalCapturedAt(null)
         setArrivalPosition(null)
         submitArrival(position, coords.capturedAt, null)
@@ -371,15 +270,7 @@ export default function InTransitPageClient() {
   const navigateUrl = directionsUrl(trip.destination_precinct_id)
 
   return (
-    // h-dvh + overflow-hidden: this screen IS one viewport. Only the exceptions list may
-    // scroll, inside the sheet. dvh, not vh — 100vh resolves to the address-bar-hidden
-    // height in a mobile browser and would push the sheet off the bottom.
     <main className="relative flex h-dvh flex-col overflow-hidden bg-surface">
-      {/* The map, full-bleed: it takes every pixel the sheet does not, up
-          under the status bar. The sheet's rounded top overlaps it by its own radius
-          (-mb-7); the map itself stops short of that overlap so Google's logo, bottom
-          left, is never covered. min-h-0 is load-bearing — without it a flex child
-          refuses to shrink and pushes the sheet off the bottom. */}
       <section aria-label="Your position" className="relative -mb-7 min-h-0 flex-1 bg-fill">
         <DriverMap
           position={fix?.position ?? null}
@@ -387,25 +278,12 @@ export default function InTransitPageClient() {
           onRetry={() => { void refreshFix() }}
           route={leg?.coordinates ?? null}
           className="h-[calc(100%-1.75rem)] w-full rounded-none"
-          // Bottom left, 3rem up: clear of the floating Back button and of Google's logo.
-          // Hidden at accessibility text sizes: the map is short there and a chip in its
-          // lower half meets the floating Back and Panic controls. Navigate moves into the
-          // sheet instead (below).
           handoffClassName={cn('left-4 top-auto bottom-12', largeText && 'hidden')}
-          // The fallback cards carry text and a button; they start below the floating
-          // controls and scroll inside the map's slot on a short phone.
           fallbackClassName={cn(
             'h-[calc(100%-1.75rem)] w-full overflow-y-auto rounded-none px-4 pt-[calc(env(safe-area-inset-top)+4.5rem)]',
             FALLBACK_SAFE_CENTRE,
           )}
-          // Navigate rides on the map rather than beside it: over the live map it floats
-          // bottom right, 3rem above the map's own bottom edge — the same height as the Open
-          // in Maps chip, clear of Google's attribution — and on a fallback card DriverMap
-          // sets it in the card's flow. Floated over the card instead, it covered the right
-          // end of the card's own "Open in Maps" button on a 360x740 phone.
           extraAction={navigateUrl !== null && !largeText ? (
-            // A real anchor: a WebView hands maps:/google.navigation: schemes to the OS only
-            // from a link, and this is a hand-off to the driver's own navigation app.
             <a
               href={navigateUrl}
               target="_blank"
@@ -420,8 +298,6 @@ export default function InTransitPageClient() {
         />
       </section>
 
-      {/* Floating over the map, under the status bar: the way back on the left, and
-          Panic on the right — red, labelled, and never inside anything that scrolls. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
         <button
           type="button"
@@ -441,7 +317,6 @@ export default function InTransitPageClient() {
         </button>
       </div>
 
-      {/* Everything the driver can do, on a sheet that never scrolls away. */}
       <div className={cn(
         'relative z-10 shrink-0 rounded-t-[28px] bg-surface px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-5 shadow-[0_-6px_24px_rgb(0_0_0/0.10)]',
         largeText && LARGE_TEXT_SHEET_MAX_HEIGHT,
@@ -449,10 +324,7 @@ export default function InTransitPageClient() {
         <HeadingTo trip={trip} phase={arrivalPhase} estimate={estimate} />
 
         {openExceptions.length > 0 && (
-          // No count eyebrow: each card names its own kind.
           <section aria-label="Open exceptions" className="mt-3.5">
-            {/* Height-capped and self-scrolling: a leg with eight exceptions must not be
-                able to push the swipe off the screen. */}
             <div className={cn('flex flex-col gap-2 overflow-y-auto overscroll-contain', EXCEPTION_LIST_MAX_HEIGHT)}>
               {openExceptions.map((exc) => (
                 <ExceptionCard key={exc.id} exception={exc} />
@@ -461,14 +333,7 @@ export default function InTransitPageClient() {
           </section>
         )}
 
-        {/* The way out of this screen, and — since 2026-08-09 — the record that the drive
-            ended. currentStepRoute (lib/phase) is what skips the stepless in_transit row
-            the driver is standing on; a caller that stopped at the current phase would
-            loop straight back here. Swipe, not a tap: a single accidental tap must never
-            open the truck's evidence capture. */}
         <div className="mt-3.5 flex justify-center">
-          {/* Removed entirely (not merely covered by the sheet) while a check is in flight
-              or awaiting a decision — an unmounted control cannot be swiped twice. */}
           {!(arrivalPreviewLoading || arrivalCapturedAt !== null) && (
             <SwipeToConfirm label="Swipe to Arrive" onConfirm={() => { void handleArrivalSwipe() }} />
           )}
@@ -483,9 +348,6 @@ export default function InTransitPageClient() {
           />
         </div>
 
-        {/* Secondary actions as grey pills, ranked visibly below the swipe. */}
-        {/* Two side by side while they fit; stacked at accessibility text sizes rather
-            than letting the labels spill out of their pills. */}
         <div className="mt-2.5 grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2.5">
           <button
             type="button"
@@ -505,8 +367,6 @@ export default function InTransitPageClient() {
             Exception
           </button>
           {navigateUrl !== null && largeText && (
-            // At accessibility text sizes Navigate lives here, with the other actions,
-            // rather than floating over a map too short to hold it clear of Panic.
             <a
               href={navigateUrl}
               target="_blank"
@@ -563,7 +423,6 @@ function HeadingTo({ trip, phase, estimate }: { trip: Trip; phase: PhaseDescript
           <p className="text-footnote tabular-nums text-surface-on-variant">{formatRemaining(onRoute.remainingMetres)} to go</p>
         )}
         {estimate?.kind === 'off_route' && (
-          // Not a warning: detours are normal. It explains why the ETA went back to the plan.
           <p className="text-footnote text-surface-on-variant">Off planned route</p>
         )}
       </div>

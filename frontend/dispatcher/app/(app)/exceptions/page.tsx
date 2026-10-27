@@ -45,15 +45,11 @@ import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
 import type { ExceptionSeverity, TripExceptionListItem } from '@shared/lib/types/exception'
 
 const SEARCH_DEBOUNCE_MS = 300
-// Relative claim times ("2 min ago") are minute-granular, so a half-minute tick is enough.
 const CLOCK_TICK_MS = 30_000
 const MS_PER_DAY = 86_400_000
 const PRESET_WEEK_DAYS = 7
 const PRESET_MONTH_DAYS = 30
-// Predates the platform, so an untouched range means "all time", the same convention Trip
-// History uses for its picker.
 const RANGE_START = '2020-01-01'
-// What a reviewed row's background becomes while a colleague's claim change is flashing.
 const CLAIM_FLASH_CLASS = 'bg-sec-c/50'
 
 const SEVERITY_OPTIONS = [
@@ -65,11 +61,9 @@ const GROUP_OPTIONS = [
   { value: 'trip' as const, label: 'Group by trip' },
 ]
 
-// Time-like columns read best newest first; text columns A to Z.
 const defaultDirection = (key: ExceptionSortKey): 'asc' | 'desc' => (key === 'raised' ? 'desc' : 'asc')
 
 interface ExceptionsLoadErrorProps {
-  /** What failed to load, in the heading: "exceptions" or "exception history". */
   subject: string
   message: string
   onRetry: () => void
@@ -93,7 +87,6 @@ function ExceptionsLoadError({
   )
 }
 
-// Review states that still sit in the shared queue, whoever holds the claim.
 const UNREVIEWED_KINDS: readonly string[] = ['unreviewed', 'claimed_by_me', 'claimed_by_other']
 
 function emptyMessage(tab: ExceptionTab, filtered: boolean): string {
@@ -126,7 +119,6 @@ export default function ExceptionsPage() {
   const origin = `${ROUTES.exceptions}${query ? `?${query}` : ''}`
 
   useEffect(() => {
-    // Native history integrates with Next search params and preserves input focus.
     if (query !== urlKey) window.history.replaceState(null, '', origin)
   }, [query, urlKey, origin])
 
@@ -156,16 +148,12 @@ export default function ExceptionsPage() {
   const { unreviewed, mine } = useMemo(() => {
     const ordered = sortQueueChronologically([...new Map(queue.items.map(item => [item.id, item])).values()])
     return {
-      // Everything still awaiting review, whoever holds the claim: a claim says who is working an
-      // exception, it does not take it out of the shared queue. "Claimed by me" is a subset view.
       unreviewed: ordered.filter(item => UNREVIEWED_KINDS.includes(reviewState(item, meId).kind)),
       mine: ordered.filter(item => reviewState(item, meId).kind === 'claimed_by_me'),
     }
   }, [queue.items, meId])
 
   const completeTab = tab === 'mine' ? mine : unreviewed
-  // History is cursor-paginated by the server in raised order, and trip groups have their own
-  // order, so header sorting only applies to a flat, complete queue tab.
   const grouped = tab !== 'history' && state.group === 'trip'
   const sortable = tab !== 'history' && !grouped
   const items = tab === 'history' ? history.items : filterQueue(sortQueue(completeTab, state.sort), filters)
@@ -179,7 +167,6 @@ export default function ExceptionsPage() {
     update({ q: '', severity: '', fromDate: undefined, toDate: undefined }, true)
   }
 
-  // Resets only the cursor: the dispatcher's search and filters are what they were looking at.
   function returnToFirstPage(): void {
     update({}, true)
   }
@@ -192,8 +179,6 @@ export default function ExceptionsPage() {
     update({ sort: toggleSort(state.sort, columnId as ExceptionSortKey, defaultDirection) })
   }
 
-  // The picker always holds a concrete range; an untouched one is stored as "no date filter" so
-  // the URL, the history query and "Clear filters" keep their existing optional-date meaning.
   const today = sastCalendarDay(now) ?? RANGE_START
   const daysAgo = useCallback(
     (days: number): string => sastCalendarDay(new Date(now.getTime() - days * MS_PER_DAY)) ?? today,
@@ -265,8 +250,6 @@ export default function ExceptionsPage() {
     })
   }, [grouped, items, expanded, setExpanded])
 
-  // Skeleton rows only for the very first load. Once data exists, a refetch (including a live claim
-  // update) swaps rows in place, so nothing flashes.
   const initialLoad = loading && !hasData
   const showResults = !initialLoad && !(error && !hasData)
   const refetch = tab === 'history' ? history.refetch : queue.refetch
@@ -284,7 +267,6 @@ export default function ExceptionsPage() {
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       <TopBar title="Exceptions" sub={topBarSub} />
-      {/* Tabs size to their labels: a fixed max width cut "Claimed by me" down to "Claimed by…". */}
       <div className="px-6 pt-4">
         <Tabs
           tabs={tabItems}
@@ -322,7 +304,6 @@ export default function ExceptionsPage() {
           />
         )}
       </ListToolbar>
-      {/* A colleague's claim change is announced politely: it matters, but never interrupts typing. */}
       <p role="status" aria-live="polite" className="sr-only">{claimChanges.announcement}</p>
       {stale && hasData && (
         <div
@@ -340,8 +321,6 @@ export default function ExceptionsPage() {
         aria-labelledby={`tab-${tab}`}
         className="mx-6 mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-surf-lowest shadow-level-3"
       >
-        {/* The count lives in the title bar rather than a row of its own. It stays a heading so a
-            restored list has somewhere to put focus, and a live region so a refetch is announced. */}
         <SecHead
           title={cardTitle}
           meta={showResults && (

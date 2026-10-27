@@ -28,7 +28,6 @@ interface Props {
   phase: PhaseDescriptor
   precincts: Precinct[]
   isLast: boolean
-  /** This phase's exceptions: de-duplicated, scoped to it and in chronological order. */
   exceptions: readonly TripException[]
   artifacts: readonly EvidenceArtifactWithUrl[]
   lookup: EvidenceLookup
@@ -37,12 +36,8 @@ interface Props {
   onOpenException: OpenException
   selectedExceptionId: string | null
   highlightedExceptionId: string | null
-  /** A "Show in timeline" addressed to this phase: opens the card and keeps its row visible. */
   reveal: { exceptionId: string; requestId: number } | null
-  /** Collapsed cards show a header and a verdict headline only; expanding them shows everything. */
   minimised?: boolean
-  /** In Transit only: the leg's incidents and driver transfers, in time order. They join the
-   *  Recorded rail by time, beside the departure, the exceptions and the arrival. */
   tripEvents?: readonly TripTimelineEvent[]
   tripEventHandlers?: TripEventHandlers
 }
@@ -71,7 +66,6 @@ export function TimelinePhase(props: Props): React.JSX.Element {
   const baseNode = nodeTypeFor(phase, currentTripPhase(trip)?.phase_event_id ?? null, trip.status)
   const exceptionsById = new Map(exceptions.map(exception => [exception.id as string, exception]))
   const rows = exceptionRowsOf(model, exceptionsById)
-  // A row the cap would hide is swapped in when "Show in timeline" asks for it (D42).
   const { visibleIds, hiddenCount } = visibleExceptions(rows.map(row => row.exception), reveal?.exceptionId ?? null)
   const phaseName = PHASE_NAMES[phase.phase_type]
   const isTransit = phase.phase_type === 'in_transit'
@@ -102,10 +96,6 @@ export function TimelinePhase(props: Props): React.JSX.Element {
   const meta = isTransit ? `${recorded.stopName} → ${recorded.destinationName}` : phaseStopLabel(trip, phase, precincts)
   const warning = phase.anchor_status === 'failed' ? ANCHOR_FAILED_WARNING : undefined
   const compactActs = !isTransit && model.acts.length > 0
-  // A phase with no verdict (trip creation) has no header line to carry the count, so minimised
-  // says it here; every other minimised card carries it in its verdict.
-  // A hijacking is the loudest record on the trip: minimised still lists the leg's incidents and
-  // transfers as one-line rows, so collapsing the card never hides one.
   const tripEventActs = model.acts.filter(act => act.kind === 'trip_event')
   const collapsedEvents = minimised && tripEventActs.length > 0
     ? <PhaseActs {...recorded} acts={tripEventActs} phase={phase} live={false} density="compact" /> : undefined
@@ -127,16 +117,8 @@ export function TimelinePhase(props: Props): React.JSX.Element {
         cancelled={trip.status === 'cancelled'}
         overridden={phase.status === 'overridden'}
         isLast={props.isLast}
-        // In transit is where theft signals arrive, so it is never worth hiding (D31): open with
-        // no toggle while the leg is happening and after it (completed, exception or overridden).
-        // A leg not yet started or not reached has no body and stays a collapsed dashed card.
-        // Minimised is the reader's explicit ask for less: there the leg collapses like any other
-        // phase (still open while it is the live one), and its headline and count stay visible.
         alwaysOpen={isTransit && model.hasBody && !minimised}
         verdict={model.verdict ? <PhaseVerdictLine verdict={model.verdict} /> : undefined}
-        // Minimised keeps the headline and how many exceptions the phase holds; the reasons and the
-        // event rail are one expand away. The count is plain text: the card header is already the
-        // expand button, so a second button cannot sit inside it.
         collapsedVerdict={minimised && model.verdict
           ? <PhaseVerdictLine verdict={{ ...model.verdict, reasons: [...(exceptions.length ? [exceptionCountLabel(exceptions)] : []), ...tripEventReasons(props.tripEvents ?? [])] }} /> : undefined}
         collapsedContent={collapsedContent}

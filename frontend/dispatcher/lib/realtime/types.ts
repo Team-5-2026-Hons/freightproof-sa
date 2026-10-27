@@ -11,16 +11,10 @@ export type RealtimeKind =
   | 'exception_claimed'
   | 'trip_closed'
   | 'evidence_uploaded'
-  // FP-83: a driver handover was arranged, cancelled, replaced or completed.
   | 'driver_substitution_changed'
   | 'late_driver_evidence_changed'
-  // An incident on this trip was reported, followed up, closed or reopened.
   | 'incident_changed'
 
-// Whether an event can change the trip record, its manifest or the live trip list. A
-// Record, not a list, so adding a kind to RealtimeKind fails to compile until someone
-// decides which resources it refreshes. An evidence upload only adds an artifact row; the
-// trip, manifest and list rows are unchanged by it.
 export const KIND_CHANGES_TRIP_RECORD: Record<RealtimeKind, boolean> = {
   trip_created: true,
   phase_completed: true,
@@ -29,20 +23,15 @@ export const KIND_CHANGES_TRIP_RECORD: Record<RealtimeKind, boolean> = {
   exception_claimed: true,
   trip_closed: true,
   evidence_uploaded: false,
-  // The trip's current driver, pending arrangement and custody chain live on the trip record.
   driver_substitution_changed: true,
   late_driver_evidence_changed: false,
-  // The trip record is unchanged by follow-up; a stop arrives as its own trip_closed event.
   incident_changed: false,
 }
 
-// Derived from the map above so the subscription filter cannot drift from the decision.
 export const TRIP_RECORD_KINDS: readonly RealtimeKind[] = (
   Object.keys(KIND_CHANGES_TRIP_RECORD) as RealtimeKind[]
 ).filter(kind => KIND_CHANGES_TRIP_RECORD[kind])
 
-// How much it matters, read off the same value the backend writes onto TripException
-// (core/realtime.py event_severity).
 export type EventSeverity = 'info' | 'warning' | 'critical'
 
 export interface RealtimeEvent {

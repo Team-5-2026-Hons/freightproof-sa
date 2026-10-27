@@ -16,32 +16,27 @@ from app.core.config import settings
 from app.core.geo import haversine_metres
 
 if TYPE_CHECKING:
-    # Avoids a hard runtime dependency on db/models from a module that otherwise
-    # touches no DB, while still typing `precinct` precisely.
     from app.db.models.organisations import Precinct
 
 logger = logging.getLogger(__name__)
 
-# Mirrors Precinct.geofence_radius_metres' server_default and schemas/organisations.py's
-# _RADIUS_DEFAULT_METRES. The column is NOT NULL, so this is only a defensive guard for
-# a partially-built or detached Precinct in a test, not an expected runtime state.
 DEFAULT_GEOFENCE_RADIUS_METRES = 200
 
 
 class GeofenceShape(str, Enum):
     """Which fence the verdict was measured against."""
 
-    CIRCLE = "circle"  # latitude/longitude + geofence_radius_metres
-    POLYGON = "polygon"  # geofence_polygon, the property outline
+    CIRCLE = "circle"
+    POLYGON = "polygon"
 
 
 class GeofenceVerdictReason(str, Enum):
     """Why the verdict came out the way it did. Not persisted, so it stays local
     rather than living in the shared db/models/enums.py."""
 
-    MEASURED = "measured"  # distance was actually computed
-    NO_FIX = "no_fix"  # no tracker fix to compare (fix or its lat/lng were None)
-    NO_PRECINCT_COORDINATES = "no_precinct_coordinates"  # precinct had no usable coordinates
+    MEASURED = "measured"
+    NO_FIX = "no_fix"
+    NO_PRECINCT_COORDINATES = "no_precinct_coordinates"
 
 
 @dataclass(frozen=True)
@@ -66,7 +61,7 @@ class GeofenceVerdict:
     """
 
     confirmed: bool
-    distance_metres: Optional[float]  # None = not computed; never confused with 0.0
+    distance_metres: Optional[float]
     radius_metres: Optional[int]
     tolerance_metres: int
     in_tolerance_band: bool
@@ -123,8 +118,6 @@ def evaluate_geofence(
 
     distance = haversine_metres(fix.lat, fix.lng, precinct.latitude, precinct.longitude)
 
-    # `confirmed` uses the tolerance-widened radius; `in_tolerance_band` separately
-    # flags the marginal case (inside the widened band, outside the radius proper).
     confirmed = distance <= radius + effective_tolerance
     in_tolerance_band = radius < distance <= radius + effective_tolerance
 

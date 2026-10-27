@@ -13,15 +13,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-// client.ts imports the Supabase client at module scope, which throws without real env
-// vars — mocked the same way the other detail page tests do.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// The page and AdminOnly read the signed-in user. Nothing asserted here depends on who
-// that is.
 vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: null }),
 }))
@@ -34,20 +30,16 @@ vi.mock('@/lib/hooks/usePrecinctDetail', () => ({
   usePrecinctDetail: vi.fn(),
 }))
 
-// Leaflet cannot render in jsdom, and the map is not what these tests are about.
 vi.mock('@/components/map/GeofenceMap', () => ({
   GeofenceMap: () => null,
 }))
 
-// The summary fetches and has its own tests. Here only whether it mounts, and for which
-// precinct, matters.
 vi.mock('@/components/analytics/PrecinctAnalyticsSummary', () => ({
   PrecinctAnalyticsSummary: ({ precinctId }: { precinctId: string }) => <p>Analytics for {precinctId}</p>,
 }))
 
 const mockedUsePrecinctDetail = vi.mocked(usePrecinctDetail)
 
-// Title EventTimeline gives a precinct's 'created' event, used to tell that it rendered.
 const TIMELINE_ENTRY = 'Precinct mapped'
 const ANCHORING_NOTE = /Anchoring records are shown to administrators/
 

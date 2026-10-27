@@ -57,15 +57,10 @@ describe('tripHeaderFacts', () => {
       phases: base.phases.map(p => ({ ...p, parcel_count_origin: null, parcel_count_destination: null })),
     }
 
-    // A zero here would assert that nothing was loaded, which is a claim about the
-    // evidence; the absence of a scan is not the same as a scan finding nothing.
     expect(tripHeaderFacts(unscanned, null)?.cargo?.note).toBe('No counts recorded yet')
   })
 
   it('prefers the destination count once delivery has been confirmed', () => {
-    // The two counts differ on purpose. The assertion this replaces accepted either one
-    // (or neither), so it went on passing while the destination branch was unreachable —
-    // the count is written onto the confirmation row, and the reader looked at unloading.
     const delivered: Trip = {
       ...base,
       phases: base.phases.map(p => {
@@ -103,11 +98,8 @@ describe('tripHeaderFacts', () => {
     expect(facts?.reference).toBe('FP-SEED-0001')
     expect(facts?.driverName).toBe('Seeded Driver')
     expect(facts?.vehicle?.horse.registration).toBe('CA 000-000')
-    // A list row has the registration but not the fleet id, so it cannot be linked.
     expect(facts?.vehicle?.horse.id).toBeNull()
     expect(facts?.needsReviewCount).toBe(2)
-    // Booked and scanned counts live in consignments and the phase ledger. A zero here
-    // would assert that nothing was loaded, which is a claim about the evidence.
     expect(facts?.cargo).toBeNull()
     expect(facts?.exceptionsTotal).toBeNull()
   })
@@ -118,8 +110,6 @@ describe('tripHeaderFacts', () => {
       planned_arrival_at: '2026-08-13T10:45:00Z',
     }))
 
-    // Planned ARRIVAL on a trip that has not departed is the ambiguous label this
-    // replaces: it reads as either the driver reporting to load or the truck landing.
     expect(facts?.schedule?.label).toBe('Planned departure')
   })
 
@@ -152,7 +142,6 @@ describe('tripHeaderFacts', () => {
       planned_arrival_at: '2026-08-13T10:45:00Z',
     }))
 
-    // "Expected arrival" here would name a milestone the trip can no longer reach.
     expect(facts?.schedule?.label).toBe('Departed')
     expect(facts?.schedule?.note).toBe('Cancelled after departure')
   })
@@ -175,8 +164,6 @@ describe('tripHeaderFacts', () => {
   })
 
   it('marks trailers pending when a list did not carry them, but names an empty set', () => {
-    // Rendering an unread list and a genuinely empty one identically would let a reader
-    // conclude a trip has no trailers when nobody has said so yet.
     expect(tripHeaderFacts(null, seed())?.vehicle?.trailers).toBeNull()
     expect(tripHeaderFacts(null, seed({ trailers: [] }))?.vehicle?.trailers).toEqual([])
     expect(tripHeaderFacts(null, seed({ trailers: [{ registration: 'CF 7280' }] }))?.vehicle?.trailers)

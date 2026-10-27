@@ -4,16 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface ColumnSpec {
   id: string
-  /** Base width in px. Columns scale up proportionally when the container is wider. */
   width: number
-  /** Narrowest the column may be dragged to. */
   minWidth?: number
-  /** Hide the column while the container is narrower than this many px. */
   hideBelow?: number
 }
 
 export const DEFAULT_MIN_COLUMN_WIDTH = 80
-// Arrow-key step for the keyboard resize handle.
 export const KEYBOARD_RESIZE_STEP = 16
 const STORAGE_PREFIX = 'table-widths:v1:'
 
@@ -25,11 +21,8 @@ interface ResizeSnapshot {
 
 export interface ColumnLayout {
   visible: ColumnSpec[]
-  /** Rendered px width per visible column id (already scaled to fill the container). */
   widths: Record<string, number>
-  /** Rendered table width: fills the container, or the columns' total when that is wider. */
   tableWidth: number
-  /** The factor base widths are multiplied by; 1 means the columns are at their base size. */
   scale: number
   hidden: ReadonlySet<string>
 }
@@ -52,7 +45,6 @@ export function computeColumnLayout(
   const visible = columns.filter(column => !column.hideBelow || containerWidth === 0 || containerWidth >= column.hideBelow)
   const hidden = new Set(columns.filter(column => !visible.includes(column)).map(column => column.id))
   const total = visible.reduce((sum, column) => sum + baseWidth(column, overrides), 0)
-  // Stretch to fill a wide screen rather than leaving dead space to the right of the table.
   const scale = containerWidth > total && total > 0 ? containerWidth / total : 1
   const widths = Object.fromEntries(visible.map(column => [column.id, baseWidth(column, overrides) * scale]))
   return { visible: [...visible], widths, tableWidth: Math.max(total, containerWidth), scale, hidden }
@@ -69,7 +61,6 @@ function readStored(key: string, columns: readonly ColumnSpec[]): Record<string,
       Object.entries(value).filter(([id, width]) => known.has(id) && typeof width === 'number' && Number.isFinite(width) && width > 0),
     )
   } catch {
-    // Unavailable or corrupt storage costs only the remembered widths, never the table.
     return {}
   }
 }
@@ -110,16 +101,12 @@ export function useTableColumns(tableId: string, columns: readonly ColumnSpec[])
   const storageKey = `${STORAGE_PREFIX}${tableId}`
   const [containerWidth, setContainerWidth] = useState(0)
   const [overrides, setOverrides] = useState<Record<string, number>>({})
-  // State, not a ref: the save effect must see `false` in the same commit that applies the
-  // stored widths, or it would write the still-empty overrides over them.
   const [hydrated, setHydrated] = useState(false)
   const columnsRef = useRef(columns)
   const observerCleanup = useRef<(() => void) | null>(null)
 
   useEffect(() => { columnsRef.current = columns }, [columns])
 
-  // Read after mount, not in a state initialiser: the server render has no localStorage, and
-  // a different first client render would be a hydration mismatch.
   useEffect(() => {
     setOverrides(readStored(storageKey, columnsRef.current))
     setHydrated(true)
@@ -127,11 +114,9 @@ export function useTableColumns(tableId: string, columns: readonly ColumnSpec[])
 
   useEffect(() => {
     if (!hydrated) return
-    try { localStorage.setItem(storageKey, JSON.stringify(overrides)) } catch { /* see readStored */ }
+    try { localStorage.setItem(storageKey, JSON.stringify(overrides)) } catch { }
   }, [hydrated, overrides, storageKey])
 
-  // clientWidth excludes a vertical scrollbar, so columns never sum to more than the
-  // visible area and cause a spurious horizontal scrollbar.
   const containerRef = useCallback((el: HTMLDivElement | null) => {
     observerCleanup.current?.()
     observerCleanup.current = null
@@ -145,14 +130,8 @@ export function useTableColumns(tableId: string, columns: readonly ColumnSpec[])
 
   const layout = useMemo(() => computeColumnLayout(columns, overrides, containerWidth), [columns, overrides, containerWidth])
 
-  // Where every visible column sat when a resize began. A drag measures from this, not from
-  // the live layout, so the pointer delta is never applied on top of its own earlier effect.
   const snapshotOf = useCallback((): ResizeSnapshot => ({ widths: layout.widths, scale: layout.scale, order: layout.visible.map(c => c.id) }), [layout])
 
-  // While the columns fill the container, widening one takes the width from its right-hand
-  // neighbour, so the edge follows the pointer exactly and nothing else moves. Once they
-  // overflow (scale 1) there is no spare width to trade, so the column simply grows and the
-  // table scrolls. The last column has no neighbour, so it also just resizes itself.
   const applyResize = useCallback((id: string, delta: number, start: ResizeSnapshot): void => {
     const column = columnsRef.current.find(c => c.id === id)
     if (!column) return
@@ -168,8 +147,6 @@ export function useTableColumns(tableId: string, columns: readonly ColumnSpec[])
     setOverrides(current => ({ ...current, [id]: Math.max(minOf(column), (width + delta) / start.scale) }))
   }, [])
 
-  // The active drag's teardown. Kept so an unmount mid-drag, or a second drag starting, can end it:
-  // the listeners are on window and would otherwise outlive the table they resize.
   const stopResize = useRef<(() => void) | null>(null)
 
   const startResize = useCallback((id: string, clientX: number): void => {
@@ -179,7 +156,6 @@ export function useTableColumns(tableId: string, columns: readonly ColumnSpec[])
     const stop = (): void => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', stop)
-      // The browser takes the pointer away (touch scroll, a system gesture) without a pointerup.
       window.removeEventListener('pointercancel', stop)
       stopResize.current = null
     }

@@ -26,16 +26,12 @@ class BusyEntry(BaseModel):
 
     resource_type: CrewResourceType
     resource_id: UUID
-    # Driver full name or vehicle registration: what the dispatcher recognises.
     label: str
     trip_id: UUID
     trip_reference: str
     trip_status: TripStatus
     busy_from: datetime
-    # None = busy until the trip is closed or cancelled: a live trip past its planned end,
-    # or an old trip that never had one. No one can promise a time for those.
     busy_until: datetime | None
-    # The trip's planned end, kept even when busy_until is None, so the screen can say "was due …".
     planned_until: datetime | None
 
 

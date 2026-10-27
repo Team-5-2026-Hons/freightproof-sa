@@ -11,7 +11,6 @@ import { correctSubstitution, getCompletedSubstitution } from '@/lib/api/driverS
 import { ApiError } from '@/lib/api/client'
 import { substitutionErrorFixtures } from '@shared/lib/mocks/driver-substitutions'
 
-// Keep the real error-code reader and key generator; only the two calls that reach the network are faked.
 vi.mock('@/lib/api/driverSubstitutions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/driverSubstitutions')>('@/lib/api/driverSubstitutions')
   return { ...actual, getCompletedSubstitution: vi.fn(), correctSubstitution: vi.fn() }
@@ -26,7 +25,6 @@ const UUID_SHAPE = /[0-9a-f]{8}-[0-9a-f]{4}-/
 const ARRANGER = 'Anna Arranger'
 const ATTESTER = 'Bongani Attester'
 
-// The ids below are real UUIDs on purpose: a name that fails to resolve would leave one on screen.
 const [horse, trailer] = pack.outgoingPending.vehicles
 const trip: Trip = { ...mockTrips[0]!, id: pack.outgoingPending.trip_id as Trip['id'], horse: null, trailers: [], driver_substitutions: [pack.normalCompleted] }
 
@@ -230,7 +228,6 @@ it('posts_a_clarification_with_reason_and_note_then_refreshes_the_detail_and_the
   expect(correctSubstitution).toHaveBeenCalledWith(trip.id, 'completed-transfer', {
     client_request_id: expect.any(String), reason: 'Label misspelt', correction_note: 'It was the Engen.',
   })
-  // The detail is read again, so the new clarification appears in its own list.
   await waitFor(() => expect(getCompletedSubstitution).toHaveBeenCalledTimes(2))
 })
 

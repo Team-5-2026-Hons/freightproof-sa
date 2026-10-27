@@ -41,7 +41,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_exc_idempotency"
 down_revision = "ciaran_corr_capture_time"
 branch_labels = None

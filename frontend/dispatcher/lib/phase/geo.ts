@@ -49,7 +49,6 @@ export function toCoords(lat: number | null, lng: number | null): Coords | null 
   return { lat, lng }
 }
 
-// Threshold below which a separation prints as whole metres rather than kilometres.
 const METRES_PER_KM = 1_000
 
 /** Whole metres under a kilometre, one decimal of km above it — "0.3 km" reads as

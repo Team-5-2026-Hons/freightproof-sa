@@ -150,9 +150,6 @@ class _Rebuilt:
     evidence_state: EvidencePayloadState | None = None
 
 
-# A reconstructor rebuilds one subject's anchored payload from the database. It returns None
-# when the subject's row is gone, and may raise _UnsupportedPhasePayloadVersion or
-# _PhaseEvidenceMissing; verify_subject turns those into outcomes once, for every type.
 type _Reconstructor = Callable[
     [AsyncSession, uuid.UUID, BlockchainReceipt], Awaitable[_Rebuilt | None]
 ]
@@ -207,7 +204,6 @@ async def _rebuild_evidence_event(
     state = await reconstruct_evidence_event(
         db, event_id=subject_id, anchored_payload=receipt.payload_json,
     )
-    # A receipt of one kind linked to an event of another must not verify as it.
     if state.payload["event_type"] != receipt.receipt_type:
         raise _UnsupportedPhasePayloadVersion("receipt type does not match the evidence event")
     return _Rebuilt(state.payload, evidence_state=state)
@@ -243,7 +239,6 @@ async def _rebuild_driver_substitution(
     except EvidenceObjectIntegrityError as error:
         raise _EvidenceMissing("a committed handover photo is gone or altered") from error
     except EvidenceStorageUnavailableError as error:
-        # An outage is not tampering: reported as an error, never a mismatch.
         raise _UnsupportedPhasePayloadVersion("evidence storage unavailable") from error
     rebuilt = await load_substitution_record(db, subject_id, live_file_hashes=live)
     if rebuilt is None:
@@ -279,10 +274,6 @@ async def _rebuild_driver_substitution_correction(
     return None if payload is None else _Rebuilt(payload)
 
 
-# The orchestration half of the subject policy: how each verifiable subject type is rebuilt.
-# The blockchain half (tenant visibility) is SUBJECT_VISIBILITY_QUERIES in
-# blockchain/subject_visibility.py; two registries and not one object because blockchain/
-# sits below orchestration/ and may not import it.
 SUBJECT_RECONSTRUCTORS: Mapping[SubjectType, _Reconstructor] = MappingProxyType({
     SubjectType.TRIP: _rebuild_trip,
     SubjectType.VEHICLE_EVENT: _rebuild_vehicle_event,
@@ -294,9 +285,6 @@ SUBJECT_RECONSTRUCTORS: Mapping[SubjectType, _Reconstructor] = MappingProxyType(
     SubjectType.DRIVER_SUBSTITUTION_CORRECTION: _rebuild_driver_substitution_correction,
 })
 
-# Subject types verify_subject does not rebuild: they report no_receipt even when a receipt
-# exists. Written out so a new SubjectType is either registered above or listed here, and a
-# test fails until someone decides which.
 UNVERIFIABLE_SUBJECT_TYPES: frozenset[SubjectType] = frozenset({
     SubjectType.VEHICLE, SubjectType.DRIVER, SubjectType.AUDIT_PACK,
 })
@@ -321,7 +309,6 @@ async def verify_subject(
 
     reconstructor = SUBJECT_RECONSTRUCTORS.get(subject_type)
     if reconstructor is None:
-        # vehicle/driver subject types not currently verifiable directly
         return VerifyOutcome(status=VerifyStatus.NO_RECEIPT, receipt=receipt)
 
     try:
@@ -363,9 +350,6 @@ async def verify_subject(
 
     try:
         service = hedera_service or HederaService()
-        # verify_hash() is a synchronous httpx GET to the Hedera mirror node (up to a
-        # 10s timeout) — run it off the event loop so a slow mirror node stalls only
-        # this request, not every other request the server is handling.
         match = await asyncio.to_thread(
             service.verify_hash,
             receipt.hedera_topic_id,
@@ -373,8 +357,6 @@ async def verify_subject(
             receipt.data_hash,
         )
     except HederaServiceError:
-        # Mirror node unreachable, bad stored topic_id, SDK error — infrastructure failure,
-        # not evidence of tamper. Return ERROR so the UI can distinguish it from HEDERA_MISMATCH.
         return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
     if not match:
         return VerifyOutcome(

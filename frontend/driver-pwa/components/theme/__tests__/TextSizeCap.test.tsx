@@ -2,7 +2,6 @@ import { render } from '@testing-library/react'
 import { describe, it, expect, afterEach } from 'vitest'
 import { TextSizeCap, MAX_ROOT_FONT_PX } from '../TextSizeCap'
 
-// Stands in for the iOS Text Size setting, which reaches the root through a stylesheet.
 function setSystemTextSize(px: number) {
   const style = document.createElement('style')
   style.setAttribute('data-test-text-size', '')

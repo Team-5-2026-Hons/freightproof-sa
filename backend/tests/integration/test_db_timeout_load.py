@@ -18,18 +18,12 @@ from scripts.db_timeout_load.config import (
 )
 from scripts.db_timeout_load.world import SCHEMA_PREFIX
 
-# The cheapest faults that cover a failed checkout, a lock-bound command (whose statements
-# PostgreSQL must cancel), a half-open socket mid-command and a failed pre-ping; the full
-# matrix belongs to the documented evidence run.
 EXPECTED_REASONS = {
     "pool": "pool_timeout", "command": "command_timeout",
     "half_open_command": "command_timeout", "idle_ping": "checkout_timeout",
 }
 REPETITIONS = 3
-# Three minutes covers app import, twelve CI-budget fault/recovery cycles and teardown.
-# Individual requests retain their tighter watchdogs; a stuck subprocess still fails CI.
 SUBPROCESS_TIMEOUT_SECONDS = 180
-# Deliberately the local default, never a developer's .env value; CI sets REDIS_URL.
 LOCAL_REDIS_URL = "redis://localhost:6379/0"
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 LOAD_SCHEMAS = text("SELECT nspname FROM pg_namespace WHERE starts_with(nspname, :prefix) ORDER BY nspname")
@@ -45,14 +39,11 @@ def run_load(output: Path, database: str, redis: str) -> subprocess.CompletedPro
                "--repetitions", str(REPETITIONS), "--output", str(output), "--revision", "pytest-subprocess"]
     for scenario in EXPECTED_REASONS:
         command += ["--scenario", scenario]
-    # A separate interpreter imports and configures the app itself, as a real run does,
-    # instead of inheriting pytest's overrides.
     environment = {**os.environ, "TEST_DATABASE_URL": database, "REDIS_URL": redis, "PYTHONPATH": str(BACKEND_DIR)}
     try:
         return subprocess.run(command, env=environment, cwd=output.parent, text=True, capture_output=True,
                               timeout=SUBPROCESS_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as exc:
-        # repr: the stub types captured output as str or bytes, even with text=True.
         pytest.fail(f"Load run exceeded {SUBPROCESS_TIMEOUT_SECONDS} s\n{exc.stdout!r}\n{exc.stderr!r}")
 
 

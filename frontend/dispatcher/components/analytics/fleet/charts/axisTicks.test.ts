@@ -36,7 +36,6 @@ describe('time-axis labels', () => {
 })
 
 describe('column names under category charts', () => {
-  // "Where in the trip" names, the chart that overlapped with the chat panel open (21 Oct).
   const STEPS = ['Activation', 'Loading', 'Waiting to leave', 'Driving', 'Arrival seal check', 'Unloading', 'Sign-off', 'Not linked to a step']
 
   it('wraps a name at word breaks to fit its width', () => {
@@ -68,7 +67,6 @@ describe('column names under category charts', () => {
   })
 
   it('says the names do not fit once a single word is wider than its column, so the bars lie down', () => {
-    // 427px card with the chat panel open: about 44px a column, and "Activation" is wider (21 Oct).
     const narrow = columnLabelLayout(STEPS, 395, 64)
 
     expect(narrow.fits).toBe(false)

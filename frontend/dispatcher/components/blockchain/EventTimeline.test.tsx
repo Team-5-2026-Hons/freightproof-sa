@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { EventTimeline } from './EventTimeline'
 import type { VehicleEvent } from '@shared/lib/types/blockchain'
 
-// The forensic badge is not what these tests are about.
 vi.mock('./ForensicOnly', () => ({ ForensicOnly: () => null }))
 
 function event(overrides: Partial<VehicleEvent> = {}): VehicleEvent {
@@ -24,7 +23,6 @@ describe('EventTimeline timestamps', () => {
   it('shows each event in SAST with the same wording as every other date in the app', () => {
     render(<EventTimeline events={[event()]} receipts={[]} />)
 
-    // 14:30Z is 16:30 SAST; "Sep", not the "Sept" some browsers' locale data would print.
     expect(screen.getByText('05 Sep 2026, 16:30 SAST')).toBeInTheDocument()
   })
 

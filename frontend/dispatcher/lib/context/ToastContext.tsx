@@ -16,8 +16,6 @@ export interface ToastState {
 export const ToastContext = createContext<ToastState | null>(null)
 
 const MAX_TOASTS = 3
-// Info, success and warning auto-dismiss; error and explicitly sticky toasts require
-// manual dismissal.
 export const TOAST_AUTO_DISMISS_MS = 4_000
 
 /**
@@ -29,7 +27,6 @@ function evictToCap(toasts: Toast[]): Toast[] {
   let kept = toasts
   while (kept.length > MAX_TOASTS) {
     const oldestOrdinary = kept.findIndex(t => t.priority !== 'critical')
-    // -1 means every toast on screen is critical, so fall back to age.
     const drop = oldestOrdinary === -1 ? 0 : oldestOrdinary
     kept = [...kept.slice(0, drop), ...kept.slice(drop + 1)]
   }
@@ -39,9 +36,6 @@ function evictToCap(toasts: Toast[]): Toast[] {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  // Mirrors `toasts` synchronously. notify() must see toasts raised earlier in the same
-  // render batch to de-duplicate them, which the async state value can't offer, and a
-  // state updater is the wrong place for the timer side effect.
   const current = useRef<Toast[]>([])
 
   const commit = useCallback((next: Toast[]) => {
@@ -56,8 +50,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [commit])
 
   const clear = useCallback(() => {
-    // Nothing showing means nothing to do; skipping the state write avoids re-rendering
-    // every context consumer for a no-op.
     if (current.current.length === 0) return
     Object.values(timers.current).forEach(clearTimeout)
     timers.current = {}
@@ -65,7 +57,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [commit])
 
   const notify = useCallback((toast: Omit<Toast, 'id'>) => {
-    // A failing refetch re-raises the same error every minute; showing it once is enough.
     const duplicate = current.current.some(
       t => t.kind === toast.kind && t.title === toast.title && t.body === toast.body,
     )
@@ -80,7 +71,6 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, notify, dismiss, clear }}>
       {children}
-      {/* ToastViewport handles positioning and aria-live per DESIGN_SYSTEM.md §10.7 */}
       <ToastViewport toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>
   )

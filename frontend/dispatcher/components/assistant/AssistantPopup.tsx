@@ -11,9 +11,7 @@ import { AssistantMessage } from './AssistantMessage'
 import type { NavigateTo } from './navigation'
 import { ASSISTANT_COPY, spendLine } from './assistantCopy'
 
-/** The server's limit (app/schemas/assistant.py MAX_QUESTION_CHARS). */
 export const MAX_QUESTION_CHARS = 500
-// A new answer is scrolled to this far below the top of the conversation, so its first line shows.
 const ANSWER_SCROLL_GAP_PX = 8
 const DOT_DELAY_MS = 150
 const THINKING_DOTS = [0, 1, 2] as const
@@ -21,11 +19,9 @@ const THINKING_DOTS = [0, 1, 2] as const
 interface AssistantPopupProps {
   id: string
   assistant: Assistant
-  /** This month's spend from the status read, until the first answer brings a newer one. */
   statusSpend: AssistantSpend | null
   /** Shrink back to the bubble, returning focus to it. */
   onMinimise: () => void
-  /** A card link was followed: get out of the way of the page it opens (spec D6). */
   onNavigate: NavigateTo
 }
 
@@ -57,7 +53,6 @@ export function AssistantPopup({ id, assistant, statusSpend, onMinimise, onNavig
     if (log === null) return
     const answer = lastAnswerRef.current
     if (assistant.pending === null && lastMessage?.role === 'assistant' && answer !== null) {
-      // Show a new answer's start, not its end, so a long answer with cards is read from the top.
       log.scrollTop += answer.getBoundingClientRect().top - log.getBoundingClientRect().top - ANSWER_SCROLL_GAP_PX
     } else {
       log.scrollTop = log.scrollHeight
@@ -72,9 +67,6 @@ export function AssistantPopup({ id, assistant, statusSpend, onMinimise, onNavig
     return () => document.removeEventListener('keydown', onKey)
   }, [onMinimise])
 
-  // A question that failed (even while this pop-up was minimised) is put back in an empty box, ready to edit or
-  // ask again: read once when the pop-up opens, and again whenever a new failure arrives (adjusted during render,
-  // React's pattern for state that follows a prop). A choice button's "I mean …" isn't: Try again resends it.
   const failed = assistant.failed
   const [seenFailure, setSeenFailure] = useState(failed)
   if (failed !== seenFailure) {
@@ -84,7 +76,6 @@ export function AssistantPopup({ id, assistant, statusSpend, onMinimise, onNavig
 
   function ask(text: string, refs: RecordRef[] = []): void {
     if (isSending || budgetSpent) return
-    // Cleared straight away: the question shows in the conversation while it's answered.
     setQuestion('')
     void assistant.send(text, refs)
   }
@@ -105,7 +96,6 @@ export function AssistantPopup({ id, assistant, statusSpend, onMinimise, onNavig
   }
 
   function onInputKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    // Enter asks; Shift+Enter makes a new line.
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       if (canSend) ask(question)
@@ -172,7 +162,6 @@ export function AssistantPopup({ id, assistant, statusSpend, onMinimise, onNavig
         {assistant.pending !== null && (
           <>
             <AssistantMessage message={{ role: 'user', text: assistant.pending }} onNavigate={onNavigate} onChoose={onChoose} busy />
-            {/* Three dots pulse in turn while the answer is worked out; still for reduced motion. */}
             <div role="status" className="flex items-center gap-1 self-start rounded-lg bg-surf-low px-3 py-3">
               <span className="sr-only">{ASSISTANT_COPY.waiting}</span>
               {THINKING_DOTS.map((dot) => (

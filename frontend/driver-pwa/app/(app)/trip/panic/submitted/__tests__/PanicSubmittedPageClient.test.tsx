@@ -5,8 +5,6 @@ import PanicSubmittedPageClient from '../PanicSubmittedPageClient'
 import { ROUTES } from '@/lib/constants/routes'
 
 const mockReplace = vi.fn()
-// Reassigned per-test so a plain call vs. a `?queued=1` call can be told apart —
-// mirrors the pattern app/otp/__tests__/page.test.tsx uses for useSearchParams.
 let mockSearchParams = new URLSearchParams()
 
 vi.mock('next/navigation', () => ({

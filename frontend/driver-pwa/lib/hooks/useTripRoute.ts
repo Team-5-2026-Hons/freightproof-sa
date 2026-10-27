@@ -14,14 +14,12 @@ export function useTripRoute(tripId: string | null): TripRoute | null {
 
   useEffect(() => {
     setRoute(null)
-    // Demo trips are mock fixtures with no server-side stops to route between.
     if (tripId === null || IS_DEMO_MODE) return
 
     let cancelled = false
     fetchMyTripRoute(tripId)
       .then((next) => { if (!cancelled) setRoute(next) })
       .catch((err: unknown) => {
-        // Display-only: logged for diagnosis, never surfaced as an error on the road.
         console.warn('[useTripRoute] route unavailable', err)
       })
     return () => { cancelled = true }

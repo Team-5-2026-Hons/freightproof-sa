@@ -23,10 +23,6 @@ from app.orchestration.consignments.sync import ConsignmentSyncResult
 from app.tasks.parcel_perfect import _sync_all_active
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _make_consignment(pp_ref: str = "WAY001") -> MagicMock:
     """Minimal mock of a Consignment ORM object.
@@ -39,7 +35,7 @@ def _make_consignment(pp_ref: str = "WAY001") -> MagicMock:
     c.parcel_perfect_reference = pp_ref
     c.client_organization_id = uuid.uuid4()
     c.trip_id = uuid.uuid4()
-    c.pp_raw_json = None  # no prior sync — POD guard treats as unconfirmed
+    c.pp_raw_json = None
     return c
 
 
@@ -49,7 +45,6 @@ def _make_session_mock(consignments: list[MagicMock]) -> MagicMock:
     The session is set up as an async context manager so it works with
     ``async with session_factory() as db:``.
     """
-    # execute().scalars().all() must return the consignment list.
     scalars_mock = MagicMock()
     scalars_mock.all.return_value = consignments
 
@@ -84,10 +79,6 @@ def _make_engine_mock() -> MagicMock:
     return engine
 
 
-# ---------------------------------------------------------------------------
-# Test 1
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.asyncio
 async def test_sync_all_active_calls_fetch_for_each_consignment() -> None:
@@ -102,7 +93,6 @@ async def test_sync_all_active_calls_fetch_for_each_consignment() -> None:
     session_factory = _make_session_factory(db)
     engine = _make_engine_mock()
 
-    # Return a consignment with no poddate so POD detection does not fire.
     updated = _make_consignment("WAY001")
     updated.pp_raw_json = {"details": {"poddate": ""}}
 
@@ -117,27 +107,18 @@ async def test_sync_all_active_calls_fetch_for_each_consignment() -> None:
     ):
         result = await _sync_all_active()
 
-    # fetch_and_sync_consignment must be called exactly once for the one consignment.
-    # client_organization_id is no longer caller-supplied — it is derived from
-    # the PP waybill's accnum inside fetch_and_sync_consignment.
     mock_fetch.assert_awaited_once_with(
         db=db,
         pp_reference=consignment.parcel_perfect_reference,
         trip_id=consignment.trip_id,
     )
 
-    # The session must be committed after the successful fetch.
     db.commit.assert_awaited_once()
 
-    # Counts must reflect the single success.
     assert result["synced"] == 1
     assert result["errors"] == 0
     assert result["pods_confirmed"] == 0
 
-
-# ---------------------------------------------------------------------------
-# Test 2
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -165,7 +146,6 @@ async def test_sync_all_active_skips_already_confirmed_pod() -> None:
     ):
         result = await _sync_all_active()
 
-    # PP must not be called — the consignment is already confirmed.
     mock_fetch.assert_not_awaited()
     db.commit.assert_not_awaited()
 
@@ -183,9 +163,8 @@ async def test_sync_all_active_detects_new_pod_after_sync() -> None:
     in this cycle. The result must reflect synced=1 and pods_confirmed=1.
     """
     consignment = _make_consignment("WAY001")
-    consignment.pp_raw_json = {"details": {"poddate": ""}}  # not yet confirmed
+    consignment.pp_raw_json = {"details": {"poddate": ""}}
 
-    # fetch_and_sync_consignment returns an updated consignment with poddate set.
     updated = _make_consignment("WAY001")
     updated.pp_raw_json = {"details": {"poddate": "2026-07-01"}}
 
@@ -229,7 +208,6 @@ async def test_sync_all_active_continues_on_single_failure() -> None:
     session_factory = _make_session_factory(db)
     engine = _make_engine_mock()
 
-    # First call raises; second returns an unconfirmed consignment (no poddate).
     updated = _make_consignment("WAY002")
     updated.pp_raw_json = {"details": {"poddate": ""}}
     mock_fetch = AsyncMock(
@@ -246,13 +224,10 @@ async def test_sync_all_active_continues_on_single_failure() -> None:
     ):
         result = await _sync_all_active()
 
-    # fetch must have been attempted for both consignments despite the first failure.
     assert mock_fetch.await_count == 2
 
-    # Only one rollback — for the consignment that raised.
     db.rollback.assert_awaited_once()
 
-    # Only one commit — for the consignment that succeeded.
     db.commit.assert_awaited_once()
 
     assert result["synced"] == 1

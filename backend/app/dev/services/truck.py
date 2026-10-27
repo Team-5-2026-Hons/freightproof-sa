@@ -42,47 +42,15 @@ from app.dev.schemas import (
     DevTruckScenario,
 )
 
-# The bearing every scenario offset travels along from the stop's own centre: due
-# east. Documented and FIXED rather than derived per-trip (contrast with
-# demo_waypoints.py's DEMO_ROUTE_BEARING_DEGREES, which points along one specific
-# seeded corridor): a geofence verdict is a pure distance check with no directionality,
-# so any fixed bearing produces the identical pass/fail outcome, and fixing one lets a
-# reviewer regenerate any offset by hand and lets
-# tests/unit/test_dev_truck_service.py assert an exact destination point rather than
-# merely a distance.
 SCENARIO_OFFSET_BEARING_DEGREES = 90.0
 
-# Fixed absolute distances in metres, independent of any one precinct's own radius —
-# see task-3-brief.md's "Core scenario rule". 3 km and 50 km read the same past a
-# 50 m-radius yard precinct as past a 500 m-radius cross-dock hub, which is the
-# property that makes them useful headline numbers rather than "big enough to fail
-# somewhere for this particular precinct".
 THREE_KM_METRES = 3_000.0
 FIFTY_KM_METRES = 50_000.0
 
-# How far past (or short of) the tolerance-widened radius the two boundary scenarios
-# land. Ten metres is comfortably past Numeric(10,7) rounding and float error in the
-# destination-point maths, and comfortably inside "the marginal case" — the same
-# margin the legacy WAYPOINT_INSIDE_TOLERANCE/WAYPOINT_OUTSIDE_TOLERANCE pair uses
-# (demo_waypoints.py).
 TOLERANCE_BOUNDARY_MARGIN_METRES = 10.0
 
-# Coordinates round to Numeric(10,7) the moment they reach the DB
-# (Precinct.latitude/longitude). Rounding a computed offset to the same scale here
-# means a staged position is exactly what a real precinct row could hold — not a
-# value a later read would silently truncate further.
 _COORDINATE_DECIMAL_PLACES = Decimal("0.0000001")
 
-# Presentation labels for MoveTruckResponse.waypoint_label in scenario mode, so the
-# panel's "what did I just press" readout reads like a sentence rather than a snake_
-# case enum value. Mirrors DemoWaypoint.label for the legacy mode, but deliberately
-# spelled DIFFERENTLY from every legacy waypoint label (demo_waypoints.py): the panel
-# renders both button grids on screen together, and two differently-behaved buttons
-# sharing the exact same visible text (e.g. two "No signal" buttons) would be
-# ambiguous for an operator and for a screen reader alike — see
-# frontend/dispatcher/lib/types/dev.ts's copy of this map for the same reasoning.
-# Not itself part of the wire contract — dev_pulsit.py composes the final label with
-# the target precinct's name when one was resolved.
 SCENARIO_LABELS: dict[str, str] = {
     SCENARIO_AT_STOP: "At the stop",
     SCENARIO_INSIDE_TOLERANCE: "Just inside tolerance",
@@ -167,9 +135,6 @@ def scenario_distance_metres(
     if scenario == SCENARIO_AT_STOP:
         return 0.0
     if scenario == SCENARIO_INSIDE_TOLERANCE:
-        # Clamped at zero per the brief: a precinct with an unusually small radius and
-        # tolerance could otherwise drive "radius + tolerance - 10" negative, which is
-        # not a distance a destination-point offset can be computed from.
         return max(0.0, radius_metres + tolerance_metres - TOLERANCE_BOUNDARY_MARGIN_METRES)
     if scenario == SCENARIO_OUTSIDE_TOLERANCE:
         return radius_metres + tolerance_metres + TOLERANCE_BOUNDARY_MARGIN_METRES
@@ -201,10 +166,6 @@ def destination_point(
     value the schema itself could not hold more precisely would be false precision.
     """
     if distance_metres == 0.0:
-        # Skip the trigonometry entirely rather than let asin/atan2 of a zero angular
-        # distance round to a value a few ULPs away: "at the stop" must mean
-        # bit-for-bit the stop's own coordinate, which the destination-point formula
-        # does not otherwise guarantee at distance=0.
         return latitude, longitude
 
     lat_rad = math.radians(float(latitude))
@@ -273,10 +234,7 @@ def build_scenario_target(
     )
 
 
-# How far along the offset bearing to look for the outline's edge. Comfortably beyond the
-# largest outline the schema allows (schemas/organisations._POLYGON_MAX_AREA_M2).
 _EDGE_SEARCH_LIMIT_METRES = 20_000.0
-# Binary-search steps: halving 20 km 30 times lands well under a millimetre.
 _EDGE_SEARCH_STEPS = 30
 
 

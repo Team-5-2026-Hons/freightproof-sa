@@ -7,11 +7,9 @@ export type ChipType = 'transit' | 'loading' | 'complete' | 'exception' | 'criti
 export interface StatusMeta {
   label: string
   chipType: ChipType
-  iconName: string  // Lucide icon name
+  iconName: string
 }
 
-// `active` covers everything between creation and closure — WHERE in the plan a trip is
-// comes from the ledger, never from here.
 export const TRIP_STATUS_META: Record<CoarseTripStatus, StatusMeta> = {
   created:         { label: 'Created',   chipType: 'pending',   iconName: 'Clock' },
   active:          { label: 'Active',    chipType: 'transit',   iconName: 'Truck' },

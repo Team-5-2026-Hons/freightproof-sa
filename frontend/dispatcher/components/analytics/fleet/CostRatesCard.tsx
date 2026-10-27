@@ -20,7 +20,6 @@ import {
 } from './costRates'
 
 const COPY = COST_COPY.rates
-// Consumption and the road factor are not money: one and two decimals, the precision they're stored at.
 const CONSUMPTION_DECIMALS = 1
 const FACTOR_DECIMALS = 2
 const PER_100_KM = 100
@@ -31,7 +30,6 @@ interface RateRow {
   unit: string
   value: string
   origin: string
-  /** The field an admin edits for this row; undefined for the derived fuel-per-km row. */
   field?: EditableRate
 }
 
@@ -98,7 +96,6 @@ function RateInput({ row, value, problem, onChange }: RateInputProps) {
 }
 
 interface CostRatesCardProps {
-  /** null while the cost figures (which carry their rates) are still loading or failed. */
   rates: CostProfile | null
   /** Called after a save, so the tab reloads its figures with the new rates. */
   onSaved?: () => void
@@ -135,7 +132,6 @@ export function CostRatesCard({ rates, onSaved, className }: CostRatesCardProps)
     try {
       await saving.save(update)
     } catch {
-      // The hook has already kept the server's message for display; the inputs keep their values.
       return
     }
     setDraft(null)

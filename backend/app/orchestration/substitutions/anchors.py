@@ -52,14 +52,12 @@ class CustodyAnchorKind(str, enum.Enum):
     CORRECTION = "correction"
 
 
-# ── freeze ───────────────────────────────────────────────────────────────────
-
 
 async def freeze_substitution(db: AsyncSession, row: DriverSubstitution) -> None:
     """Write the completed handover's commitment and queue its anchor (after the outer commit).
     Called by the completion, in its transaction, once every fact the record reads is flushed."""
     payload = await rebuild_substitution_payload(db, row.id)
-    if payload is None:  # a completion always has a request; reaching here is a caller bug
+    if payload is None:
         raise ValueError(f"substitution {row.id} has no request to commit to")
     version = payload["payload_version"]
     if not isinstance(version, int):
@@ -71,8 +69,6 @@ async def freeze_substitution(db: AsyncSession, row: DriverSubstitution) -> None
     await db.flush()
     dispatch_custody_anchor(db, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
 
-
-# ── dispatch ─────────────────────────────────────────────────────────────────
 
 _BACKGROUND_CUSTODY_TASKS: set[asyncio.Task[bool]] = set()
 
@@ -128,8 +124,6 @@ def _retain(task: asyncio.Task[bool], record_id: uuid.UUID) -> None:
     task.add_done_callback(_observe)
 
 
-# ── execute ──────────────────────────────────────────────────────────────────
-
 
 @dataclass(frozen=True)
 class _Target:
@@ -137,7 +131,7 @@ class _Target:
 
     subject_type: SubjectType
     receipt_type: BlockchainReceiptType
-    receipt_field: str  # the row's receipt FK column
+    receipt_field: str
 
 
 _TARGETS = {
@@ -209,7 +203,6 @@ async def anchor_custody_record(db: AsyncSession, *, kind: CustodyAnchorKind, re
         row.anchor_status = AnchorStatus.FAILED.value
         return False
     if compute_payload_hash(row.payload_json) != row.event_hash or live is None or compute_payload_hash(live) != row.event_hash:
-        # Edited after it was frozen: never anchored, never re-baselined.
         logger.error("%s %s: stored or live state no longer matches its frozen hash", kind.value, record_id)
         row.anchor_status = AnchorStatus.FAILED.value
         return False
@@ -227,8 +220,6 @@ async def anchor_custody_record(db: AsyncSession, *, kind: CustodyAnchorKind, re
     row.anchor_status = AnchorStatus.ANCHORED.value
     return True
 
-
-# ── recover ──────────────────────────────────────────────────────────────────
 
 
 async def recover_custody_anchor(db: AsyncSession, *, due_before: datetime) -> bool | None:
@@ -253,20 +244,17 @@ async def recover_custody_anchor(db: AsyncSession, *, due_before: datetime) -> b
     return None
 
 
-# ── integrity read ───────────────────────────────────────────────────────────
-
 
 async def _chain_findings(db: AsyncSession, trip: Trip, rows: list[DriverSubstitution]) -> list[str]:
     findings: list[str] = []
     try:
-        # From the rows in hand: the same columns completed_links would select again.
         derive_custody(trip.driver_id, links_from_rows(rows))
     except CustodyChainError as error:
         findings.append(f"Custody chain is broken: {error}")
     by_id = {row.id: row for row in rows}
     for row in rows:
         if row.request_id is None:
-            continue  # legacy amendment: no commitment was ever recorded, and none is invented
+            continue
         if row.event_hash is None or row.payload_json is None:
             findings.append(f"Amendment {row.sequence_number} has no frozen commitment.")
             continue
@@ -375,7 +363,6 @@ async def verify_custody_chain(
             select(DriverSubstitution).where(DriverSubstitution.trip_id == trip_id).order_by(DriverSubstitution.sequence_number)
         )).scalars())
     else:
-        # The same filter the query above applies, checked against the row the caller read.
         if loaded.trip.id != trip_id or loaded.trip.operator_organization_id != organization_id:
             raise ResourceNotFoundError("Trip", str(trip_id))
         trip, rows = loaded.trip, list(loaded.rows)
@@ -388,7 +375,6 @@ async def verify_custody_chain(
         .join(DriverSubstitution, DriverSubstitution.id == DriverSubstitutionCorrection.substitution_id)
         .where(DriverSubstitution.trip_id == trip_id, DriverSubstitutionCorrection.receipt_id.is_(None))
     )).scalar_one()
-    # A local status flag or an uncommitted legacy row cannot prove an anchor exists.
     pending = sum(1 for row in rows if row.blockchain_receipt_id is None or row.request_id is None) + pending_corrections
     status = (
         CustodyIntegrityStatus.FAILED if findings

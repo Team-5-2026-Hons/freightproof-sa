@@ -40,7 +40,6 @@ const HIGHLIGHT = 'bg-sec-c/60 motion-safe:transition-colors motion-safe:duratio
 /** What a row needs from the card around it. Grouped so the row components stay at a few props. */
 export interface ActRowContext {
   phase: PhaseDescriptor
-  /** The stop this phase is anchored to; for in_transit, the one it departs from. */
   stopName: string
   destinationName: string
   expectedArrivalAt: string | null
@@ -49,7 +48,6 @@ export interface ActRowContext {
   selectedExceptionId: string | null
   highlightedExceptionId: string | null
   onOpenException: OpenException
-  /** In Transit only: where an incident or a driver transfer row leads. */
   tripEvents?: TripEventHandlers
 }
 

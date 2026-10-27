@@ -28,7 +28,6 @@ import type {
 
 const DEV_BASE = '/api/v1/dev'
 
-// Enough for a whole demo run to stay on screen; older entries only add scrolling.
 const MAX_ACTIVITY_ENTRIES = 20
 
 export interface ActivityEntry {
@@ -39,7 +38,6 @@ export interface ActivityEntry {
   findings: RoadFindingRead[]
 }
 
-// Module scope rather than inside the hook, so `run`'s dependency list stays honest.
 function describeError(err: unknown): string {
   if (err instanceof ApiError) {
     return err.status === 404
@@ -63,10 +61,7 @@ export interface UseDevTriggersResult {
   flushMockState: () => Promise<FlushMockStateResponse | null>
   loadWaypoints: () => Promise<void>
   moveTruck: (body: MoveTruckRequest) => Promise<MoveTruckResponse | null>
-  // Separate from moveTruck on purpose: the phone and the tracker are independent
-  // controls, so a demo can place one without disturbing the other.
   movePhone: (body: MovePhoneRequest) => Promise<MovePhoneResponse | null>
-  // Every action's outcome, newest first — the panel's record of what the presenter did.
   activity: ActivityEntry[]
   runRigScenario: (body: RigScenarioRequest) => Promise<RigScenarioResponse | null>
   runRoadCheck: (tripId: string) => Promise<RoadCheckResponse | null>
@@ -91,10 +86,6 @@ export function useDevTriggers(): UseDevTriggersResult {
     setActivity(previous => [entry, ...previous].slice(0, MAX_ACTIVITY_ENTRIES))
   }, [])
 
-  // `describe` returning null means "this call has nothing to say" — used by the
-  // silent refresh below, which must not overwrite the message from the action
-  // that triggered it. Every message and every failure also lands in the activity log;
-  // `findingsOf` attaches the exceptions a road check newly recorded to its entry.
   const run = useCallback(async <T,>(
     action: () => Promise<T>,
     describe: (result: T) => string | null,
@@ -125,9 +116,6 @@ export function useDevTriggers(): UseDevTriggersResult {
       () => api.get<DevTripSummary[]>(`${DEV_BASE}/trips`),
       (result) => {
         setTrips(result)
-        // A silent refresh follows a scan or close-session, whose own summary
-        // (missing/unexpected counts) is what the operator needs to read.
-        // "Loaded N trip(s)" would bury it. Errors still surface either way.
         return options?.silent === true ? null : `Loaded ${result.length} trip(s).`
       },
     )
@@ -196,8 +184,6 @@ export function useDevTriggers(): UseDevTriggersResult {
       () => api.get<WaypointRead[]>(`${DEV_BASE}/pulsit/waypoints`),
       (result) => {
         setWaypoints(result)
-        // Silent: this fires on mount, and "Loaded 6 waypoint(s)" would bury
-        // whatever the operator was actually doing when the panel first rendered.
         return null
       },
     )
@@ -208,17 +194,9 @@ export function useDevTriggers(): UseDevTriggersResult {
       run(
         () => api.post<MoveTruckResponse>(`${DEV_BASE}/pulsit/move-truck`, body),
         (result) => {
-          // geofence_confirmed is null (not false) on the no_signal waypoint/scenario
-          // — a missing fix never reached a verdict at all, which reads very
-          // differently from a fix that reached one and failed it.
           const verdict = result.geofence_confirmed === null
             ? 'no verdict (tracker dark)'
             : result.geofence_confirmed ? 'geofence confirmed' : 'geofence failed'
-          // FP-197: scenario mode names a real target stop; legacy waypoints
-          // don't, so target_precinct_name is null for them and this suffix is empty.
-          // The verdict itself always describes the EXPECTED (phase-ledger) stop —
-          // named explicitly here so the toast can never read as if it graded the
-          // scenario-mode target instead.
           const targetSuffix = result.target_precinct_name !== null
             ? ` (targeted ${result.target_precinct_name})`
             : ''
@@ -237,9 +215,6 @@ export function useDevTriggers(): UseDevTriggersResult {
           if (!result.staged) {
             return "Phone released: the handset's own fix will be recorded again (device)."
           }
-          // Says "simulated" out loud. A presenter who forgets a position is staged
-          // would otherwise read the resulting phase rows as genuine captures, and the
-          // ledger's own stamp is the only thing that still knows the difference.
           return `Phone staged at ${result.precinct_name ?? 'the chosen stop'}`
             + `: phases completed now record driver_position_source=${result.recorded_as}.`
         },

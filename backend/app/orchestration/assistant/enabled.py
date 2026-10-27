@@ -13,7 +13,6 @@ from app.integrations.ai_chat.pricing import UnknownModelError, price_for
 
 logger = logging.getLogger(__name__)
 
-# AI_CHAT_PROVIDER → the setting holding that provider's key (as in analytics_chat.service).
 _PROVIDER_KEYS = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
 
 

@@ -11,30 +11,16 @@
 import { api } from '@/lib/api/client'
 
 export interface HandoverTokenResponse {
-  /**
-   * The full URL encoded into the QR, composed server-side — never built here.
-   *
-   * Null when `receiver_opened` is true: the receiver already has a live code open, and
-   * issuing another would retire the one in their hand. Not an error state.
-   */
   scan_url: string | null
   expires_at: string
-  /** Server-owned cadence, so an installed APK follows a change without a rebuild. */
   rotate_after_seconds: number
-  /** True once the receiver's browser has loaded the link. Stops the rotation. */
   receiver_opened: boolean
 }
 
 export interface HandoverStatusResponse {
   confirmed: boolean
   confirmed_at: string | null
-  /** Scan landed, swipe not done yet. Display only — tells the driver it is working. */
   receiver_opened: boolean
-  /**
-   * The artifact the receiver's browser produced, which the driver then submits as
-   * ConfirmationCompleteRequest.pod_signature_artifact_id. Null until they confirm — the
-   * step must not let the driver past while it is null, or the phase 422s.
-   */
   signature_artifact_id: string | null
 }
 
@@ -50,8 +36,6 @@ export function issueHandoverToken(
   tripId: string,
   phaseEventId: string,
   force = false,
-  // The period the driver is initiating the receiver handover in. A former driver
-  // cannot issue a link; the server refuses a stale period rather than retargeting it.
   custodySequence: number | null = null,
 ): Promise<HandoverTokenResponse> {
   const params = new URLSearchParams()

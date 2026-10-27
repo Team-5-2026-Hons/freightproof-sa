@@ -2,7 +2,6 @@ import type { AuthChangeEvent as SupabaseAuthEvent, Session, SupabaseClient } fr
 
 import type { AuthChangeEvent, AuthChangeListener, AuthSession, OtpAuthPort, Unsubscribe } from '@shared/lib/auth/port'
 
-// Structural, not the whole client: tests (and any future backend) only need to supply `auth`.
 type SupabaseAuthClient = Pick<SupabaseClient, 'auth'>
 
 function toSession(session: Session | null): AuthSession | null {
@@ -32,16 +31,10 @@ export class SupabaseOtpAuth implements OtpAuthPort {
   }
 
   async requestOtp(phoneNumber: string): Promise<void> {
-    // shouldCreateUser: false blocks unregistered phone numbers — a driver
-    // auth account only exists if a dispatcher provisioned it via /drivers.
-    // channel: 'whatsapp' — Twilio's WhatsApp Sandbox for dev/testing, since SMS
-    // requires Twilio geo permissions + A2P 10DLC registration we haven't set up
-    // for South African destinations yet. Switch back to 'sms' once that's done.
     const { error } = await this.client.auth.signInWithOtp({
       phone: phoneNumber,
       options: { channel: 'whatsapp', shouldCreateUser: false },
     })
-    // Rethrown as-is: the login screens show this error's own message.
     if (error) throw error
   }
 

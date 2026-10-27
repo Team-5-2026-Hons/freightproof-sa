@@ -47,7 +47,6 @@ from app.schemas.driver_substitutions import (
 from app.schemas.people import DriverRead, UserRead
 from tests.integration._driver_substitution_world import SubWorld, add_trip, build_world
 
-# 10:00 SAST on a Monday. Everything below is relative to this fixed "now".
 NOW = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
 HOUR = timedelta(hours=1)
 VALID_LICENCE = date(2027, 1, 1)
@@ -125,8 +124,6 @@ async def trip_fingerprint(db: AsyncSession, w: SubWorld) -> tuple:
     )).all()
     return trip.id, trip.driver_id, [tuple(p) for p in phases]
 
-
-# ── arrange ──────────────────────────────────────────────────────────────────
 
 
 async def test_arrange_creates_one_pending_request_and_notifies_both_drivers(db_session: AsyncSession):
@@ -266,8 +263,6 @@ async def test_a_second_arrangement_is_refused_while_one_is_pending(db_session: 
     assert refused.value.request_id == first.id and refused.value.current_version == 1
 
 
-# Licence rule at arrangement: valid through the end of the expiry date in SAST.
-# 21:30 UTC is 23:30 SAST; 22:30 UTC is 00:30 SAST the next day.
 LICENCE_DAY = date(2026, 10, 25)
 SAST_LATE_EVENING = datetime(2026, 10, 25, 21, 30, tzinfo=UTC)
 SAST_PAST_MIDNIGHT = datetime(2026, 10, 25, 22, 30, tzinfo=UTC)
@@ -336,8 +331,6 @@ async def test_arrange_accepts_an_incoming_driver_with_pending_identity(db_sessi
     assert read.identity.status.value == "pending"
     assert read.identity.driver_id == w.b
 
-
-# ── cancel ───────────────────────────────────────────────────────────────────
 
 
 def cancel_body(version: int = 1, key: uuid.UUID | None = None) -> CancelSubstitutionRequest:
@@ -414,8 +407,6 @@ async def test_another_organisation_cannot_cancel(db_session: AsyncSession):
 
     assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).state == "pending"
 
-
-# ── replace ──────────────────────────────────────────────────────────────────
 
 
 def replace_body(w: SubWorld, *, version: int = 1, incoming: uuid.UUID | None = None, key: uuid.UUID | None = None,
@@ -501,8 +492,6 @@ async def test_replace_with_a_stale_version_is_refused(db_session: AsyncSession)
 
     assert await count(db_session, DriverSubstitutionRequest) == 1
 
-
-# ── confirm and complete (CP2) ───────────────────────────────────────────────
 
 CAPTURED_AT = NOW - timedelta(minutes=10)
 
@@ -740,9 +729,9 @@ async def test_a_loaded_trip_needs_a_real_seal_and_only_the_drivers_own_photo(db
     others_photo = await _photo(db_session, w, driver_id=w.b, request_id=pending.id)
     own_photo = await _photo(db_session, w, driver_id=w.a, request_id=pending.id)
 
-    with pytest.raises(SubstitutionInvalidError):  # an empty-leg answer on a loaded trip
+    with pytest.raises(SubstitutionInvalidError):
         await confirm(db_session, w, pending, w.a)
-    with pytest.raises(SubstitutionInvalidError):  # another driver's photo
+    with pytest.raises(SubstitutionInvalidError):
         await confirm(db_session, w, pending, w.a, seal_checks=_seal(w, others_photo))
 
     read = await confirm(db_session, w, pending, w.a, seal_checks=_seal(w, own_photo))
@@ -892,7 +881,7 @@ async def test_licence_eligibility_uses_actual_sast_completion_date(db_session: 
     await db_session.flush()
     first = await confirm(db_session, w, pending, w.a)
 
-    clock.now = SAST_PAST_MIDNIGHT  # 00:30 SAST on the 26th: the licence ran out at midnight
+    clock.now = SAST_PAST_MIDNIGHT
     blocked = await confirm(db_session, w, first, w.b)
     assert blocked.state is SubstitutionState.PENDING
     assert blocked.completion_blocked_by is SubstitutionCompletionBlocker.LICENCE_INVALID
@@ -900,13 +889,11 @@ async def test_licence_eligibility_uses_actual_sast_completion_date(db_session: 
 
     (await get_row(db_session, Driver, w.b)).license_expiry = None
     await db_session.flush()
-    with pytest.raises(LicenceInvalidError):  # no expiry on file is never valid
+    with pytest.raises(LicenceInvalidError):
         await complete_attested_substitution(
             db_session, trip_id=w.trip_id, request_id=pending.id, actor=dispatcher(w), payload=completion(blocked.version),
         )
 
-    # Fixing the record does not itself transfer custody; a fresh intentional /complete does,
-    # on the saved captures, without any re-upload.
     (await get_row(db_session, Driver, w.b)).license_expiry = date(2026, 12, 31)
     await db_session.flush()
     done = await complete_attested_substitution(
@@ -925,7 +912,7 @@ async def test_licence_expiring_today_is_valid_until_sast_midnight(db_session: A
     await db_session.flush()
     first = await confirm(db_session, w, pending, w.a)
 
-    clock.now = SAST_LATE_EVENING  # 23:30 SAST on the expiry date itself
+    clock.now = SAST_LATE_EVENING
     done = await confirm(db_session, w, first, w.b)
 
     assert done.state is SubstitutionState.COMPLETED and done.effective_at == SAST_LATE_EVENING
@@ -941,12 +928,12 @@ async def test_exact_retry_of_a_blocked_confirmation_is_not_a_new_eligibility_ch
     body = capture(w, first.version)
     actor = await driver_actor(db_session, w.b)
     blocked = await confirm_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=actor, payload=body)
-    (await get_row(db_session, Driver, w.b)).is_active = True  # the blocker is resolved...
+    (await get_row(db_session, Driver, w.b)).is_active = True
     await db_session.flush()
 
     replay = await confirm_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=actor, payload=body)
 
-    assert replay == blocked and replay.state is SubstitutionState.PENDING  # ...but a retry re-decides nothing
+    assert replay == blocked and replay.state is SubstitutionState.PENDING
     assert await chain(db_session, w.trip_id) == []
 
 
@@ -970,12 +957,12 @@ async def test_dispatcher_missing_capture_does_not_override_pending_identity(db_
     first = await confirm(db_session, w, pending, w.a)
     ordinary, admin = dispatcher(w), dispatcher(w, admin=True)
 
-    with pytest.raises(IdentityNotVerifiedError):  # a missing-capture reason alone is not an identity exception
+    with pytest.raises(IdentityNotVerifiedError):
         await complete_attested_substitution(
             db_session, trip_id=w.trip_id, request_id=pending.id, actor=ordinary,
             payload=completion(first.version, missing="B has no signal"),
         )
-    with pytest.raises(IdentityAttestationForbiddenError):  # and an ordinary dispatcher cannot attest identity
+    with pytest.raises(IdentityAttestationForbiddenError):
         await complete_attested_substitution(
             db_session, trip_id=w.trip_id, request_id=pending.id, actor=ordinary,
             payload=completion(first.version, missing="B has no signal", identity="Checked by phone"),
@@ -990,7 +977,7 @@ async def test_dispatcher_missing_capture_does_not_override_pending_identity(db_
 
     assert done.state is SubstitutionState.COMPLETED
     assert done.completion_mode is SubstitutionCompletionMode.DISPATCHER_ATTESTED
-    assert done.identity.status is IdvsStatus.PENDING  # never relabelled VERIFIED
+    assert done.identity.status is IdvsStatus.PENDING
     [row] = await chain(db_session, w.trip_id)
     assert (row.incoming_identity_status, row.identity_attested_by_user_id) == ("pending", admin.id)
     assert (row.identity_attestation_reason, row.identity_attested_at) == ("Checked by phone", NOW)
@@ -1018,10 +1005,10 @@ async def test_complete_needs_a_reason_for_a_missing_capture_and_rejects_inappli
     first = await confirm(db_session, w, pending, w.a)
     admin = dispatcher(w, admin=True)
 
-    with pytest.raises(SubstitutionInvalidError):  # B's capture is missing and no reason given
+    with pytest.raises(SubstitutionInvalidError):
         await complete_attested_substitution(
             db_session, trip_id=w.trip_id, request_id=pending.id, actor=admin, payload=completion(first.version))
-    with pytest.raises(SubstitutionInvalidError):  # an identity exception for a VERIFIED driver
+    with pytest.raises(SubstitutionInvalidError):
         await complete_attested_substitution(
             db_session, trip_id=w.trip_id, request_id=pending.id, actor=admin,
             payload=completion(first.version, missing="No signal", identity="Not needed"))
@@ -1125,8 +1112,6 @@ async def test_completion_is_blocked_by_a_trip_that_overlaps_the_remaining_leg(d
     assert blocked.completion_blocked_by is SubstitutionCompletionBlocker.DRIVER_UNAVAILABLE
 
 
-# ── termination (CP3) ────────────────────────────────────────────────────────
-
 
 async def _reserved(db: AsyncSession, w: SubWorld) -> bool:
     busy = await busy_crew_in_window(
@@ -1143,7 +1128,7 @@ async def test_terminal_trip_cancels_pending_request_atomically(db_session: Asyn
     w, pending = await armed(db_session)
     assert await _reserved(db_session, w)
 
-    with pytest.raises(RuntimeError):  # a failure after the cancellation takes all of it back
+    with pytest.raises(RuntimeError):
         async with db_session.begin_nested():
             await cancel_trip(
                 db_session, trip_id=w.trip_id, operator_organization_id=w.org_id, user_id=w.user_id, note="Cargo pulled",
@@ -1213,8 +1198,6 @@ async def test_terminal_cancellation_with_nothing_pending_is_a_no_op(db_session:
     assert await count(db_session, DriverSubstitutionNotice) == 0
 
 
-# ── correction (CP3) ─────────────────────────────────────────────────────────
-
 
 def correction(*, key: uuid.UUID | None = None, note: str = "Exchange was at the second gate") -> CorrectSubstitutionRequest:
     return CorrectSubstitutionRequest(client_request_id=key or uuid.uuid4(), reason="Wrong gate recorded", correction_note=note)
@@ -1280,7 +1263,7 @@ async def test_another_organisations_substitution_cannot_be_corrected(db_session
         await correct_completed_substitution(
             db_session, trip_id=w.trip_id, substitution_id=row.id,
             actor=dispatcher(w, organization_id=w.other_org_id), payload=correction())
-    with pytest.raises(ResourceNotFoundError):  # a substitution id that is not on the named trip
+    with pytest.raises(ResourceNotFoundError):
         await correct_completed_substitution(
             db_session, trip_id=w.trip_id, substitution_id=uuid.uuid4(), actor=dispatcher(w), payload=correction())
 

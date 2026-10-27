@@ -13,18 +13,15 @@ import { ExceptionCard } from '@/components/trip/ExceptionCard'
 
 interface NowCardProps {
   trip: Trip
-  /** Open exceptions the driver should see (openDriverExceptions) — the badge's reason. */
   exceptions: readonly TripException[]
   onStartPhase: (phase: PhaseDescriptor) => void
   onContinueDriving: () => void
   onViewTrip: () => void
 }
 
-// The card's one action: a white capsule on the ink card.
 const CARD_ACTION = 'flex min-h-[52px] w-full items-center justify-center rounded-full bg-primary-on text-body font-semibold text-primary transition-transform duration-100 active:scale-[0.98]'
 
 function Exceptions({ exceptions }: { exceptions: readonly TripException[] }) {
-  // Every reason the Home tab can be badged, on the screen the badge leads to.
   if (exceptions.length === 0) return null
   return (
     <section aria-label="Open exceptions" className="flex flex-col gap-2">
@@ -34,8 +31,6 @@ function Exceptions({ exceptions }: { exceptions: readonly TripException[] }) {
 }
 
 function ViewTrip({ reference, onClick }: { reference: string; onClick: () => void }) {
-  // The reference doubles as the way into the full trip: the one string a driver reads
-  // to dispatch, now also the door to everything about it.
   return (
     <button
       type="button"
@@ -143,8 +138,6 @@ export function NowCard({ trip, exceptions, onStartPhase, onContinueDriving, onV
   return (
     <div className="flex flex-col gap-3">
       <section aria-label="Current trip" className="rounded-[22px] bg-primary px-[18px] pb-4 pt-[18px] text-primary-on">
-        {/* Wraps at the large accessibility text sizes rather than pushing the trip
-            reference off the card. */}
         <div className="flex flex-wrap items-center justify-between gap-x-3">
           <span className="flex items-center gap-2">
             <span aria-hidden className="size-2 rounded-full bg-success" />
@@ -157,7 +150,6 @@ export function NowCard({ trip, exceptions, onStartPhase, onContinueDriving, onV
         <p className="mt-2 text-title-1 tracking-tight">{heading}</p>
         {context && <p className="text-subhead text-primary-on/70">{context}</p>}
 
-        {/* One segment per phase in the plan; the count beside it is the same fact in words. */}
         <div aria-hidden className="mb-1.5 mt-4 grid gap-1" style={{ gridTemplateColumns: `repeat(${driverPhases.length}, minmax(0, 1fr))` }}>
           {driverPhases.map((phase) => {
             const done = phase.status === 'completed' || phase.status === 'overridden'

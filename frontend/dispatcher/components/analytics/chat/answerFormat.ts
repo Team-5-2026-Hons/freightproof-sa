@@ -10,13 +10,11 @@ export type AnswerBlock =
 
 export interface InlinePart {
   text: string
-  /** Marked **like this** by the model: shown bold, without the asterisks. */
   strong: boolean
 }
 
 const BULLET = /^\s*[-*•]\s+(.*)$/
 const NUMBERED = /^\s*\d{1,2}[.)]\s+(.*)$/
-// A line indented under a list item carries on that item rather than starting a paragraph.
 const CONTINUATION = /^\s{2,}\S/
 const STRONG = /\*\*(.+?)\*\*/g
 

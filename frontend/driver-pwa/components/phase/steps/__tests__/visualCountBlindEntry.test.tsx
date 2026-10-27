@@ -21,20 +21,14 @@ import { VisualCount as UnloadingVisualCount } from '../unloading/VisualCount'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
 
-// StepHeader calls useRouter — stub it so the steps mount under jsdom.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
-// Deliberately distinctive three-digit sentinels: high enough not to collide with step
-// indices, sequence numbers, or anything in the fixture's ISO dates, so a match in the
-// rendered output can only have come from a count being displayed.
 const ORIGIN_COUNT = 417
 const DESTINATION_COUNT = 419
 const PRIOR_DRIVER_COUNT = 421
 
-// A phase descriptor that KNOWS all three counts. If the component ever reads a count
-// off the phase (or off a reintroduced reference prop) and renders it, these numbers appear.
 const phaseWithCounts = () =>
   makePhase('unloading', {
     parcel_count_origin: ORIGIN_COUNT,
@@ -48,11 +42,8 @@ const unloadingDraft: UnloadingEvidence = {
   capturedAt: null,
 }
 
-// Any digit sequence that would betray a leaked reference value.
 const COUNT_SENTINELS = [ORIGIN_COUNT, DESTINATION_COUNT, PRIOR_DRIVER_COUNT]
 
-// Phrases the old reference/mismatch UI used, plus the generic shapes a well-meaning
-// future change might reach for.
 const FORBIDDEN_REFERENCE_COPY = [
   /loaded at origin/i,
   /expected/i,

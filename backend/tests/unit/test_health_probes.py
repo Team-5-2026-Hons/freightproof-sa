@@ -17,8 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import main as main_module
 from app.main import _PROBE_OK, _PROBE_UNAVAILABLE, _probe_database, _probe_redis
 
-# Long enough that a healthy fake never trips it, short enough that the timeout tests do
-# not stretch the suite.
 _TEST_TIMEOUT_SECONDS = 0.05
 _HANG_SECONDS = 5.0
 
@@ -90,8 +88,6 @@ def short_probe_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-# ── Database probe ────────────────────────────────────────────────────────────
-
 
 async def test_database_probe_reports_ok_when_query_succeeds():
     session = _FakeSession()
@@ -127,16 +123,11 @@ async def test_database_probe_returns_within_the_configured_timeout():
     await _probe_database(_as_session(session))
     elapsed = asyncio.get_running_loop().time() - started
 
-    # Generous multiple of the ceiling: this asserts the probe is bounded at all, not
-    # that the event loop is punctual on a loaded CI runner.
     assert elapsed < _TEST_TIMEOUT_SECONDS * 20
     assert elapsed < _HANG_SECONDS
 
 
 async def test_database_probe_discards_the_failed_session():
-    # The connection the probe just gave up on must not go back to the pool. Releasing it
-    # normally — via ROLLBACK, or the implicit one inside close() — travels that same dead
-    # socket, so the endpoint would inherit the hang its timeout exists to escape.
     session = _FakeSession(raises=_db_error())
 
     await _probe_database(_as_session(session))
@@ -184,8 +175,6 @@ async def test_database_probe_is_bounded_when_the_cleanup_also_stalls():
     assert session.invalidations == 1
     assert elapsed < _HANG_SECONDS
 
-
-# ── Redis probe ───────────────────────────────────────────────────────────────
 
 
 async def test_redis_probe_reports_ok_when_ping_succeeds(monkeypatch: pytest.MonkeyPatch):

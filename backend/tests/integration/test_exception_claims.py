@@ -327,7 +327,7 @@ async def test_review_with_take_over_on_an_unclaimed_row_just_reviews(client, db
 
 
 async def test_review_queue_is_ordered_by_severity_then_newest(client, db_session, two_orgs):
-    mine = two_orgs["mine"]  # its seeded exception is CRITICAL
+    mine = two_orgs["mine"]
     for severity in (ExceptionSeverity.INFO, ExceptionSeverity.WARNING):
         db_session.add(TripException(
             id=uuid.uuid4(), trip_id=mine["trip"].id, exception_type=ExceptionType.CHECKPOINT_TIMEOUT,

@@ -20,7 +20,6 @@ Create Date: 2026-10-01
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_pp_manifest_trips"
 down_revision = "ciaran_exception_claims"
 branch_labels = None
@@ -67,8 +66,6 @@ def downgrade() -> None:
     op.drop_index(_HUB_INDEX, table_name=_PRECINCTS)
     op.drop_column(_PRECINCTS, "pp_hub_code")
 
-    # Trips created after upgrade have no order number. Backfill with their own
-    # trip_reference (unique by constraint) so NOT NULL and the old index can return.
     op.execute("UPDATE trips SET order_number = trip_reference WHERE order_number IS NULL")
     op.alter_column(_TRIPS, "order_number", existing_type=sa.String(100), nullable=False)
     op.create_index(

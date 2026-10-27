@@ -36,7 +36,6 @@ class SlaConfig(Base):
     )
     max_pickup_overrun_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     max_delivery_overrun_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # 15 minutes matches the Pulsit stationary alert threshold in the domain.
     max_checkpoint_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="15")
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)

@@ -9,31 +9,24 @@ function distinctStops(plan: readonly PhaseDescriptor[]): number[] {
 
 describe('stopLabel', () => {
   it('names the first stop Origin and the last Destination on a single-leg plan', () => {
-    // Arrange
     const [first, last] = [distinctStops(SINGLE_LEG_PHASE_PLAN)[0], distinctStops(SINGLE_LEG_PHASE_PLAN).at(-1)!]
 
-    // Act / Assert
     expect(stopLabel(SINGLE_LEG_PHASE_PLAN, first)).toBe('Origin')
     expect(stopLabel(SINGLE_LEG_PHASE_PLAN, last)).toBe('Destination')
   })
 
   it('counts intermediate cross-dock stops the way a person does — the origin is stop 1', () => {
-    // Arrange
     const stops = distinctStops(CROSS_DOCK_PHASE_PLAN)
     expect(stops.length).toBeGreaterThan(2)
 
-    // Act
     const middle = stopLabel(CROSS_DOCK_PHASE_PLAN, stops[1])
 
-    // Assert
     expect(middle).toBe('Stop 2')
   })
 
   it('never prints the raw 0-based sequence', () => {
-    // Arrange
     const labels = distinctStops(CROSS_DOCK_PHASE_PLAN).map((s) => stopLabel(CROSS_DOCK_PHASE_PLAN, s))
 
-    // Assert
     expect(labels).not.toContain('Stop 0')
   })
 
@@ -48,35 +41,27 @@ describe('stopLabel', () => {
 
 describe('phaseLocation', () => {
   it('labels an in_transit leg by where it is going, not the stop it departed', () => {
-    // Arrange
     const leg = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'in_transit')!
 
-    // Act
     const label = phaseLocation(SINGLE_LEG_PHASE_PLAN, leg)
 
-    // Assert
     expect(label).toBe('To Destination')
   })
 
   it('points each cross-dock leg at its next stop', () => {
-    // Arrange
     const legs = CROSS_DOCK_PHASE_PLAN
       .filter((p) => p.phase_type === 'in_transit')
       .sort((a, b) => a.sequence_number - b.sequence_number)
 
-    // Act
     const labels = legs.map((leg) => phaseLocation(CROSS_DOCK_PHASE_PLAN, leg))
 
-    // Assert — the first leg heads to an intermediate stop, the last to the destination.
     expect(labels[0]).toBe('To Stop 2')
     expect(labels.at(-1)).toBe('To Destination')
   })
 
   it('labels every other phase by the stop it happens at', () => {
-    // Arrange
     const arrival = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'arrival')!
 
-    // Act / Assert
     expect(phaseLocation(SINGLE_LEG_PHASE_PLAN, arrival)).toBe('Destination')
   })
 })

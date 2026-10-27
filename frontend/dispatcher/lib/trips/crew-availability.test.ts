@@ -5,7 +5,6 @@ import {
 } from './crew-availability'
 import { EMPTY_CREW, NO_TIMES } from './manifest-form'
 
-// 14:00 UTC is 16:00 SAST on Friday 16 October 2026.
 const FRI_1600 = '2026-10-16T14:00:00Z'
 
 function entry(overrides: Partial<BusyEntry> = {}): BusyEntry {

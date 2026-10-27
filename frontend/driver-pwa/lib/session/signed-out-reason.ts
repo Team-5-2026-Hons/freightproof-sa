@@ -6,7 +6,6 @@ export function rememberSignedOutReason(message: string): void {
   try {
     window.sessionStorage.setItem(SIGNED_OUT_REASON_KEY, message)
   } catch (err) {
-    // The sign-out itself must still go ahead; only the explanation is lost.
     console.warn('[session] could not remember why the driver was signed out:', err)
   }
 }

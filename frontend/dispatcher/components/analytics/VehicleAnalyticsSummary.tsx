@@ -16,7 +16,6 @@ import {
 
 export interface VehicleAnalyticsSummaryProps {
   vehicleId: VehicleId
-  // Only a trailer needs the note that its earlier breakdowns could not be tied to it.
   vehicleType: VehicleType
 }
 
@@ -24,7 +23,6 @@ const LABELS = {
   trips: 'Trips',
   drivingTime: 'Driving time',
   meanBetweenBreakdowns: 'Mean time between breakdowns',
-  // "Breakdown", not "exception": only a mechanical exception ends a streak.
   longestRun: 'Longest run with no breakdown',
   shortestRun: 'Shortest completed clean run',
   sinceLastBreakdown: 'Trips since the last breakdown',
@@ -34,7 +32,6 @@ const SUMMARY_COPY = {
   monthsHeading: 'Selected months',
   mechanicalHeading: 'Mechanical exceptions',
   historyHeading: 'Whole history',
-  // Beside the heading because streaks ignore the month range entirely.
   historyDetail: 'every closed trip this vehicle has run, not the months above',
   noBreakdowns: 'No breakdowns recorded',
   tripOne: 'trip',
@@ -49,7 +46,6 @@ export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnaly
   const vehicles = useVehicleAnalytics(range)
   const streaks = useVehicleStreaks()
 
-  // Retry only what failed, so a good response is not thrown away and re-requested.
   function retry(): void {
     if (vehicles.error) vehicles.refetch()
     if (streaks.error) streaks.refetch()
@@ -64,14 +60,11 @@ export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnaly
       error={vehicles.error ?? streaks.error}
       onRetry={retry}
     >
-      {/* Not joined to the monthly row: streaks cover the vehicle's whole history, so they must
-          not be blanked when the selected months hold no closed trips. */}
       <Figures
         rangeLabel={fmtMonthRange(range)}
         monthly={vehicles.rows.find((row) => row.vehicle_id === vehicleId)}
         streak={streaks.rows.find((row) => row.vehicle_id === vehicleId)}
       />
-      {/* After both sections: it explains the breakdown figures in each of them. */}
       {vehicleType === 'trailer' && (
         <p className="text-[12px] text-on-surf-v">{ANALYTICS_COPY.trailerNote}</p>
       )}

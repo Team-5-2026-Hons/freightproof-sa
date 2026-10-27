@@ -40,9 +40,6 @@ describe('usePrecincts', () => {
     expect(result.current.error).toBeNull()
   })
 
-  // The defect this hook exists to prevent: callers resolve precinct names by id and
-  // fall back to an em-dash, so a swallowed failure renders as "this trip has no
-  // origin". The error must reach the caller.
   it('surfaces the error when the request fails', async () => {
     mockedGet.mockRejectedValue(new Error('Request to /api/v1/precincts failed'))
 
@@ -64,15 +61,12 @@ describe('usePrecincts', () => {
     expect(result.current.error).toBeNull()
   })
 
-  // The failure mode the reset condition guards: refetch() nulls `error` synchronously,
-  // so re-arming on `error === null` alone would retry forever against a down backend.
   it('stops after exactly one retry when the request keeps failing', async () => {
     mockedGet.mockRejectedValue(new Error('still down'))
 
     const { result } = renderHook(() => usePrecincts())
 
     await waitFor(() => expect(result.current.error).not.toBeNull())
-    // Settle any retry the effect scheduled, then confirm the count stopped climbing.
     await new Promise(resolve => setTimeout(resolve, 50))
     const callsAfterRetry = mockedGet.mock.calls.length
 

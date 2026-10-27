@@ -28,8 +28,6 @@ interface Props {
   onIssued: () => void
 }
 
-// Same shape check as the backend's: one @, a dotted domain, no spaces. Whether the inbox
-// is real is proved later, when the recipient enters the password mailed there.
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 const EMPTY: AuditPackCreate = {

@@ -123,14 +123,11 @@ async def _review(db_session, seed, **overrides):
     return await review_exception(db_session, **kwargs)
 
 
-# ── initial review status ────────────────────────────────────────────────────
-
 
 @pytest.mark.parametrize(
     ("severity", "expected"),
     [
         (ExceptionSeverity.CRITICAL, ExceptionReviewStatus.NEEDS_REVIEW),
-        # FP-280: every exception starts needs_review.
         (ExceptionSeverity.WARNING, ExceptionReviewStatus.NEEDS_REVIEW),
         (ExceptionSeverity.INFO, ExceptionReviewStatus.NEEDS_REVIEW),
     ],
@@ -138,8 +135,6 @@ async def _review(db_session, seed, **overrides):
 def test_initial_review_status_is_derived_from_severity(severity, expected) -> None:
     assert initial_review_status(severity) == expected
 
-
-# ── review ───────────────────────────────────────────────────────────────────
 
 
 async def test_review_sets_complete_evidence_from_the_caller(db_session):
@@ -155,13 +150,8 @@ async def test_review_sets_complete_evidence_from_the_caller(db_session):
     assert exc.review_status == ExceptionReviewStatus.REVIEWED
     assert exc.review_outcome == ExceptionReviewOutcome.EVIDENCE_VERIFIED
     assert exc.reviewed_by_user_id == seed["user"].id
-    # == not is: contact_method is a String(20) column (matching severity/source on
-    # this table), so it round-trips as a plain str. ExceptionContactMethod subclasses
-    # str, which makes equality work and identity fail.
     assert exc.contact_method == ExceptionContactMethod.PHONE
     assert exc.review_note == _NOTE
-    # Set by this process, not by the database — deliberately asserted against the Python
-    # clock. The test database's own clock cannot be trusted for this.
     assert before - timedelta(seconds=5) <= exc.reviewed_at <= datetime.now(UTC)
 
 
@@ -174,10 +164,10 @@ async def test_review_refuses_another_organisations_exception(db_session):
     with pytest.raises(ResourceNotFoundError):
         await _review(
             db_session, mine,
-            exception_id=theirs["exception"].id,  # their row, my credentials
+            exception_id=theirs["exception"].id,
         )
 
-    assert theirs["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW  # FP-280: every exception starts needs_review.
+    assert theirs["exception"].review_status == ExceptionReviewStatus.NEEDS_REVIEW
 
 
 async def test_review_of_an_unknown_id_raises(db_session):
@@ -230,8 +220,6 @@ async def test_a_second_dispatcher_reviewing_is_told_they_lost(db_session):
             contact_method=ExceptionContactMethod.IN_PERSON,
         )
 
-    # The first account survives untouched — the raise is about telling the loser, not
-    # about protecting the row, which was never at risk.
     exc = seed["exception"]
     assert exc.review_note == _NOTE
     assert exc.reviewed_by_user_id == seed["user"].id
@@ -305,8 +293,6 @@ async def test_a_suppressed_repeat_review_enqueues_nothing(db_session):
 
     assert _outbox(db_session) == []
 
-
-# ── raise_exception — evidence ownership + client_report_id idempotency ───────
 
 
 async def _seed_trip(db_session, *, tag: str) -> dict:
@@ -408,8 +394,6 @@ async def test_raise_exception_accepts_an_artifact_owned_by_this_trip(db_session
     )
 
     assert result.supporting_artifact_id == artifact.id
-    # CARGO_DAMAGE is not in _CRITICAL_TYPES, so it is WARNING severity.
-    # FP-280: every exception starts needs_review.
     assert result.review_status == ExceptionReviewStatus.NEEDS_REVIEW
 
 
@@ -471,12 +455,6 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
     assert result.id is not None
 
 
-# ── Trailer analytics: pick_breakdown_vehicle (pure, no DB) ────────────────────
-# One test per row of the vehicle-attribution rules, plus the stray-field variants. Every
-# failure path returns None and logs a warning, never raises: the offline queue discards
-# a report on any 4xx, and a breakdown must never be lost over its vehicle.
-
-# pick_breakdown_vehicle logs through its own module's logger since the exceptions split.
 _SERVICE_LOGGER = "app.orchestration.exceptions.creation"
 
 

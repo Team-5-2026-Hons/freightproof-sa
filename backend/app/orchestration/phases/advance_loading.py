@@ -24,10 +24,6 @@ from app.schemas.trips import TripDetailResponse
 async def _record_linehaul_evidence(
     db: AsyncSession, *, event: PhaseEvent, payload: LoadingCompleteRequest,
 ) -> tuple[str | None, str | None]:
-    # Optional evidence: a warehouse that has already gone paperless has no linehaul
-    # sheet to hand the driver, and this must never block completion (schema docstring).
-    # The PDF is optional on its own too: a failed PDF build on the phone still sends the
-    # scan image alone.
     linehaul_hashes = await _assert_artifacts_belong_to_trip(
         db, trip_id=event.trip_id, phase_event_id=event.id,
         cited={
@@ -70,17 +66,6 @@ async def advance_loading(
         db, event=event, payload=payload,
     )
 
-    # The observed set, not a driver-entered number. The gate in _gate_and_load has
-    # already established that the warehouse closed its session at this stop, so these
-    # counts are final for this loading — which is what makes stamping the aggregate
-    # here safe under the "anchored payload contains only data that existed at close"
-    # rule. driver_visual_count is accepted on the payload (schema) but
-    # deliberately never read here — see LoadingCompleteRequest's docstring.
-    #
-    # trip_stop_id is Optional on PhaseEvent (only TRIP_CREATION is ever NULL, per
-    # its own uq_phase_events_trip_stop_type comment) — a LOADING row always carries
-    # one, so the None branch is unreachable in practice. Narrowed explicitly rather
-    # than asserted, since scan_service.load_consignments_at_stop requires a UUID.
     consignments = (
         await scan_service.load_consignments_at_stop(
             db, trip_id=trip_id, trip_stop_id=event.trip_stop_id,
@@ -101,27 +86,12 @@ async def advance_loading(
         expected_total += counts.expected
 
         if counts.scanned_out != counts.expected:
-            # BACKSTOP ONLY — scan_service._reconcile_consignment is the primary
-            # writer of this exception and it already fired at ingest, naming the
-            # missing barcodes. Raising unconditionally here would put TWO rows on
-            # the dispatcher's list for one short count: scan_service's dedup
-            # compares descriptions verbatim, so a differently-worded second row
-            # sails straight past it.
-            #
-            # The one case scan_service genuinely cannot cover: it guards on
-            # `if events and (missing or unexpected)`, so a session closed with
-            # NOTHING scanned at all raises nothing there — no events, no row. That
-            # is the most serious short count there is and it must not go unrecorded.
-            # Hence a presence check rather than an unconditional add.
             shortfall_recorded |= await _raise_scan_shortfall_if_unrecorded(
                 db, trip_id=trip_id, event=event, consignment=consignment,
                 scanned_out=counts.scanned_out, expected=counts.expected,
             )
 
     if shortfall_recorded:
-        # After the loop, and only for rows this call actually wrote — the helper
-        # suppresses duplicates of what scan_service already raised at ingest, and a
-        # suppressed duplicate is not news to the dispatcher.
         enqueue_event(
             db, trip.operator_organization_id,
             TripEvent(
@@ -130,15 +100,8 @@ async def advance_loading(
             ),
         )
 
-    # None, not 0, when this stop has no consignments at all: a trip created without
-    # a Parcel Perfect reference has no manifest baseline, and 0 would read as
-    # "nothing was loaded" rather than "nothing was declared". Same None-is-not-zero
-    # principle as the old _expected_parcel_count (removed by this task — advance_loading
-    # was its only caller).
     event.parcel_count_origin = scanned_out_total if consignments else None
 
-    # A short scan is recorded, never blocking — FreightProof records what happened,
-    # it does not dispatch. Matches departure's and unloading's seal-mismatch precedent.
     event.status = (
         PhaseStatus.EXCEPTION
         if consignments and scanned_out_total != expected_total

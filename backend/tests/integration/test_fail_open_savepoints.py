@@ -29,12 +29,9 @@ from app.orchestration.phases import findings as phase_findings
 
 from tests.conftest import make_token
 
-# Longer than every String(20) / String(100) column these writes touch.
 _TOO_LONG_FOR_REVIEW_STATUS = "x" * 40
 _TOO_LONG_FOR_DEVICE_ID = "d" * 150
 
-# Fixtures for a corroborated trip, the Pulsit store and the completion helpers are shared with
-# the sibling suites; see test_gps_mismatch.py for why they are imported under aliases.
 from tests.integration.test_phase_corroboration import (  # noqa: E402,F401
     _FAR_AWAY_LAT, _FAR_AWAY_LNG, _HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG, _TRAILER_A_DEVICE,
     _attach_trailer, _complete_activation, _load_event, _make_artifact,
@@ -61,8 +58,8 @@ async def _assert_phase_stands(db_session, trip, phase_type: PhaseType) -> Phase
     event = await _load_event(db_session, trip, phase_type)
     await db_session.refresh(event)
     assert event.status == PhaseStatus.COMPLETED
-    assert event.event_hash is not None  # the anchor payload hash was still stamped
-    assert event.anchor_status == AnchorStatus.PENDING  # and the anchor is still owed to the worker
+    assert event.event_hash is not None
+    assert event.anchor_status == AnchorStatus.PENDING
     return event
 
 
@@ -78,7 +75,7 @@ async def test_a_database_error_recording_the_position_finding_leaves_the_comple
 
     assert resp.status_code == 200, resp.text
     event = await _assert_phase_stands(db_session, trip, PhaseType.ACTIVATION)
-    assert event.pulsit_geofence_confirmed is False  # the corroboration columns still carry the finding
+    assert event.pulsit_geofence_confirmed is False
     assert await _count(
         db_session, TripException, TripException.trip_id == trip.id,
         TripException.exception_type == ExceptionType.GPS_MISMATCH,
@@ -109,7 +106,6 @@ async def test_a_database_error_recording_the_trailer_finding_leaves_the_complet
         db_session, TripException, TripException.trip_id == trip.id,
         TripException.exception_type == ExceptionType.TRAILER_LOCATION_MISMATCH,
     ) == 0
-    # The trailer's own verdict is evidence that does not depend on the finding.
     assert await _count(db_session, TrailerGpsSnapshot, TrailerGpsSnapshot.phase_event_id == event.id) == 1
     assert "Could not record a trailer decoupling" in caplog.text
 
@@ -136,8 +132,6 @@ async def test_a_database_error_saving_trailer_snapshots_leaves_the_completion_a
     assert resp.status_code == 200, resp.text
     event = await _assert_phase_stands(db_session, trip, PhaseType.ACTIVATION)
     assert await _count(db_session, TrailerGpsSnapshot, TrailerGpsSnapshot.phase_event_id == event.id) == 0
-    # The horse fix was obtained before the snapshot write failed and must not be thrown away
-    # with it: its columns are the phase's corroboration evidence.
     assert event.horse_gps_lat is not None
     assert event.pulsit_geofence_confirmed is True
     assert "Could not record trailer position snapshots" in caplog.text

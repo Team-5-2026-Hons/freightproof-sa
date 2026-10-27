@@ -37,7 +37,6 @@ from app.schemas.incidents import (
     ResponseStep,
 )
 
-# A list is triage, not an archive: the newest first, bounded.
 INCIDENT_LIST_LIMIT = 200
 
 _Assignee = aliased(User)
@@ -53,7 +52,6 @@ def scan_state(parcel: Parcel) -> ParcelScanState:
 
 
 def _base() -> Select[tuple[Incident, Trip, str]]:
-    # str, not str | None: SQLAlchemy types the outer-joined name non-null; rows still yield None.
     return (
         select(Incident, Trip, _Assignee.full_name)
         .join(Trip, Trip.id == Incident.trip_id)
@@ -124,7 +122,6 @@ async def list_incidents(
 ) -> list[IncidentRead]:
     query = _base().where(Trip.operator_organization_id == organization_id)
     if filters.trip_id is not None:
-        # A trip that is not this operator's is a 404, not an empty list.
         owned = (await db.execute(
             select(Trip.id).where(Trip.id == filters.trip_id, Trip.operator_organization_id == organization_id)
         )).scalar_one_or_none()
@@ -204,7 +201,6 @@ async def _guide(
 ) -> list[ResponseStep] | None:
     if incident.incident_type != IncidentType.HIJACKING:
         return None
-    # A pack issued before the incident was recorded cannot contain it, so it does not count.
     pack_issued_at = (await db.execute(
         select(func.min(AuditPack.issued_at)).where(AuditPack.trip_id == trip.id, AuditPack.issued_at >= incident.created_at)
     )).scalar_one_or_none()
@@ -229,13 +225,9 @@ async def get_incident_detail(
     if row is None:
         raise ResourceNotFoundError("Incident", str(incident_id))
     incident, trip, assignee_name, recorder = row
-    # This incident's own declarations and the trip-level ones made outside any incident: the
-    # same rule the close warning and the pack's case-number check use, so all three agree.
     declarations = [d for d in await load_declarations(db, trip_id=trip.id) if d.incident_id in (incident.id, None)]
     exceptions = await _exceptions(db, incident.id)
     parcels = await _parcels(db, incident.id)
-    # The summary's counts come from the rows the detail lists anyway, not from a second pair of
-    # queries over the same two tables.
     summary = _summary(incident, trip, assignee_name, _aggregates_of(incident.id, exceptions, parcels))
     updates = await _updates(db, incident.id)
     return IncidentDetail(

@@ -81,26 +81,12 @@ async def _corroborate_and_assess(
     Runs only after the row is flushed (it needs checkpoint.id) and after a duplicate
     replay has already returned, so it executes exactly once per checkpoint.
     """
-    # Never raises: a driver logging a roadside checkpoint must not be blocked by an
-    # unreachable tracker API. A failure leaves horse_gps null, which means "we could
-    # not check" — see evidence.corroboration's null-semantics contract.
-    # driver_captured_at travels through so a stale Pulsit fix cannot masquerade as a
-    # live one — see _within_corroboration_skew.
-    #
-    # The returned fix is the SAME one just used above — never a second Pulsit
-    # round trip for this one checkpoint — fed straight into the assessment below.
     horse_fix = await record_checkpoint_corroboration(
         db, trip=trip, checkpoint=checkpoint, driver_captured_at=payload.driver_captured_at,
     )
 
-    # The versioned proximity snapshot for this checkpoint, plus (when it
-    # measures a genuine separation) a distinct DRIVER_VEHICLE_SEPARATION finding —
-    # independent of and alongside whatever evidence.corroboration already wrote.
-    # See orchestration/evidence/action_location.py.
     evaluated_at = datetime.now(UTC)
     if phase_event is not None and payload.driver_captured_at is not None:
-        # The report still owns the capture; phase context contributes only the leg's
-        # frozen stop/precinct reference so a resulting checkpoint finding is scoped.
         assessment = await location_assessment.build_phase_assessment(
             db,
             trip=trip,
@@ -125,14 +111,6 @@ async def _corroborate_and_assess(
         db, trip=trip, phase_event_id=None, checkpoint_id=checkpoint.id,
         assessment=assessment, driver_reason=None,
     )
-    # DRIVER_LOCATION_MISMATCH is phase-scoped only (see its own docstring): a bare
-    # checkpoint capture never sets driver_in_precinct, so this only ever fires when
-    # the checkpoint carries a real phase_event_id — and even then only if that
-    # phase happens to be stop-anchored and not IN_TRANSIT, which no current
-    # checkpoint path produces. Called anyway for symmetry with the finding above
-    # and so it starts working the day that changes, with no second wiring pass.
-    # No location_warning_reason on DriverCheckpointCreateBody, so driver_reason
-    # is always None here.
     if phase_event is not None:
         await action_location_service.record_driver_location_finding(
             db, trip=trip, phase_event_id=phase_event.id, assessment=assessment,
@@ -161,9 +139,6 @@ async def _load_checkpoint_phase(
 async def log_checkpoint(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: DriverCheckpointCreateBody,
 ) -> CheckpointRead:
-    # Who holds the trip is decided after its lock (FP-83). A retry of THIS driver's own accepted
-    # checkpoint is recognised first, so a stale sequence or a handover in between acknowledges
-    # it instead of refusing or re-recording it.
     trip, custody = await authorise_driver_write(
         db, trip_id=trip_id, driver_id=driver_id,
         claim=WriteClaim(
@@ -172,15 +147,11 @@ async def log_checkpoint(
         ),
     )
 
-    # A replay is the original evidence exactly as first recorded, including its phase
-    # attribution. Do this before reading mutable trip state or tracker telemetry.
     if payload.client_report_id is not None:
         existing = await _find_by_client_report_id(
             db, trip_id=trip_id, client_report_id=payload.client_report_id,
         )
         if existing is not None:
-            # Legacy trips keep their replay semantics. Once custody has moved, only the driver
-            # who recorded it may be told "already recorded" as their own success.
             if custody.sequence > 0 and existing.performed_by_driver_id != driver_id:
                 raise IdempotencyKeyReusedError()
             return CheckpointRead.model_validate(existing)
@@ -196,27 +167,11 @@ async def log_checkpoint(
         db, trip_id=trip_id, artifact_id=payload.cargo_photo_artifact_id,
     )
 
-    # horse_gps_lat/lng are deliberately NOT read from the payload any more.
-    #
-    # They used to be, and that made the column worthless as evidence: the driver's
-    # phone reported its own position AND asserted where the truck was, so a single
-    # source wore two hats and the "cross-reference" compared a claim against itself.
-    # The tracker reading taken below supersedes anything the client sends, which is
-    # the only thing that makes this an independent second source (FP-143).
-    #
-    # The fields stay on DriverCheckpointCreateBody rather than being deleted, for
-    # the same reason LoadingCompleteRequest.driver_visual_count does: an entry
-    # queued offline under the old schema replays from the driver app's localStorage
-    # with them populated, and a removed field would 422 that entry forever — the
-    # queue would never drain. They are accepted and ignored. Delete only once no
-    # client can still be holding one.
     checkpoint = Checkpoint(
         trip_id=trip_id,
         checkpoint_type=payload.checkpoint_type,
         driver_phone_lat=payload.driver_phone_lat,
         driver_phone_lng=payload.driver_phone_lng,
-        # The driver's own submit-instant, stored unconditionally — never
-        # gated by whether the horse position below ends up timely enough to keep.
         driver_captured_at=payload.driver_captured_at,
         selfie_artifact_id=payload.selfie_artifact_id,
         cargo_photo_artifact_id=payload.cargo_photo_artifact_id,
@@ -247,9 +202,6 @@ async def log_checkpoint(
             if winner is None:
                 raise
             return CheckpointRead.model_validate(winner)
-    # Flushed before corroboration so the row has its id — the corroboration log
-    # lines identify the checkpoint they belong to, and a null id there would make
-    # a Pulsit outage untraceable to the checkpoint it affected.
     await _corroborate_and_assess(
         db, trip=trip, checkpoint=checkpoint, phase_event=phase_event, payload=payload,
     )

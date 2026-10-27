@@ -3,8 +3,6 @@
 import { InfoRowsSkeleton, TabsSkeleton, TimelineSkeleton } from '@/components/ui/DetailSkeleton'
 import { Skeleton, SkeletonBar } from '@/components/ui/Skeleton'
 
-// The real map starts 320px tall (MAP_HEIGHT.initial on the detail page) and the side column 256px wide
-// from the large breakpoint up; the placeholders use the same literal classes so the page does not reflow.
 const SIDE_COLUMN_FACTS = 5
 
 /** The precinct detail layout while the record loads: map, tabbed history, and the fact column. */

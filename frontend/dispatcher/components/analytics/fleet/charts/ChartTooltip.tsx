@@ -1,8 +1,6 @@
 export interface TooltipLine {
-  /** Leads the row, bold: the reader already knows the series and wants the number. */
   value: string
   label: string
-  /** A short stroke keys the row to its series. Omit for a total row. */
   color?: string
 }
 

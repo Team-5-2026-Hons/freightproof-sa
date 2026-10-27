@@ -18,9 +18,6 @@ import { fetchMyTrips } from '@/lib/api/trips'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import { tripsForDriver } from '@/lib/utils/trip-filters'
 
-// Demo mode has no backend to call, so its rows are projected from the mock fixtures into
-// the same DriverTripSummary shape the real endpoint returns — one row type downstream,
-// so the tabs and filters below never branch on where the data came from.
 function demoTripsFor(driverId: string): DriverTripSummary[] {
   return tripsForDriver(mockTrips, driverId as Parameters<typeof tripsForDriver>[1]).map((t) => ({
     id: t.id,
@@ -35,8 +32,6 @@ function demoTripsFor(driverId: string): DriverTripSummary[] {
     actual_departure_at: t.actual_departure_at,
     planned_arrival_at: t.planned_arrival_at,
     actual_arrival_at: t.actual_arrival_at,
-    // Unreviewed critical rows only, matching the backend's needs_review_count: every
-    // exception starts needs_review, but the driver cannot review any of them.
     needs_review_count: t.exceptions.filter(
       (e) => e.review_status === 'needs_review' && e.severity === 'critical',
     ).length,
@@ -53,18 +48,13 @@ export interface MyTrips {
   reload: () => void
 }
 
-// A list this old is refreshed in the background on the next mount; younger ones are
-// served as they are. Matches the trip poll so Home and Trips never show staler data than
-// the working trip does.
 export const STALE_AFTER_MS = 15_000
 const LOAD_ERROR = 'Could not load your trips. Check your connection and try again.'
 const NO_TRIPS: DriverTripSummary[] = []
 
 interface TripsSnapshot {
-  /** The driver this snapshot belongs to; readers for anyone else see an empty list. */
   driverId: string | null
   trips: DriverTripSummary[]
-  /** Null until the first answer for this driver has landed (success or failure). */
   fetchedAt: number | null
   isLoading: boolean
   loadError: string | null
@@ -87,9 +77,6 @@ function publish(next: TripsSnapshot): void {
   for (const listener of store.listeners) listener()
 }
 
-// A different driver signing in must never see the previous driver's list, so the store
-// is keyed by driver and dropped (not merged) when the id changes. An answer still in
-// flight for the old driver is ignored when it lands.
 function bindDriver(driverId: string | null): void {
   if (store.snapshot.driverId === driverId) return
   store.inflight = null
@@ -105,15 +92,12 @@ function load(driverId: string, { force }: { force: boolean }): Promise<void> {
   bindDriver(driverId)
   if (store.inflight !== null) return store.inflight
   if (!force && isFresh(store.snapshot, Date.now())) return Promise.resolve()
-  // Stale data stays on screen while it refreshes; only a first load shows as loading.
   publish({ ...store.snapshot, isLoading: store.snapshot.fetchedAt === null, loadError: null })
   const request = fetchMyTrips()
     .then((trips) => {
       if (store.snapshot.driverId !== driverId) return
       publish({ driverId, trips, fetchedAt: Date.now(), isLoading: false, loadError: null })
     })
-    // Surfaced, never swallowed: an empty list and a failed fetch look identical
-    // otherwise, and "no upcoming trips" is a lie when the request simply didn't land.
     .catch((err: unknown) => {
       console.error('Failed to load the driver\'s trips', err)
       if (store.snapshot.driverId !== driverId) return
@@ -143,10 +127,6 @@ export function __resetMyTripsStoreForTests(): void {
 
 export function useMyTrips(): MyTrips {
   const { user } = useAuth()
-  // Keyed on the driver's id, not the user OBJECT: AuthContext builds its provider value
-  // inline, so useAuth() hands back a fresh reference on every render. Depending on the
-  // object would make `load` a new function each render and re-fire the fetch effect in a
-  // loop; a primitive id only changes when the signed-in driver actually changes.
   const driverId = user?.id !== undefined ? String(user.id) : null
 
   const demoTrips = useMemo(
@@ -168,8 +148,6 @@ export function useMyTrips(): MyTrips {
   }, [driverId])
 
   if (IS_DEMO_MODE) return { trips: demoTrips, isLoading: false, loadError: null, reload }
-  // A driver whose store is still bound to nobody (first render before the effect) reads
-  // as loading, never as "no trips".
   const bound = snapshot.driverId === driverId
   return {
     trips: bound ? snapshot.trips : NO_TRIPS,

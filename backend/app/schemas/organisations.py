@@ -17,7 +17,7 @@ class OrganizationBase(BaseModel):
     name: str
     org_type: OrganizationType
     contact_email: Optional[str] = None
-    pp_account_number: Optional[str] = Field(None, max_length=6)  # PP accnum, String(6)
+    pp_account_number: Optional[str] = Field(None, max_length=6)
 
 
 class OrganizationCreate(OrganizationBase):
@@ -43,31 +43,22 @@ class PrecinctBase(BaseModel):
     name: str
     principal_organization_id: UUID
     address: Optional[str] = None
-    # Numeric(10,7) in the DB; float is used here (not Decimal) so it serialises as a JSON
-    # number the frontend can call .toFixed() on.
     latitude: float
     longitude: float
     geofence_radius_metres: int = 200
-    # Set = the outline is the fence and the radius is not used for any verdict.
     geofence_polygon: Optional[list[tuple[float, float]]] = None
     is_shared: bool = False
 
 
-# Mirrors Numeric(10, 7) DB columns, so Pydantic 422s instead of Postgres raising
-# NumericValueOutOfRange as a 500.
 _LATITUDE_MIN, _LATITUDE_MAX = -90.0, 90.0
 _LONGITUDE_MIN, _LONGITUDE_MAX = -180.0, 180.0
 
-# Floor matches GPS_TOLERANCE_METRES (50) — narrower makes the FP-68 corroboration check
-# meaningless. Ceiling catches a unit slip (km entered as m).
 _RADIUS_MIN_METRES = 50
 _RADIUS_MAX_METRES = 5_000
 _RADIUS_DEFAULT_METRES = 200
 
-_NAME_MAX_LENGTH = 255  # mirrors String(255) on Precinct.name
+_NAME_MAX_LENGTH = 255
 
-# Precinct.address is a Text column with no DB ceiling; this bounds it so the value
-# copied into PrecinctEvent.changed_fields can't bloat the anchored ledger.
 _ADDRESS_MAX_LENGTH = 500
 
 PrecinctNameStr = Annotated[
@@ -80,20 +71,10 @@ LatitudeFloat = Annotated[float, Field(ge=_LATITUDE_MIN, le=_LATITUDE_MAX)]
 LongitudeFloat = Annotated[float, Field(ge=_LONGITUDE_MIN, le=_LONGITUDE_MAX)]
 RadiusMetresInt = Annotated[int, Field(ge=_RADIUS_MIN_METRES, le=_RADIUS_MAX_METRES)]
 
-# --- Polygon geofence rules ---------------------------------------------------------
-# Enough corners for a real OSM site outline; bounds the anchored payload and the O(n²)
-# self-intersection check.
 _POLYGON_MAX_VERTICES = 500
-# A 20 m × 20 m box. Smaller is almost certainly a misclick, and GPS noise alone is wider.
 _POLYGON_MIN_AREA_M2 = 400.0
-# The largest circle the radius field allows. An outline can be shaped differently from a
-# circle but never be laxer than the laxest circle a dispatcher could already set.
 _POLYGON_MAX_AREA_M2 = math.pi * _RADIUS_MAX_METRES**2
-# The pin is the gate: the routing point and the label on every map. It may sit on the
-# boundary or just outside a building footprint, but not at a different site.
 PIN_MAX_OUTSIDE_POLYGON_METRES = 100.0
-# Numeric(10, 7) on the pin columns — the same precision for corners, so a corner and a
-# pin at the same spot compare equal and the anchored JSON has no float-noise digits.
 _COORDINATE_DECIMALS = 7
 
 
@@ -104,7 +85,6 @@ def _normalise_polygon(value: list[tuple[float, float]]) -> list[list[float]]:
     value with the new one — a tuple would read as "changed" even when it isn't.
     """
     corners = [[round(lat, _COORDINATE_DECIMALS), round(lng, _COORDINATE_DECIMALS)] for lat, lng in value]
-    # A closed ring (first corner repeated) is accepted and opened, since GeoJSON sends it closed.
     if len(corners) > geo_polygon.MIN_POLYGON_VERTICES and corners[0] == corners[-1]:
         corners = corners[:-1]
     ring = [(c[0], c[1]) for c in corners]
@@ -186,11 +166,10 @@ class PrecinctUpdateBody(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     name: PrecinctNameStr = Field(default=None)  # type: ignore[assignment]
-    address: Optional[PrecinctAddressStr] = None  # genuinely nullable: explicit null clears it
+    address: Optional[PrecinctAddressStr] = None
     latitude: LatitudeFloat = Field(default=None)  # type: ignore[assignment]
     longitude: LongitudeFloat = Field(default=None)  # type: ignore[assignment]
     geofence_radius_metres: RadiusMetresInt = Field(default=None)  # type: ignore[assignment]
-    # Genuinely nullable: explicit null removes the outline and the circle applies again.
     geofence_polygon: Optional[GeofencePolygon] = None
     is_shared: bool = Field(default=None)  # type: ignore[assignment]
 
@@ -200,7 +179,6 @@ class PrecinctRead(PrecinctBase):
     created_at: datetime
 
 
-# Imported here, not at module top, to keep the schema dependency graph acyclic.
 from app.schemas.blockchain import BlockchainReceiptRead  # noqa: E402
 from app.schemas.events import PrecinctEventRead  # noqa: E402
 

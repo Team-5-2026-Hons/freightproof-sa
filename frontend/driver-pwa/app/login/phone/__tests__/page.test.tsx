@@ -34,7 +34,6 @@ function getPhoneInput() {
   return screen.getByLabelText(/phone number/i)
 }
 
-// Continue only opens the "Is this your number?" sheet; Confirm is what sends the code.
 async function submit() {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
@@ -110,7 +109,6 @@ describe('PhoneLoginPage phone number entry', () => {
     fireEvent.click(screen.getByRole('button', { name: /\+27/ }))
     fireEvent.click(screen.getByRole('option', { name: /united kingdom/i }))
 
-    // United Kingdom's local length (11) produces a differently-grouped, generic placeholder.
     expect(getPhoneInput()).toHaveAttribute('placeholder', '123 456 789 01')
   })
 

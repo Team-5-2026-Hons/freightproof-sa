@@ -8,7 +8,6 @@ Create Date: 2026-09-15 22:40:43.071308
 from typing import Sequence, Union
 
 
-# revision identifiers, used by Alembic.
 revision: str = '6ee6103df09a'
 down_revision: Union[str, Sequence[str], None] = ('ciaran_action_location', '8d6a2d9df9bc')
 branch_labels: Union[str, Sequence[str], None] = None

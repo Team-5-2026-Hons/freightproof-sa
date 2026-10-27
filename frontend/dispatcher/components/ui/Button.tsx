@@ -32,7 +32,6 @@ export function Button({
   style,
   ...props
 }: ButtonProps) {
-  // Primary uses an inline gradient — cannot be expressed as a static Tailwind class.
   const isPrimary = variant === 'primary'
 
   return (
@@ -47,9 +46,7 @@ export function Button({
         'inline-flex items-center justify-center font-semibold rounded-md',
         'transition-all duration-[120ms] select-none',
         'disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none',
-        // Hover / press interactions per DESIGN_SYSTEM.md §7.1
         !disabled && !loading && 'hover:brightness-[1.12] active:scale-[0.97]',
-        // Variant styles (primary handled via inline style above)
         variant === 'primary'   && 'text-white',
         variant === 'secondary' && 'bg-surf-high text-on-surf border border-outline-v/20 hover:bg-outline-v/20',
         variant === 'ghost'     && 'bg-transparent text-sec',

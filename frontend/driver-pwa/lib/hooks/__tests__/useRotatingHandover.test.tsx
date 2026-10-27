@@ -163,8 +163,6 @@ describe('useRotatingHandover', () => {
     await act(async () => { result.current.forceNewCode() })
 
     await waitFor(() => expect(result.current.error).not.toBeNull())
-    // Still valid until its own expiry — blanking it would take a working code away from
-    // a receiver mid-scan because a later refresh failed.
     expect(result.current.scanUrl).toBe('https://r.test/h/aaa')
   })
 

@@ -108,8 +108,6 @@ def _dispatcher_token(seed) -> str:
     return make_token(sub=str(seed["dispatcher"].id), role="dispatcher")
 
 
-# ── cancel ──────────────────────────────────────────────────────────────────
-
 async def test_cancel_sets_cancelled_and_preserves_phase_rows(client: AsyncClient, db_session, seed):
     trip = await _make_trip(db_session, seed, order_number="CANCEL-1")
     token = _dispatcher_token(seed)
@@ -200,8 +198,6 @@ async def test_cancel_note_is_reviewed_by_its_author(client: AsyncClient, db_ses
     assert note.reviewed_at == note.claimed_at
 
 
-# ── override ────────────────────────────────────────────────────────────────
-
 async def test_override_note_is_reviewed_by_its_author(client: AsyncClient, db_session, seed):
     trip = await _make_trip(db_session, seed, order_number="OVERRIDE-AUTHORED")
     await _resolve_phases_before(db_session, trip, PhaseType.ARRIVAL)
@@ -225,7 +221,6 @@ async def test_override_note_is_reviewed_by_its_author(client: AsyncClient, db_s
     assert note.reviewed_by_user_id == seed["dispatcher"].id
     assert note.claimed_by_user_id == seed["dispatcher"].id
     assert note.reviewed_at == note.claimed_at
-    # The system's seal warning is not authored by anyone, so it goes to the inbox.
     seal = next(r for r in rows if r.exception_type == ExceptionType.SEAL_UNVERIFIED)
     assert seal.review_status == ExceptionReviewStatus.NEEDS_REVIEW
     assert seal.claimed_by_user_id is None
@@ -246,7 +241,6 @@ async def test_override_resolves_a_pending_phase_and_unblocks_the_next(client: A
     body = resp.json()
     activation = next(p for p in body["phases"] if p["phase_type"] == "activation")
     assert activation["status"] == "overridden"
-    # Step 6 — the override fields reach the wire, not just the DB row.
     assert activation["dispatcher_override_note"] == "driver's phone was wiped, cannot complete activation"
     assert activation["dispatcher_override_user_id"] == str(seed["dispatcher"].id)
 
@@ -365,9 +359,6 @@ async def test_override_leaves_anchor_status_untouched(client: AsyncClient, db_s
     body = resp.json()
     overridden = next(p for p in body["phases"] if p["phase_type"] == "departure")
     assert overridden["status"] == "overridden"
-    # Still PENDING: the receipt this phase owed never landed, and the system keeps
-    # saying so. NOT_REQUIRED would launder a real gap in the evidence chain;
-    # FAILED would claim an anchor was attempted. Neither is true, so neither is written.
     assert overridden["anchor_status"] == "pending"
 
 
@@ -432,10 +423,6 @@ async def test_admin_routes_reject_a_foreign_org_trip(client: AsyncClient, db_se
     assert override_resp.status_code == 404
 
 
-# ── The intervention lands on the ledger ─────────────────────────────────────
-# The point of an evidence platform is that a human bypassing a gate is itself an
-# event worth recording. Without these, that was asserted in comments and nowhere else.
-
 
 async def _exceptions_for(db_session, trip_id) -> list[TripException]:
     result = await db_session.execute(
@@ -461,8 +448,6 @@ async def test_cancel_writes_a_dispatcher_exception_to_the_ledger(
     assert rows[0].source == ExceptionSource.DISPATCHER
     assert rows[0].severity == ExceptionSeverity.WARNING
     assert "cargo pulled by client" in rows[0].description
-    # Attributable, not anonymous — see cancel_trip's note on the missing
-    # raised_by_user_id column.
     assert str(seed["dispatcher"].id) in rows[0].description
 
 
@@ -486,15 +471,8 @@ async def test_override_writes_a_dispatcher_exception_to_the_ledger(
     assert rows[0].source == ExceptionSource.DISPATCHER
     assert rows[0].severity == ExceptionSeverity.WARNING
     assert rows[0].description == "driver's phone was wiped"
-    # Scoped to the row it overrode, so the ledger entry is not merely trip-level.
     assert str(rows[0].phase_event_id) == activation_id
 
-
-# ── terminal-trip guard ─────────────────────────────────────────────────────
-# cancel_trip leaves every phase row PENDING on purpose (evidence, not
-# completion), so without an explicit trip-status guard a cancelled trip's rows
-# still look overridable — and recompute_position's unconditional close-branch
-# would rewrite CANCELLED as CLOSED. These pin that it cannot happen.
 
 
 async def test_override_rejects_a_cancelled_trip(client: AsyncClient, db_session, seed):
@@ -560,8 +538,6 @@ async def test_override_rejects_a_closed_trip(client: AsyncClient, db_session, s
 
     assert resp.status_code == 409
 
-
-# ── FP-290: cancellation and override evidence anchors ────────────────────────
 
 async def _anchor_events(db_session, trip_id):
     from app.db.models.evidence_anchors import EvidenceAnchorEvent

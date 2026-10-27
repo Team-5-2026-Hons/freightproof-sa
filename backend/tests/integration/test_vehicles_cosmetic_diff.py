@@ -26,12 +26,6 @@ from app.main import app
 
 from tests.conftest import auth_header, make_token
 
-# A structurally valid VIN: exactly 17 alphanumerics, per _VIN_PATTERN in
-# app/schemas/vehicles.py. Named rather than inlined because the test below asserts on it
-# twice — as the value sent and as the value recorded in the diff — and the two drifting
-# apart would be a confusing failure. The previous literal was 15 characters, which the
-# schema had started rejecting with a 422 before this test ever reached the anchoring
-# behaviour it exists to check.
 _VALID_VIN = "GH698HF7X09009901"
 
 

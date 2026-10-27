@@ -4,9 +4,7 @@ import type { ReactNode } from 'react'
 import { Button } from './Button'
 
 interface ListToolbarProps {
-  /** Search, selects, date range… in the order they should read. */
   children: ReactNode
-  /** Shows a trailing "Clear filters" button while any filter is narrowing the list. */
   hasActiveFilters?: boolean
   onClear?: () => void
 }

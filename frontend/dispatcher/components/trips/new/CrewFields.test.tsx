@@ -8,7 +8,6 @@ import { trailerCombo } from '@/lib/trips/trailer-combo'
 import type { BusyEntry } from '@shared/lib/types/availability'
 import { CrewFields, type CrewFieldsProps } from './CrewFields'
 
-// 14:00 UTC is 16:00 in SAST.
 const FREE_AT = '2026-10-16T14:00:00Z'
 
 function busy(resourceId: string, overrides: Partial<BusyEntry> = {}): BusyEntry {

@@ -5,7 +5,6 @@ import { BatchReviewForm } from './BatchReviewForm'
 import { ApiError, reviewExceptionBatch } from '@/lib/api/client'
 import type { TripException } from '@shared/lib/types/exception'
 
-// lib/api/client builds a Supabase client at import time, which throws without a URL.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
@@ -14,7 +13,6 @@ vi.mock('@/lib/supabase/client', () => ({
 const notify = vi.fn()
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify }) }))
 
-// Keep ApiError real (the form's catch block uses instanceof); mock only the mutation.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
   return { ...actual, reviewExceptionBatch: vi.fn() }
@@ -78,7 +76,6 @@ describe('BatchReviewForm', () => {
     const list = screen.getByText('Show all 2').closest('details')!
     expect(list).not.toHaveAttribute('open')
     expect(list.querySelectorAll('li')).toHaveLength(2)
-    // Raw record ids mean nothing to a dispatcher and made the list a wall of wrapped UUIDs.
     expect(screen.queryByText(/Record ex-1/)).not.toBeInTheDocument()
   })
 

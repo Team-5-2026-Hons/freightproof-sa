@@ -14,8 +14,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// The whole point of this split: a driver must never be told to log in again because the
-// backend was unreachable. See lib/auth/DriverProfileSource.ts.
 describe('ApiDriverProfileSource', () => {
   it('returns the driver on success', async () => {
     const driver = { id: 'd1', full_name: 'Timothy Gultig' }

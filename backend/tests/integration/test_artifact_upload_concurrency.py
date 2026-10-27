@@ -81,7 +81,6 @@ async def _seed(session: AsyncSession) -> dict:
 
 
 async def _teardown(session: AsyncSession, ids: dict) -> None:
-    # Attribution points at phase_events, so it is cleared before the phase goes.
     await session.execute(delete(EvidenceArtifact).where(EvidenceArtifact.trip_id == ids["trip_id"]))
     await session.execute(delete(PhaseEvent).where(PhaseEvent.id == ids["phase_id"]))
     await session.execute(delete(Trip).where(Trip.id == ids["trip_id"]))

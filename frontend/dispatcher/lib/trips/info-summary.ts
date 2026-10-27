@@ -69,7 +69,6 @@ export function hasActiveIncident(incidents: readonly IncidentSummary[]): boolea
 
 /** "1 open", "2 investigating", "1 open · 2 investigating", "3 closed" or "None". */
 export function incidentsSummary(incidents: readonly IncidentSummary[], isLoading: boolean, failed = false): string {
-  // A failed load with nothing cached is unknown, not "None": the reader must not take it as all clear.
   if (incidents.length === 0) return isLoading ? INCIDENTS_LOADING : failed ? INCIDENTS_UNAVAILABLE : NO_INCIDENTS
   const count = (status: IncidentSummary['status']): number => incidents.filter(incident => incident.status === status).length
   const open = count('open')

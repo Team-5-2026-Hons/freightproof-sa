@@ -71,7 +71,6 @@ async def test_snapshot_read_computes_lines_and_totals_from_the_waybills() -> No
 
 
 async def test_snapshot_read_is_the_same_after_a_jsonb_round_trip() -> None:
-    # The manifest panel reads the snapshot back from JSONB; the preview reads it fresh.
     manifest = await MockParcelPerfectClient().get_manifest(MANIFEST_HAPPY_PATH)
     snapshot = manifest_snapshot(manifest)
 

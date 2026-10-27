@@ -23,17 +23,12 @@ import { fmtSastDateTime } from '@shared/lib/utils/datetime'
 
 const TABLE_ID = 'dashboard-incidents'
 const SKELETON_ROWS = PANEL_ROW_LIMIT
-// The dashboard wants every incident and narrows it client-side, so it asks the server for no filter.
 const ALL_INCIDENTS = {}
 const CLOCK_TICK_MS = 60_000
-// Panel width below which the age column folds away rather than the table scrolling sideways.
 const RECEIVED_HIDE_BELOW_PX = 540
 
-// A chip's height, so the placeholder rows are as tall as the real ones and the panel does not
-// change height when data arrives.
 const CHIP_SKELETON = <SkeletonBar className="h-6 w-20 rounded-md" />
 
-// Single-line rows, for the same reason as the Exceptions panel: five must fit without scrolling.
 function buildColumns(now: Date): TableColumn<IncidentSummary>[] {
   return [
     {
@@ -56,8 +51,6 @@ export function DashboardIncidentsPanel(): React.JSX.Element {
 
   const initialLoad = isLoading && data.length === 0
   const loadFailed = !!error && data.length === 0
-  // Old rows stay up through a failed refresh, but say so: this includes "No open incidents", which
-  // after a failed refresh is only what the last read found.
   const refreshFailed = !!error && data.length > 0
   const loadedAt = useLastLoadedAt(data)
 

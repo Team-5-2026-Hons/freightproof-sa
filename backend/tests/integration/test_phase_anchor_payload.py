@@ -82,9 +82,6 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     monkeypatch.setattr(scan_feed_module, "get_mock_state_store", lambda: fake)
     return fake
 
-# Fields that must never appear in an anchored handshake payload — GPS, photos,
-# artifact IDs, and timestamps are all either PII/location data (POPIA) or
-# fields excluded to avoid datetime round-trip fragility in verification.
 _FORBIDDEN_KEYS = {
     "driver_phone_lat", "driver_phone_lng", "horse_gps_lat", "horse_gps_lng",
     "gate_photo_artifact_id", "waybill_photo_artifact_id", "seal_photo_artifact_id",
@@ -147,9 +144,6 @@ async def trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
-        # an unscheduled trip is deliberately unstartable, so this fixture books itself for
-        # today — what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
         created_by_user_id=user.id,
     )
@@ -280,8 +274,6 @@ async def _advance_to_unloading(db_session, trip, driver, phases):
         payload=UnloadingCompleteRequest(phase_type=PhaseType.UNLOADING, idempotency_key=str(uuid.uuid4())),
     )
 
-
-# ── Payload shape: no GPS/artifact/PII keys (pure logic, no DB) ────────────────
 
 def test_departure_v1_payload_remains_byte_compatible():
     """driver_visual_count is gone from this payload — it stays
@@ -432,13 +424,9 @@ async def _drain_anchors(db_session, dispatched) -> None:
             canonical_payload=canonical_payload,
             receipt_type=BlockchainReceiptType(receipt_type),
         )
-    # Flush so the receipt and the event's new blockchain_receipt_id are queryable —
-    # refresh() would discard these pending in-session writes instead of reading them.
     await db_session.flush()
     dispatched.clear()
 
-
-# ── Anchoring: receipt_type per handshake, anchors on mismatch too (DB-gated) ──
 
 @pytest.mark.asyncio
 async def test_advance_departure_anchors_with_pickup_receipt_type(
@@ -459,7 +447,6 @@ async def test_advance_departure_anchors_with_pickup_receipt_type(
     assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.PICKUP
     assert receipt.data_hash == departure.event_hash
-    # Driver-performed, so the v2 evidence sits inside the v4 actor envelope.
     assert receipt.payload_json["payload_version"] == 4
     assert receipt.payload_json["evidence"]["payload_version"] == 2
     assert receipt.payload_json["actor_sha256"] == driver_actor_sha256(driver.id)
@@ -534,8 +521,6 @@ async def test_advance_departure_keeps_seal_number_source_out_of_the_anchor(
     await _advance_to_departure(
         db_session, trip, driver, phases, seal_number_source=SealNumberSource.OCR_CONFIRMED,
     )
-    # Commit fires the after_commit dispatch hook; the payload is read as dispatched,
-    # before any worker touches it.
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
 
@@ -582,8 +567,6 @@ async def test_advance_loading_anchors_v3_with_both_linehaul_hashes(
             linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=pdf_id,
         ),
     )
-    # Commit fires the after_commit dispatch hook; the payload is read as dispatched,
-    # before any worker touches it.
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
 
@@ -597,11 +580,6 @@ async def test_advance_loading_anchors_v3_with_both_linehaul_hashes(
         linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
     )]
 
-
-# test_advance_confirmation_anchors_even_on_count_mismatch was removed from
-# here (see git history) — advance_loading stopped writing driver_visual_count,
-# so the old three-way count check it drove became unreachable. This restores
-# the same property below, now driven by a genuine scan-out vs scan-in mismatch.
 
 @pytest.mark.asyncio
 async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
@@ -673,9 +651,6 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
             idempotency_key=str(uuid.uuid4()),
         ),
     )
-    # Only 2 of 3 scanned in at destination — the mismatch this test exists to
-    # anchor. Staged/ingested/closed BEFORE advance_unloading, not after: UNLOADING
-    # now gates on this stop's IN-direction scan session (phases.blocking.GATED_PHASES).
     await feed.stage_scans(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
         direction=ScanDirection.IN, barcodes=barcodes[:2],
@@ -721,8 +696,6 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
     assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
     assert receipt.data_hash == phases["confirmation"].event_hash
 
-
-# ── Verification reconstruction: proves reconstruct == anchored payload ───────
 
 @pytest.mark.asyncio
 async def test_verify_subject_after_departure_reconstructs_matching_payload(
@@ -1252,8 +1225,6 @@ async def test_recovery_retries_failed_hedera_submission(db_session, trip_fixtur
     assert event.anchor_status == AnchorStatus.ANCHORED
 
 
-# ── Every phase anchors ─────────────────────────────────────────────────────────
-
 def test_anchored_phases_is_every_phase_type():
     """ANCHORED_PHASES becomes frozenset(PhaseType), so every
     row a plan writes is created PENDING rather than NOT_REQUIRED."""
@@ -1286,8 +1257,6 @@ def test_receipt_type_for_returns_override_for_any_overridden_row(phase_type):
 
     assert receipt_type_for(event) == BlockchainReceiptType.PHASE_OVERRIDE
 
-
-# ── Per-phase v2 payload shapes (pure logic, no DB) ─────────────────────────────
 
 def test_activation_v2_payload_key_set():
     payload = compute_activation_canonical_payload_v2(phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4())
@@ -1395,8 +1364,6 @@ def test_override_v2_payload_key_set():
     assert payload["phase_status"] == "overridden"
 
 
-# ── No payload leaks GPS, artifact ids, PII, or completed_at ────────────────────
-
 _LOCATION_KEY_PATTERN = re.compile(r"(lat|lng|latitude|longitude|gps|coordinates)", re.IGNORECASE)
 
 
@@ -1469,8 +1436,6 @@ async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_
     """
     trip, driver, phases = trip_fixture
     override_note = "driver's phone was lost before loading; loading could not be scanned"
-    # A real row, not a bare uuid4(): dispatcher_override_user_id carries an FK to
-    # users, so an arbitrary id would fail the write before the payload was ever built.
     override_user_id = (await db_session.execute(
         select(User.id).where(User.organization_id == trip.operator_organization_id)
     )).scalar_one()
@@ -1482,8 +1447,6 @@ async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_
             driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"), idempotency_key=str(uuid.uuid4()),
         ),
     )
-    # Overridden, not completed normally — the one override the plaintext-leak rule
-    # (POPIA: the note may name a person) must also hold for.
     await override_phase(
         db_session, trip_id=trip.id, phase_event_id=phases["loading"].id,
         operator_organization_id=trip.operator_organization_id,
@@ -1526,21 +1489,17 @@ async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_
         ),
     )
 
-    # Fires _dispatch_anchor's after_commit hook for every phase above, exactly as
-    # production does (see _drain_anchors's own docstring on why this commit is safe
-    # inside the rolled-back db_session fixture) — but without draining the captured
-    # list through anchor_phase_event, so it is still there to inspect below.
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
 
-    assert len(captured_anchor_dispatches) == 7  # 6 driver phases + the one override
+    assert len(captured_anchor_dispatches) == 7
 
     artifact_ids = {
         str(artifact_id) for (artifact_id,) in (await db_session.execute(
             select(EvidenceArtifact.id).where(EvidenceArtifact.trip_id == trip.id)
         )).all()
     }
-    assert artifact_ids  # sanity: the walk above genuinely created evidence to leak
+    assert artifact_ids
 
     for phase_event_id, payload, receipt_type in captured_anchor_dispatches:
         for key in payload:
@@ -1556,8 +1515,6 @@ async def test_anchored_payloads_across_a_full_trip_never_leak_artifact_ids_gps_
             assert override_note not in payload.values()
             assert str(override_user_id) not in payload.values()
 
-
-# ── Override commitments are keyed and never expose the plain value ─────────────
 
 def test_override_commitments_differ_for_the_same_note_on_different_phase_events():
     """The commitment is keyed to the phase_event_id (see _override_commitment's
@@ -1608,9 +1565,6 @@ async def test_verify_subject_after_loading_v3_reconstructs_matching_payload(
         ),
     )
     photo_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
-    # "a" * 64, not a distinct hash: the autouse storage stub returns "a" * 64 for every
-    # stored file, so any other recorded hash would read as replaced bytes. The PDF key is
-    # still exercised, since a verifier that ignored it would rebuild it as None.
     pdf_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
     pdf = await db_session.get(EvidenceArtifact, pdf_id)
     pdf.mime_type = "application/pdf"
@@ -1675,8 +1629,6 @@ async def test_verify_subject_rejects_a_v3_payload_on_an_overridden_row(db_sessi
     departure.status = PhaseStatus.OVERRIDDEN
     departure.dispatcher_override_user_id = override_user_id
     departure.dispatcher_override_note = "phone lost"
-    # A v3 label on an overridden row: before the guard moved up, the override branch
-    # rebuilt a payload that could never match, so this surfaced as a hash mismatch.
     payload = {
         "payload_version": 3, "phase_event_id": str(departure.id), "trip_id": str(trip.id),
         "phase_type": "departure",
@@ -1775,11 +1727,9 @@ async def test_reconstruct_pending_payload_for_loading_with_pdf_returns_the_v3_p
 
     rebuilt = await reconstruct_pending_phase_payload(db_session, loading)
 
-    # Driver-performed, so the v3 evidence is wrapped in the v4 actor envelope.
     assert rebuilt["payload_version"] == 4
     assert rebuilt["actor_sha256"] == driver_actor_sha256(driver.id)
     assert rebuilt["custody_sequence"] == loading.custody_sequence
-    # Distinct photo/PDF hashes, so swapped payload keys would not equal this.
     assert rebuilt["evidence"] == compute_loading_canonical_payload_v3(
         phase_event_id=loading.id, trip_id=trip.id, parcel_count_origin=loading.parcel_count_origin,
         linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
@@ -1792,12 +1742,10 @@ async def test_recovery_restores_a_lost_loading_dispatch_that_carried_a_pdf(
 ):
     trip, driver, phases = trip_fixture
     await _activate(db_session, trip, driver, phases)
-    # Anchor activation so the loading row is the only debt recovery can pick.
     await _drain_anchors(db_session, captured_anchor_dispatches)
     await _complete_loading_with_scan_and_pdf(db_session, trip, driver, phases)
     loading = phases["loading"]
     original_hash = loading.event_hash
-    # No commit, so the dispatch never fired: the queue payload is lost.
     loading.updated_at = datetime.now(UTC) - timedelta(minutes=10)
     await db_session.flush()
 

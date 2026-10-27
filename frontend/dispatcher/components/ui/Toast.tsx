@@ -6,8 +6,6 @@ import { cn } from '@shared/lib/utils/cn'
 
 export type ToastKind = 'info' | 'success' | 'warning' | 'error'
 
-// What a toast is worth when the viewport is full and one of them has to go. Critical
-// exception alerts must survive ordinary warnings and routine status notifications.
 export type ToastPriority = 'ordinary' | 'critical'
 
 export interface ToastData {
@@ -16,8 +14,6 @@ export interface ToastData {
   title: string
   body?: string
   sticky?: boolean
-  // Absent means ordinary. Optional so every existing caller — trip cancelled, phase
-  // overridden, exception reviewed — keeps working untouched.
   priority?: ToastPriority
 }
 
@@ -67,14 +63,11 @@ interface ToastViewportProps {
   onDismiss: (id: string) => void
 }
 
-// Render once inside DispatcherShell. Consumers call useToast().notify() — never render this directly.
 export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
   return (
     <div
       aria-live="polite"
       aria-atomic="false"
-      // The assistant bubble sets these while it shows, so toasts sit above it and beside its open
-      // pop-up (components/assistant/AssistantBubble.tsx). Unset, they fall back to the usual corner.
       className="fixed bottom-[calc(1.5rem+var(--fp-assistant-bottom,0px))] right-6 md:right-[calc(1.5rem+var(--fp-assistant-right,0px))] z-[80] flex flex-col gap-3 items-end"
     >
       {toasts.slice(0, 3).map((toast) => (

@@ -14,21 +14,12 @@ import {
 } from '@/lib/camera/restored-photo'
 
 interface CameraCaptureProps {
-  /** What the photo is — the field label and the captured image's alt text. */
   label: string
-  /** The tile's verb ("Photograph the sheet"). Defaults to Take Photo. */
   actionLabel?: string
-  /** One line under the verb on what makes a usable photo. */
   hint?: string
   dataUrl: string | null
-  /** When the shown photo was taken (ISO), for the "Captured 09:58" chip. */
   capturedAt?: string | null
-  /**
-   * 'tile' (default) is the large evidence tile; 'row' is a compact line for an optional
-   * photo on a longer form, where a 196px tile would bury the submit.
-   */
   variant?: 'tile' | 'row'
-  /** The row variant's second line once a photo is added ("Sends with the report"). */
   capturedHint?: string
   onCapture: (dataUrl: string) => void
   /**
@@ -37,25 +28,12 @@ interface CameraCaptureProps {
    * back to the file picker exactly like a camera failure. The browser ignores it.
    */
   nativeSource?: () => Promise<string | null>
-  /**
-   * The capture is taken but the step is still doing something with it (the linehaul's
-   * PDF build). Lays a faint veil and a spinner over the preview, so the wait is visible
-   * on the thing being waited on. Tile variant only — the row variant has no preview big
-   * enough to carry it.
-   */
   busy?: boolean
-  /** What the veil is waiting for, announced in place of the spinner. */
   busyLabel?: string
 }
 
 type CameraFailure = 'cancelled' | 'permission-denied' | 'other'
 
-// The Capacitor bridge surfaces native camera failures as plain Error/CapacitorException
-// objects carrying only a message string — there is no structured error code. The
-// plugin's own sources hardcode "User cancelled photos app" and "User denied access to
-// camera"/"photos" (iOS/Android CameraPlugin and web.js alike, @capacitor/camera 6.x),
-// so defensive substring matching is the only classification available. Matched loosely
-// ("cancel"/"denied"/"permission") in case the wording shifts between plugin versions.
 function classifyCameraFailure(err: unknown): CameraFailure {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase()
   if (message.includes('cancel')) return 'cancelled'
@@ -68,18 +46,11 @@ export function CameraCapture({
   busy = false, busyLabel = 'Processing',
 }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
-  // Latches once the native camera has refused (permission denied, or no camera on the
-  // device). From then on this control is a file picker, and says so, rather than a
-  // button that reopens the same refusal every time it is tapped.
   const [nativeCameraUnavailable, setNativeCameraUnavailable] = useState(false)
   const { notify } = useToast()
-  // Latest onCapture without re-subscribing below: callers pass inline closures.
   const onCaptureRef = useRef(onCapture)
   onCaptureRef.current = onCapture
 
-  // A photo taken while Android killed the WebView comes back through CapacitorBridge,
-  // not through getPhoto(). Claim it on mount (resume.ts has just put the driver back on
-  // this step) or whenever it arrives while this control is already on screen.
   useEffect(() => {
     const key = captureKey(window.location.pathname, label)
     const claim = (): void => {
@@ -98,25 +69,17 @@ export function CameraCapture({
     })
   }, [notify])
 
-  // Browser-path file handling runs OUTSIDE handleCapture's try/catch — the input's
-  // onchange fires long after handleCapture has returned — so it needs its own error
-  // handling end to end.
   const handleBrowserFile = useCallback(
     (file: File) => {
       void (async () => {
         try {
           onCapture(await fileToCompressedJpegDataUrl(file, EVIDENCE_PHOTO_MAX_EDGE_PX, EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT))
         } catch (err) {
-          // Decode/canvas failed (exotic format, out of memory). Fall back to the raw
-          // FileReader read this component always used — an oversized draft beats
-          // losing evidence entirely.
           console.warn('Photo compression failed — falling back to the raw file', err)
           const reader = new FileReader()
           reader.onload = () => {
             if (typeof reader.result === 'string') onCapture(reader.result)
           }
-          // Previously unhandled: a reader failure (file removed mid-read, storage
-          // error) silently produced no photo and no feedback for the driver.
           reader.onerror = () => {
             console.error('Failed to read captured photo', reader.error)
             notifyCaptureFailed()
@@ -128,9 +91,6 @@ export function CameraCapture({
     [onCapture, notifyCaptureFailed],
   )
 
-  // The picker the browser path always used, lifted out of handleCapture so the native
-  // path can fall back to it too. The system file chooser needs no CAMERA permission —
-  // which is exactly why it still works for a driver who has denied or revoked it.
   const openFilePicker = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -145,9 +105,6 @@ export function CameraCapture({
   }, [handleBrowserFile])
 
   const handleCapture = useCallback(async () => {
-    // Once the native camera has told us it cannot open — permission denied, or no
-    // camera on the device — stop asking it and go straight to the picker. Re-invoking
-    // a plugin that just refused only re-shows the same refusal.
     if (nativeCameraUnavailable || !Capacitor.isNativePlatform()) {
       openFilePicker()
       return
@@ -160,30 +117,19 @@ export function CameraCapture({
         if (dataUrl !== null) onCapture(dataUrl)
         return
       }
-      // Marked before the camera opens: if Android reclaims the WebView behind it, this
-      // marker is the only thing that says which control the restored photo belongs to.
       markCapturePending(captureKey(window.location.pathname, label))
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
         quality: EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT,
-        // Native-side downscale, applied before the image crosses the bridge as
-        // base64 — same cap as the browser path's canvas step.
         width: EVIDENCE_PHOTO_MAX_EDGE_PX,
       })
       if (photo.dataUrl) onCapture(photo.dataUrl)
     } catch (err) {
-      // Without this catch, every native failure silently reset the button — a driver
-      // with camera permission blocked could tap forever with zero feedback.
       switch (classifyCameraFailure(err)) {
         case 'cancelled':
-          // The driver backed out of the camera on purpose — feedback would be noise.
           break
         case 'permission-denied':
-          // Offer the way through, not just the reason it failed. A driver at a gate
-          // cannot stop to change OS settings, and this photo is the evidence; the
-          // picker still reaches the camera roll (and, on most Android choosers, the
-          // camera itself) with no CAMERA permission of its own.
           setNativeCameraUnavailable(true)
           notify({
             kind: 'error',
@@ -192,14 +138,11 @@ export function CameraCapture({
           })
           break
         case 'other':
-          // Could be a device with no camera at all, which fails here exactly like any
-          // other plugin error. Either way the picker is the remaining route to a photo.
           console.error('Camera capture failed', err)
           setNativeCameraUnavailable(true)
           notifyCaptureFailed()
       }
     } finally {
-      // The camera answered this session, so there is nothing left to restore.
       clearCapturePending()
       setIsCapturing(false)
     }
@@ -240,37 +183,24 @@ export function CameraCapture({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* A tile with a hint already says what it is for; a second label above it would
-          say it twice. Only a bare tile carries the label. */}
       {hint === undefined && <p className="text-subhead text-surface-on-variant">{label}</p>}
       {dataUrl ? (
         <div
-          // A fixed aspect-video frame, so the preview reads as a bounded card rather than
-          // an image at whatever height the photo happens to be.
           className="relative aspect-video w-full overflow-hidden rounded-[20px] bg-surface-container-high animate-fade-in-scale motion-reduce:animate-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
-          {/* Faint on purpose: the capture itself succeeded and the driver should still be
-              able to read it. The veil only says a readable copy is still being made —
-              which is also what the swipe is waiting for, so showing it here puts the
-              wait on the thing causing it instead of only in the button's label. Placed
-              before the chips so "Captured 21:39" and Retake stay legible over it. */}
           {busy && (
             <div
               role="status"
               aria-label={busyLabel}
               className="absolute inset-0 flex items-center justify-center bg-black/35"
             >
-              {/* The spinner's own role="status" would be announced alongside the
-                  wrapper's; hidden so the label above is said once. */}
               <span aria-hidden>
                 <Spinner size="lg" className="border-white/40 border-t-white" />
               </span>
             </div>
           )}
-          {/* Scrim chips, not page tokens: they sit on an arbitrary photo, so they carry
-              their own contrast whatever the theme. */}
           <span className="absolute bottom-3 left-3 inline-flex h-[30px] items-center gap-1.5 rounded-full bg-black/60 px-3 text-footnote font-semibold text-white">
             <Check className="size-3 text-success" strokeWidth={3} aria-hidden />
             {capturedAt === null ? 'Captured' : `Captured ${formatTime(capturedAt)}`}
@@ -284,9 +214,6 @@ export function CameraCapture({
           </button>
         </div>
       ) : (
-        // A tappable tile, not a dashed drop zone: dashes are the desktop "drag a file
-        // here" idiom, and there is nothing to drag on a phone. The ink disc and the verb
-        // say what a tap does; it dips on press like every other control.
         <button
           type="button"
           onClick={handleCapture}

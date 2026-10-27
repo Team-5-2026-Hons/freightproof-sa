@@ -12,18 +12,12 @@ from sqlalchemy.sql import func
 from app.db.models import Base
 from app.db.models.enums import VehicleType
 
-# Read by orchestration to name the clashing field in a 409; kept beside the
-# definitions rather than duplicated as literals.
 UQ_VEHICLES_ORG_PULSIT = "uq_vehicles_org_pulsit"
 UQ_VEHICLES_ORG_REGISTRATION = "uq_vehicles_org_registration"
 
-# Which user-facing field each constraint is about, so a 409 names what the
-# dispatcher typed.
 VEHICLE_UNIQUE_FIELDS: dict[str, str] = {
     UQ_VEHICLES_ORG_PULSIT: "pulsit_device_id",
     UQ_VEHICLES_ORG_REGISTRATION: "registration",
-    # Both keys map to vin_number: an older create_all still produces
-    # vehicles_vin_number_key, while the current schema uses ix_vehicles_vin_number.
     "vehicles_vin_number_key": "vin_number",
     "ix_vehicles_vin_number": "vin_number",
 }
@@ -41,8 +35,6 @@ class Vehicle(Base):
     __table_args__ = (
         UniqueConstraint("organization_id", "pulsit_device_id", name=UQ_VEHICLES_ORG_PULSIT),
         UniqueConstraint("organization_id", "registration", name=UQ_VEHICLES_ORG_REGISTRATION),
-        # Declared as a unique Index, not column unique=True, to match the deployed DB
-        # and stop autogenerate proposing to swap them.
         Index("ix_vehicles_vin_number", "vin_number", unique=True),
     )
 

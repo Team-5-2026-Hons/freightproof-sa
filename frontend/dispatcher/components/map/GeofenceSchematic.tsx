@@ -3,30 +3,20 @@
 import type { LatLngPair } from '@shared/lib/types/precinct'
 import { enclosingRadiusMetres } from '@/lib/map/polygon'
 
-// Flat metres-per-degree for placing outline corners in the diagram (see lib/map/polygon.ts).
 const METRES_PER_DEGREE = (Math.PI * 6_371_008.8) / 180
 
-// The circle always occupies the same fraction of the box, whatever the radius — the
-// diagram makes the radius legible against a scale bar, not a claim about zoom level.
 const VIEWBOX = 200
 const CIRCLE_RADIUS_PX = 62
 
-// Roughly a third of the circle's diameter: readable at a glance without dominating the
-// diagram. Exported so StaticGeofenceThumbnail targets the same fraction on the real map.
 export const SCALE_BAR_TARGET_FRACTION = 0.3
 
-// Fallback for a radius this zero-dependency component can't draw (<= 0, NaN, Infinity).
 const MIN_RENDERABLE_RADIUS_METRES = 1
 
-// Floor for `niceScaleMetres`'s own degenerate inputs — kept separate from
-// MIN_RENDERABLE_RADIUS_METRES since the two guards protect different call sites.
 const MIN_SCALE_METRES = 1
 
 interface GeofenceSchematicProps {
   radiusMetres: number
-  /** The property outline; drawn instead of the circle when it has 3+ corners. */
   polygon?: readonly LatLngPair[] | null
-  /** The pin the outline is drawn around. Required to place an outline; unused for a circle. */
   centre?: LatLngPair
   className?: string
 }
@@ -52,10 +42,7 @@ export function niceScaleMetres(metres: number): number {
  */
 export function GeofenceSchematic({ radiusMetres, polygon = null, centre: pin, className }: GeofenceSchematicProps) {
   const outline = polygon !== null && polygon.length >= 3 && pin !== undefined ? polygon : null
-  // An outline is scaled so its farthest corner sits where the circle's edge would, so the
-  // scale bar below reads correctly for either shape.
   const extentMetres = outline !== null && pin !== undefined ? enclosingRadiusMetres(outline, pin) : radiusMetres
-  // Guards against a non-positive/NaN/Infinite radius producing broken SVG geometry.
   const safeRadiusMetres =
     Number.isFinite(extentMetres) && extentMetres > 0 ? extentMetres : MIN_RENDERABLE_RADIUS_METRES
 
@@ -71,7 +58,6 @@ export function GeofenceSchematic({ radiusMetres, polygon = null, centre: pin, c
           .map(([lat, lng]) => {
             const eastMetres = (lng - pin[1]) * METRES_PER_DEGREE * Math.cos((pin[0] * Math.PI) / 180)
             const northMetres = (lat - pin[0]) * METRES_PER_DEGREE
-            // SVG y grows downward, so north is subtracted.
             return `${(centre + eastMetres / metresPerPixel).toFixed(1)},${(centre - northMetres / metresPerPixel).toFixed(1)}`
           })
           .join(' ')
@@ -105,7 +91,6 @@ export function GeofenceSchematic({ radiusMetres, polygon = null, centre: pin, c
       role="img"
       aria-label={`Diagram of a ${safeRadiusMetres} m geofence`}
     >
-      {/* Fence. sec because this is the element under edit, not a status. */}
       <circle
         data-testid="schematic-fence-circle"
         cx={centre}
@@ -116,7 +101,6 @@ export function GeofenceSchematic({ radiusMetres, polygon = null, centre: pin, c
         strokeWidth={1.5}
       />
 
-      {/* Radius rule, centre to edge, with the measurement on it. */}
       <line
         x1={centre}
         y1={centre}
@@ -139,7 +123,6 @@ export function GeofenceSchematic({ radiusMetres, polygon = null, centre: pin, c
         {safeRadiusMetres} m
       </text>
 
-      {/* Centre pin. */}
       <circle cx={centre} cy={centre} r={4} className="fill-sec" />
 
       <ScaleBar scaleMetres={scaleMetres} scaleWidthPx={scaleWidthPx} />

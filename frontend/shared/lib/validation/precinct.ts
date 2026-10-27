@@ -26,8 +26,6 @@ export type PrecinctField =
 
 export type PrecinctFormValues = Record<PrecinctField, string>
 
-// Display order, shared by create and edit forms to focus the first invalid field on
-// submit — kept next to PrecinctField so the two can't drift.
 export const PRECINCT_FIELD_ORDER: readonly PrecinctField[] = [
   'name',
   'address',
@@ -36,7 +34,6 @@ export const PRECINCT_FIELD_ORDER: readonly PrecinctField[] = [
   'geofence_radius_metres',
 ]
 
-// Defined locally rather than shared — driver.ts and vehicle.ts each carry their own copy.
 /** Returns the first error from `rules` for `value`, or null when all pass. */
 function firstError(value: string, rules: ReadonlyArray<(v: string) => string | null>): string | null {
   for (const rule of rules) {
@@ -54,7 +51,6 @@ export function validatePrecinctForm(
 ): Record<PrecinctField, string | null> {
   return {
     name: firstError(values.name, [required(), maxLength(PRECINCT_NAME_MAX)]),
-    // No `required`: address is optional; maxLength skips empty values.
     address: firstError(values.address, [maxLength(PRECINCT_ADDRESS_MAX)]),
     latitude: firstError(values.latitude, [
       required(),
@@ -77,14 +73,9 @@ export function validatePrecinctForm(
 
 const COORDINATE_PAIR_PATTERN = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/
 
-// One "DD°MM'SS.s"H" token — the degrees/minutes/seconds format some Google Maps UI
-// shows (distinct from the decimal-degrees "Copy coordinates" format, handled above).
-// Accepts both plain ASCII and proper prime/double-prime marks.
 const DMS_TOKEN = String.raw`(\d{1,3})\s*°\s*(\d{1,2})\s*['′]\s*(\d{1,2}(?:\.\d+)?)\s*["″]?\s*([NSEWnsew])`
 const DMS_PAIR_PATTERN = new RegExp(`^\\s*${DMS_TOKEN}\\s*,?\\s*${DMS_TOKEN}\\s*$`)
 
-// Matches CLICK_COORDINATE_PRECISION in PrecinctForm.tsx / COORDINATE_PRECISION on the
-// detail page — ~1m, finer than any geofence decision.
 const DMS_TO_DECIMAL_PRECISION = 5
 
 function dmsToDecimal(degrees: number, minutes: number, seconds: number, hemisphere: string): number {
@@ -102,7 +93,6 @@ function parseDmsPair(raw: string): { lat: string; lng: string } | null {
   const [, latDeg, latMin, latSec, latHemi, lngDeg, lngMin, lngSec, lngHemi] = match
   const latHemiUpper = latHemi.toUpperCase()
   const lngHemiUpper = lngHemi.toUpperCase()
-  // Order matters: latitude (N/S) always precedes longitude (E/W).
   if (!(latHemiUpper === 'N' || latHemiUpper === 'S')) return null
   if (!(lngHemiUpper === 'E' || lngHemiUpper === 'W')) return null
 

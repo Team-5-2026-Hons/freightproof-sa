@@ -120,7 +120,6 @@ async def test_list_artifacts_keeps_metadata_and_other_photos_when_one_cannot_be
     sdk = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: bucket))
     monkeypatch.setattr(supabase_storage, "_get_client", lambda: sdk)
     monkeypatch.setattr(supabase_storage, "_SIGNING_CLIENTS", type(supabase_storage._SIGNING_CLIENTS)())
-    # Exercise real signing; only the external SDK is replaced for this failure case.
     monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", supabase_storage.create_signed_url)
     token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
 

@@ -19,19 +19,12 @@ from starlette.routing import BaseRoute
 from app.core.limits import RateLimit
 from app.main import app
 
-# Not a security dependency: every DB endpoint has it, so it carries no signal.
 _IGNORED_DEPENDENCIES = frozenset({"app.db.session.get_db"})
 _DISPATCHER_DEPENDENCY = "app.auth.dependencies.get_current_dispatcher"
 _ADMIN_DEPENDENCY = "app.auth.dependencies.require_admin_dispatcher"
 _DRIVER_DEPENDENCY = "app.auth.dependencies.get_current_driver"
-# A route that only declares the bearer scheme and calls get_current_dispatcher /
-# get_current_driver itself inside the handler (manifest.py: "dispatcher OR driver", which
-# Depends() cannot express). Classed apart so it is not mistaken for an open route.
 _BEARER_SCHEME = "fastapi.security.http.HTTPBearer"
 
-# The receiver has no account. Their only credential is the capability token in the URL
-# (and a cookie after OTP), checked inside the handler rather than by a Depends(), so
-# the dependency walk cannot see it. Anything under this prefix is classed by path.
 _RECEIVER_PATH_PREFIX = "/api/v1/handover/"
 
 _NON_METHODS = frozenset({"HEAD", "OPTIONS"})
@@ -44,7 +37,6 @@ def _dependency_name(call: Any) -> str:
             if isinstance(cell.cell_contents, RateLimit):
                 return f"rate_limit:{cell.cell_contents.name}"
     if not hasattr(call, "__qualname__"):
-        # A callable instance, e.g. fastapi.security.HTTPBearer(): name its class.
         return f"{type(call).__module__}.{type(call).__qualname__}"
     return f"{call.__module__}.{call.__qualname__}"
 
@@ -82,7 +74,6 @@ def build_auth_map() -> dict[str, dict[str, Any]]:
             for method in sorted(route.methods - _NON_METHODS):
                 result[f"{method} {route.path}"] = entry
         else:
-            # Docs and static routes: no Depends() at all by construction.
             path = getattr(route, "path", repr(route))
             for method in sorted(getattr(route, "methods", None) or {"GET"}):
                 if method not in _NON_METHODS:

@@ -13,39 +13,19 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-# Load app settings so DATABASE_URL is resolved from the environment,
-# not hardcoded into alembic.ini.
 from app.core.config import settings
 
-# Import Base so Alembic sees all registered models for autogenerate.
 from app.db.models import Base
 
-# Alembic Config object — provides access to values in alembic.ini.
 config = context.config
 
-# Inject the real DATABASE_URL so %(DATABASE_URL)s in alembic.ini resolves.
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
-# Attach Python logging configuration from alembic.ini.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# target_metadata tells Alembic which models to compare against the DB
-# when generating autogenerate migrations.
 target_metadata = Base.metadata
 
-# Foreign keys into Supabase's `auth` schema, installed by migration 0003 when users and
-# drivers were switched onto Supabase Auth identities.
-#
-# They must be hidden from autogenerate. `auth.users` lives in a schema Supabase owns and
-# that Base.metadata deliberately does not model, so every autogenerate run sees a foreign
-# key pointing at a table it has never heard of and emits a drop_constraint for it. Applying
-# one would sever every user and driver row from its auth identity — a relationship that
-# cannot be rebuilt from the data that would remain.
-#
-# Excluded by name rather than by schema because the constraints live on OUR tables; it is
-# only their target that is foreign. Naming them keeps the exclusion narrow: a genuinely
-# stale FK on any other table still shows up.
 _SUPABASE_AUTH_FOREIGN_KEYS = frozenset({
     "fk_users_auth_id",
     "fk_drivers_auth_id",

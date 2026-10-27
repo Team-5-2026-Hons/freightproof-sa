@@ -93,7 +93,7 @@ async def _call(action: str, work: Awaitable[T]) -> T:
             IncidentInvalidError, IncidentDocumentsDisabledError) as exc:
         _raise_http(exc)
     except DatabaseUnavailableError:
-        raise  # The shared availability handler returns 503, not this endpoint's 500.
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error while trying to %s", action)
         raise HTTPException(
@@ -252,8 +252,6 @@ async def attach_incident_document_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> IncidentDetail:
-    # The flag first, before any validation or Storage call. (FastAPI has already received the
-    # multipart body by now; the flag stops the file being stored, not being sent.)
     try:
         require_enabled()
     except IncidentDocumentsDisabledError as exc:

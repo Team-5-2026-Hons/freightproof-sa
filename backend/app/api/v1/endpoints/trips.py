@@ -79,13 +79,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
-# Stable client-facing text; the integration's own unsupported message is an internal engineering note.
 _MANIFEST_UNSUPPORTED_DETAIL = "Manifest lookup is not available from the connected parcel system."
 _PP_UNAVAILABLE_DETAIL = "The parcel system is unreachable. Try again shortly."
 _HEDERA_TIMEOUT_DETAIL = "Blockchain anchoring timed out, so the trip was not created. Please retry."
 _HEDERA_UNAVAILABLE_DETAIL = "Blockchain anchoring is unavailable, so the trip was not created. Please retry."
 _UNEXPECTED_DETAIL = "An unexpected error occurred. Please try again."
-# Stable code the trip wizard switches on (frontend lib/trips/trip-api-errors.ts).
 _CREW_UNAVAILABLE_CODE = "CREW_UNAVAILABLE"
 
 
@@ -120,7 +118,6 @@ def _trip_http_error(exc: Exception) -> HTTPException | None:
     if isinstance(exc, ConsignmentAlreadyAssignedError):
         return HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, CrewUnavailableError):
-        # Every clash, not just the one the message names, so the wizard can grey them all out.
         return HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
             detail={"code": _CREW_UNAVAILABLE_CODE, "message": str(exc), "clashes": exc.clashes},
@@ -140,7 +137,7 @@ def _trip_http_error(exc: Exception) -> HTTPException | None:
         logger.error("Hedera anchoring failed during trip creation: %s", exc)
         return HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=_HEDERA_UNAVAILABLE_DETAIL)
     if isinstance(exc, DatabaseUnavailableError):
-        return None  # Let the shared availability handler return 503.
+        return None
     if isinstance(exc, SQLAlchemyError):
         logger.exception("Database error on a trip endpoint")
         return HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED_DETAIL)
@@ -152,8 +149,6 @@ def _trip_http_error(exc: Exception) -> HTTPException | None:
     response_model=TripDetailResponse,
     status_code=http_status.HTTP_201_CREATED,
     summary="Create a new trip (Handshake 0)",
-    # Every call submits a journey-lock hash to Hedera — real network spend, synchronously.
-    # This is the most expensive door in the API, so it carries the tightest budget.
     dependencies=[Depends(rate_limit(TRIP_CREATE))],
 )
 async def create_trip_endpoint(
@@ -180,7 +175,6 @@ async def create_trip_endpoint(
     response_model=TripDetailResponse,
     status_code=http_status.HTTP_201_CREATED,
     summary="Create a loaded trip from a Parcel Perfect manifest",
-    # Anchors a journey lock on Hedera, like POST /trips: same tight budget.
     dependencies=[Depends(rate_limit(TRIP_CREATE))],
 )
 async def create_trip_from_pp_manifest_endpoint(
@@ -260,13 +254,10 @@ async def list_trip_history_endpoint(
     )
 
 
-# Declared before GET /trips/{trip_id}: FastAPI matches routes in declaration order, so
-# this literal path registered after "/{trip_id}" would 422 on UUID parsing.
 @router.get(
     "/pp-manifest-preview",
     response_model=PPManifestPreviewResponse,
     summary="Preview a Parcel Perfect manifest before creating its trip",
-    # Reaches Parcel Perfect, a partner's quota we neither own nor pay for.
     dependencies=[Depends(rate_limit(PP_LOOKUP))],
 )
 async def preview_pp_manifest_endpoint(
@@ -287,7 +278,6 @@ async def preview_pp_manifest_endpoint(
         raise http_error from exc
 
 
-# Declared before GET /trips/{trip_id}, like the routes above: "availability" is not a UUID.
 @router.get(
     "/availability",
     response_model=CrewAvailabilityResponse,
@@ -323,9 +313,6 @@ async def get_my_active_trip_endpoint(
     return await get_active_trip_for_driver(db, driver_id=current_driver.id)
 
 
-# Declared before GET /trips/{trip_id}: FastAPI matches routes in declaration order, so
-# a literal "/me..." path registered after "/{trip_id}" would be swallowed by it and
-# 422 on "me" failing UUID parsing.
 @router.get(
     "/me",
     response_model=list[DriverTripListItemResponse],
@@ -404,7 +391,6 @@ async def get_trip_detail_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> TripDetailResponse:
-    # Handed to the custody fields below so they reuse the rows this read loaded.
     facts = TripReadFacts()
     try:
         detail = await get_trip_detail(

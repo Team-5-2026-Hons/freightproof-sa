@@ -30,7 +30,6 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# --- Vendor contract (see module docstring) ---------------------------------
 _ORS_DIRECTIONS_PATH = "/v2/directions/driving-hgv/geojson"
 _ORS_FIELD_FEATURES = "features"
 _ORS_FIELD_PROPERTIES = "properties"
@@ -40,7 +39,6 @@ _ORS_FIELD_SEGMENTS = "segments"
 _ORS_FIELD_WAY_POINTS = "way_points"
 _ORS_FIELD_DISTANCE = "distance"
 _ORS_FIELD_DURATION = "duration"
-# -----------------------------------------------------------------------------
 
 _MIN_ROUTE_POINTS = 2
 
@@ -93,12 +91,8 @@ async def compute_truck_route(points: Sequence[RoutePoint]) -> PlannedRoute:
         raise RoutingNotConfiguredError("ORS_API_KEY is not set.")
 
     body = {
-        # ORS takes [lng, lat]; everything else in this codebase is lat-first.
         _ORS_FIELD_COORDINATES: [[p.lng, p.lat] for p in points],
         "radiuses": [settings.ORS_SNAP_RADIUS_METRES] * len(points),
-        # "instructions" is left at its default (on) even though the turn-by-turn steps are
-        # ignored: turning it off also drops properties.segments, the per-leg distance and
-        # duration this module needs (observed live 2026-10-14).
     }
     url = settings.ORS_API_URL.rstrip("/") + _ORS_DIRECTIONS_PATH
 
@@ -109,7 +103,6 @@ async def compute_truck_route(points: Sequence[RoutePoint]) -> PlannedRoute:
         raise RoutingError(f"Routing provider unreachable: {exc!r}") from exc
 
     if response.status_code != httpx.codes.OK:
-        # The body names the failing stop on a 404 (code 2010) — worth keeping in the log.
         raise RoutingError(f"Routing provider returned HTTP {response.status_code}: {response.text[:300]}")
 
     try:
@@ -149,7 +142,6 @@ def _parse_route(payload: Any, *, expected_legs: int) -> PlannedRoute:
                 RouteLeg(
                     distance_metres=float(segment[_ORS_FIELD_DISTANCE]),
                     duration_seconds=float(segment[_ORS_FIELD_DURATION]),
-                    # Inclusive end: each leg shares its boundary point with the next.
                     coordinates=tuple(coordinates[start : end + 1]),
                 )
             )

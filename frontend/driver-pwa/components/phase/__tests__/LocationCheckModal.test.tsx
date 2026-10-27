@@ -143,7 +143,6 @@ describe('LocationCheckModal', () => {
     fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' })
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
-    // No close (X) affordance at all — the only ways out are the two recorded actions.
     expect(screen.queryByRole('button', { name: 'Close modal' })).not.toBeInTheDocument()
 
     expect(onRetry).not.toHaveBeenCalled()

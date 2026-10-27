@@ -12,21 +12,15 @@ import { setMockTrackClientWidthPx } from '../vitest.setup'
 
 const LABEL = 'Swipe to confirm'
 
-// With the mock track width from vitest.setup.ts (300px) and the component's own
-// THUMB_SIZE_PX (56) / TRACK_PADDING_PX (4) constants, maxOffset works out to 236px.
 const MAX_OFFSET_PX = 236
 
-// jsdom's getBoundingClientRect() always returns a zeroed rect, so the track starts at x=0
-// and the resting thumb at x=4 (the track padding). A finger landing on the thumb's centre
-// grabs it 28px in, which makes the resulting offset simply `clientX - 32`.
 const THUMB_REST_LEFT_PX = 4
 const THUMB_WIDTH_PX = 56
 const GRAB_CLIENT_X = THUMB_REST_LEFT_PX + THUMB_WIDTH_PX / 2
-const COMPLETING_CLIENT_X = 250 // → offset 218 of 236 (~92%), over the 90% threshold
-const PARTIAL_CLIENT_X = 100 // → offset 68 of 236 (~29%), well under the threshold
+const COMPLETING_CLIENT_X = 250
+const PARTIAL_CLIENT_X = 100
 const AWAY_FROM_THUMB_CLIENT_X = 200
 
-// Longer than the component's SETTLE_DURATION_MS (180): long enough for a scheduled fire to have run.
 const PAST_SETTLE_MS = 400
 
 const POINTER_ID = 1
@@ -99,8 +93,6 @@ describe('Swipe', () => {
 
     dragThumb(PARTIAL_CLIENT_X)
 
-    // Nothing here is scheduled asynchronously on the partial path (only the settle-back
-    // snap, which never calls onConfirm), so there is nothing to wait for.
     expect(onConfirm).not.toHaveBeenCalled()
     expect(thumbOffsetPx()).toBe(0)
   })
@@ -111,8 +103,6 @@ describe('Swipe', () => {
 
     dragThumb(COMPLETING_CLIENT_X)
 
-    // fire() dispatches after SETTLE_DURATION_MS, once the thumb has visually snapped
-    // to the end of the track.
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1))
   })
 
@@ -121,8 +111,6 @@ describe('Swipe', () => {
     render(<Swipe label={LABEL} onConfirm={onConfirm} />)
 
     dragThumb(COMPLETING_CLIENT_X)
-    // Fired before the drag's own settle-triggered fire() has run — hasFiredRef must
-    // stop whichever of the two arrives second, since the token is single-use.
     fireEvent.keyDown(getTrack(), { key: 'Enter' })
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1))
@@ -178,10 +166,8 @@ describe('Swipe drag origin', () => {
     render(<Swipe label={LABEL} onConfirm={onConfirm} />)
     const track = getTrack()
 
-    // Pointer lands on the bare track, then slides all the way across.
     firePointer('pointerDown', track, pointerInit(AWAY_FROM_THUMB_CLIENT_X))
     firePointer('pointerMove', track, pointerInit(COMPLETING_CLIENT_X))
-    // Checked mid-gesture: after the release the thumb would spring back whatever happened.
     expect(thumbOffsetPx()).toBe(0)
     firePointer('pointerUp', track, pointerInit(COMPLETING_CLIENT_X))
     await waitPastSettle()
@@ -193,11 +179,9 @@ describe('Swipe drag origin', () => {
     render(<Swipe label={LABEL} onConfirm={vi.fn()} />)
     const track = getTrack()
 
-    // Grab the thumb at its right-hand edge (52px in) rather than its centre.
     firePointer('pointerDown', getThumb(), pointerInit(THUMB_REST_LEFT_PX + 52))
     firePointer('pointerMove', track, pointerInit(THUMB_REST_LEFT_PX + 52 + PARTIAL_CLIENT_X))
 
-    // Moved by exactly the finger's travel, not recentred on it.
     expect(thumbOffsetPx()).toBe(PARTIAL_CLIENT_X)
   })
 
@@ -256,7 +240,6 @@ describe('Swipe re-arming after a soft failure', () => {
     ['resolves', () => vi.fn().mockResolvedValue(undefined)],
     ['rejects', () => vi.fn().mockRejectedValue(new Error('network down'))],
   ])('fires again on a second completed swipe once onConfirm %s and the control is usable again', async (_name, makeConfirm) => {
-    // A rejection is logged by the component, not left unhandled.
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const onConfirm = makeConfirm()
     const { rerender } = render(<Swipe label={LABEL} onConfirm={onConfirm} />)
@@ -264,7 +247,6 @@ describe('Swipe re-arming after a soft failure', () => {
     dragThumb(COMPLETING_CLIENT_X)
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1))
 
-    // The parent's lifecycle around a failed attempt: busy while working, then usable again.
     rerender(<Swipe label={LABEL} busy onConfirm={onConfirm} />)
     rerender(<Swipe label={LABEL} onConfirm={onConfirm} />)
     expect(thumbOffsetPx()).toBe(0)
@@ -279,7 +261,6 @@ describe('Swipe re-arming after a soft failure', () => {
 
     fireEvent.keyDown(getTrack(), { key: 'Enter' })
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1))
-    // Let the finally block that releases the guard run.
     await act(async () => { await Promise.resolve() })
     fireEvent.keyDown(getTrack(), { key: 'Enter' })
 

@@ -80,7 +80,6 @@ async def build_phase_precinct_assessment(
     if precinct is None or precinct.latitude is None or precinct.longitude is None:
         return PhasePrecinctAssessment()
 
-    # Exactly one of the two shapes is recorded: the one evaluate_geofence used.
     polygon: Optional[list[tuple[float, float]]] = None
     radius: Optional[float] = None
     if precinct.geofence_polygon:

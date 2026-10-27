@@ -30,10 +30,8 @@ def upgrade() -> None:
         ),
     )
 
-    # Backfill existing rows so updated_at = created_at (best approximation).
     op.execute("UPDATE vehicles SET updated_at = created_at")
 
-    # Wire up the existing trigger function that keeps updated_at current.
     op.execute(
         """
         CREATE TRIGGER set_updated_at

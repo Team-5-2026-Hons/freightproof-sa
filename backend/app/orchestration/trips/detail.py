@@ -127,12 +127,10 @@ async def _load_org_trip(
 ) -> Trip:
     """The trip, provided it belongs to the operator; ResourceNotFoundError otherwise."""
     if facts is not None and facts.trip is not None:
-        # Read by the caller; the same two conditions the query below applies.
         trip = facts.trip
         if trip.id != trip_id or trip.operator_organization_id != operator_organization_id:
             raise ResourceNotFoundError("Trip", str(trip_id))
         return trip
-    # Filter by org at the DB level — avoids leaking trip existence to other orgs.
     result = await db.execute(
         select(Trip).where(
             Trip.id == trip_id,
@@ -176,8 +174,6 @@ async def _exception_reads(
         db, exceptions, [TripExceptionRead.model_validate(e) for e in exceptions],
     )
     if include_reviewer_names:
-        # Dispatcher trip page only. The same builder serves the driver's active trip
-        # and phase completion, which must not carry dispatcher identities.
         exception_reads = await with_reviewer_names(
             db, organization_id=operator_organization_id, reads=exception_reads,
         )
@@ -186,9 +182,6 @@ async def _exception_reads(
 
 async def _consignment_reads(db: AsyncSession, *, trip_id: uuid.UUID) -> list[ConsignmentRead]:
     """The trip's consignments with their live scan progress."""
-    # id tiebreaker: consignments inserted in one transaction share the same
-    # created_at (Postgres now() is per-transaction), so created_at alone is
-    # non-deterministic across reads.
     consignments_result = await db.execute(
         select(Consignment)
         .where(Consignment.trip_id == trip_id)
@@ -196,8 +189,6 @@ async def _consignment_reads(db: AsyncSession, *, trip_id: uuid.UUID) -> list[Co
     )
     consignments = consignments_result.scalars().all()
 
-    # One batched query for the whole trip's live scan progress — see its docstring
-    # for why this must not become a per-consignment loop on a dispatcher poll path.
     scan_counts = await scanned_counts_for_trip(db, trip_id=trip_id)
     return [
         ConsignmentRead.model_validate(c).model_copy(update={
@@ -224,7 +215,6 @@ async def get_trip_detail(
     )
 
     client_names = await _client_names(db, [trip])
-    # FP-83: `driver` is whoever holds the trip now; Trip.driver_id stays the journey lock's original.
     links = (
         facts.custody_links if facts is not None and facts.custody_links is not None
         else await completed_links(db, trip_id=trip.id)
@@ -251,8 +241,6 @@ async def get_trip_detail(
 
     receipts = await _load_trip_receipts(
         db, trip_id=trip_id, phase_event_ids=[h.id for h in phase_events],
-        # Critical-evidence receipts hang off evidence events, not the exception. The events
-        # were just read with the exceptions, so no extra lookup is needed to name them.
         evidence_event_ids=[e.event_id for read in exception_reads for e in read.anchor_events],
     )
 
@@ -261,12 +249,8 @@ async def get_trip_detail(
     )
     stops = stops_result.scalars().all()
 
-    # PhaseEventRead.stop_sequence is a join, not a column — build the map from
-    # the stops already fetched rather than issuing a second query.
     stop_sequence_by_id = {s.id: s.sequence for s in stops}
 
-    # Hoisted out of the phases=[...] comprehension below: one gate query for the
-    # whole trip, not one per phase event.
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
 
     consignment_reads = await _consignment_reads(db, trip_id=trip_id)

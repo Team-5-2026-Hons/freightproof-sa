@@ -23,10 +23,6 @@ interface Props {
 /** The first two Info sections. A fragment: the caller stacks every section in one divided list. */
 export function TripInformation({ trip, precincts, onOpenPrecinct }: Props) {
   return <>
-    {/* Order, driver, phone, horse and trailers used to live here. The header now holds
-        all of them permanently on screen and the driver modal holds the phone, so
-        repeating them gave a dispatcher the same facts twice with nothing to choose
-        between. This panel is the rest of the record. */}
     <Disclosure id="schedule" title="Schedule & seal" summary={scheduleSummary(trip)} defaultOpen>
       <InfoRow label="Last departure seal" value={currentSealNumber(trip.phases) ?? 'Not recorded'} mono />
       <Schedule label="Departure" planned={trip.planned_departure_at} actual={trip.actual_departure_at} />
@@ -38,11 +34,7 @@ export function TripInformation({ trip, precincts, onOpenPrecinct }: Props) {
       <div data-route-stops>
         {[...trip.stops].sort((a, b) => a.sequence - b.sequence).map((stop, i) => {
           const precinct = precincts.find(p => p.id === stop.precinct_id)
-          // The last stop ends the list without a rule, like InfoRow: the section divider below is the only rule.
           return <div key={stop.id} className="border-b border-outline-v/20 py-3 text-sm last:border-0">
-            {/* A preview first: a dispatcher checking a stop usually wants its geofence or
-                contact details, which live on the precinct record and nowhere here. Openable
-                only once the precinct itself has loaded — same rule as the header's vehicles. */}
             <p className="flex flex-wrap items-center gap-x-1 font-semibold text-on-surf">
               <span>{i + 1}.</span>
               {precinct

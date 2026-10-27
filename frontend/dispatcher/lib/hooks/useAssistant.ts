@@ -17,17 +17,11 @@ import type {
 
 export const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat'
 export const ASSISTANT_STATUS_PATH = '/api/v1/assistant/status'
-/** An answer can take several model calls and look-ups; the server gives each model call 30 s with one
- *  retry, so a minute covers the slow case without hanging forever (the Analytics chat's figure). */
 export const ASSISTANT_TIMEOUT_MS = 60_000
-/** The server rejects more (app/schemas/assistant.py MAX_HISTORY_TURNS, MAX_REFS_PER_TURN). */
 export const MAX_HISTORY_TURNS = 10
 export const MAX_REFS_PER_TURN = 30
-/** One key for the whole conversation, versioned so a changed shape is never read back. */
 export const ASSISTANT_STORAGE_KEY = 'fp.assistant.conversation.v1'
 const HTTP_TOO_MANY_REQUESTS = 429
-/** The client reports a timeout or a dropped connection as status 0 (lib/api/client.ts). Its message names the
- *  URL and the milliseconds, which mean nothing to a dispatcher, so it is replaced with plain words. */
 const NO_RESPONSE_STATUS = 0
 export const NO_ANSWER_IN_TIME = "The answer didn't arrive in time. Try again."
 
@@ -43,12 +37,9 @@ export interface AssistantMessageItem {
   id: number
   role: 'user' | 'assistant'
   text: string
-  /** The records this turn showed (assistant) or meant (a choice the user clicked). */
   refs: RecordRef[]
-  /** Assistant messages only. */
   kind?: AssistantAnswerKind
   cards?: AssistantCard[]
-  /** Buttons that open a page. */
   actions?: AssistantAction[]
   toolsUsed?: string[]
 }
@@ -77,7 +68,6 @@ function saveConversation(storage: Pick<Storage, 'setItem' | 'removeItem'> | und
     if (messages.length === 0) storage?.removeItem(ASSISTANT_STORAGE_KEY)
     else storage?.setItem(ASSISTANT_STORAGE_KEY, JSON.stringify(messages))
   } catch {
-    // Storage full or blocked: the conversation still works for this page load.
   }
 }
 
@@ -97,12 +87,9 @@ export interface FailedQuestion {
 
 export interface Assistant {
   messages: AssistantMessageItem[]
-  /** The question being answered right now, shown until the answer arrives. */
   pending: string | null
   error: string | null
-  /** This month's spend from the latest answer; null until the first one (the status read covers that). */
   spend: AssistantSpend | null
-  /** The last question that failed, until one succeeds or the chat is reset. */
   failed: FailedQuestion | null
   /** Resolves true when an answer arrived; false keeps the question in `failed` for a retry. */
   send: (question: string, refs?: RecordRef[]) => Promise<boolean>
@@ -154,7 +141,6 @@ export function useAssistant(onTooManyRequests: () => void): Assistant {
     } catch (err: unknown) {
       setError(errorText(err))
       setFailed({ question: trimmed, refs })
-      // A 429 is the per-minute limit or the monthly budget: re-reading the status says which.
       if (err instanceof ApiError && err.status === HTTP_TOO_MANY_REQUESTS) {
         setSpend(null)
         onTooManyRequests()

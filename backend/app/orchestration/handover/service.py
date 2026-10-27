@@ -58,7 +58,6 @@ from app.orchestration.handover.verdict import raise_verification_exception
 
 logger = logging.getLogger(__name__)
 
-# The signature is a PNG the receiver drew; nothing else is ever stored from this surface.
 _SIGNATURE_MIME_TYPE = "image/png"
 
 
@@ -88,7 +87,6 @@ class ScanPage:
     """Everything the public scan page reads back, gathered in one pass."""
 
     token: HandoverCapabilityToken
-    # Not None only on the first load of this link (the browser-binding cookie's value).
     session_secret: Optional[str]
     trip_reference: str
     destination_name: Optional[str]
@@ -235,12 +233,9 @@ async def load_scan_page(db: AsyncSession, *, raw_token: str) -> ScanPage:
     """
     token = await load_live_token(db, raw_token)
 
-    # Returns a secret on the FIRST load only; a forwarded URL opened in a second browser
-    # gets None, no cookie, and will fail to confirm — but the page still renders.
     session_secret = await mark_token_opened(db, token_id=token.id)
 
     trip = await load_trip_for_token(db, token=token)
-    # Explicit join: TripStop has no `precinct` relationship, only the FK column.
     destination_name = (
         await db.execute(
             select(Precinct.name)
@@ -295,7 +290,7 @@ async def record_receiver_confirmation(
         file_bytes=submission.signature_bytes,
         mime_type=_SIGNATURE_MIME_TYPE,
         artifact_type=ArtifactType.DOCUMENT,
-        captured_at=datetime.now(UTC),  # server clock; receiver's phone clock isn't evidence
+        captured_at=datetime.now(UTC),
         captured_lat=submission.receiver_lat,
         captured_lng=submission.receiver_lng,
         attribution=EvidenceAttribution(
@@ -313,8 +308,6 @@ async def record_receiver_confirmation(
         receiver_user_agent=submission.receiver_user_agent,
         bearer_token_present=submission.bearer_token_present,
     )
-    # Separate from confirmation: a receiver may verify and then walk away, which is
-    # a real state, not an error.
     await attach_confirmation(
         db, token_id=token.id, handover_confirmation_id=confirmation.id,
     )
@@ -352,7 +345,6 @@ async def begin_verification(
 
     `session_url` is None on every degradation path, not an error.
     """
-    # Locked: a doubled request waits, then sees the first's session instead of making another.
     verification = await load_verification_for_token(db, token_id=token.id, lock=True)
     if verification is None:
         raise HandoverLinkInvalidError()
@@ -360,7 +352,7 @@ async def begin_verification(
     session = await start_verification(
         db,
         token=token,
-        raw_token=raw_token,  # row stores only a hash; vendor needs the presented token
+        raw_token=raw_token,
         verification=verification,
     )
     return VerificationStart(
@@ -386,7 +378,6 @@ async def resolve_receiver_verification(
     in both cases this call is still owed. Not `identity_match` either: NULL there also means
     "nothing to compare", and it is written while the vendor is still deciding.
     """
-    # Locked so two simultaneous calls cannot both run the cross-check.
     verification = await load_verification_for_token(db, token_id=token.id, lock=True)
     if verification is None:
         raise HandoverLinkInvalidError()
@@ -405,7 +396,6 @@ async def resolve_receiver_verification(
         typed_id_number=typed_id_number,
     )
 
-    # Still deciding (or the vendor was unreachable): nothing is final, so the next call asks again.
     if verdict.status == ReceiverVerificationStatus.PENDING:
         return verification
 

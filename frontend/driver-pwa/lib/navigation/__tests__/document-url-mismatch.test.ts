@@ -9,8 +9,6 @@ describe('isStrandedHomeDocument', () => {
   })
 
   it('test_the_linehaul_step_url_is_the_case_this_exists_for', () => {
-    // The exact URL the WKWebView reloads after the content process is reclaimed behind
-    // the document scanner — Capacitor answers it with Home's index.html.
     expect(isStrandedHomeDocument('/trip/phase/loading/step/1-linehaul')).toBe(true)
   })
 

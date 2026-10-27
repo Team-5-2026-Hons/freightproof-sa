@@ -15,7 +15,6 @@ import {
   type RowsPerPage,
 } from '@/lib/preferences'
 
-// The select hands back a string; only an offered value may become a preference.
 function asLandingPageId(value: string): LandingPageId | undefined {
   return LANDING_OPTIONS.find(option => option.id === value)?.id
 }

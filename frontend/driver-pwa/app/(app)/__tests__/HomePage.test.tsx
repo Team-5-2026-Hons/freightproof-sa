@@ -9,7 +9,6 @@ import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomePage from '../page'
 
-// The real Home needs the whole provider tree; this suite is only about the recovery.
 vi.mock('@/components/home/HomeContent', () => ({
   HomeContent: () => <div data-testid="home-content">Home</div>,
 }))
@@ -47,8 +46,6 @@ describe('HomePage recovery from a mis-served document', () => {
 
     render(<HomePage />)
 
-    // A hard load, not router.replace(): the router believes it is already on this
-    // pathname, and the tree it holds is Home's whatever it is asked for.
     expect(replace).toHaveBeenCalledWith('/')
   })
 
@@ -57,7 +54,6 @@ describe('HomePage recovery from a mis-served document', () => {
 
     render(<HomePage />)
 
-    // "No trip assigned" is what the stranded screen showed, and it is a lie.
     expect(screen.queryByTestId('home-content')).toBeNull()
     expect(screen.getByRole('status', { name: 'Restoring your trip' })).toBeInTheDocument()
   })

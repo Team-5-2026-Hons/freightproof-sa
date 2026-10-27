@@ -75,15 +75,6 @@ async def _lock_for_review(
             TripException.id == exception_id,
             Trip.operator_organization_id == organization_id,
         )
-        # The lock, not the read, is what makes the conflict branch below true. Without it
-        # two dispatchers pressing Review in the same instant both read an open status,
-        # both take the unreviewed path, and both are told their account is the record —
-        # while the second UPDATE quietly waits for the first to commit and then overwrites
-        # its reviewer, note, outcome, contact method and timestamp. The first review would
-        # be gone and neither dispatcher would ever know, which is the one outcome this
-        # function exists to prevent. Scoped with `of=` so the joined trip row stays free:
-        # locking it would block every unrelated write on that trip for the length of
-        # this transaction.
         .with_for_update(of=TripException)
     )).one_or_none()
     if row is None:
@@ -102,8 +93,6 @@ async def _read_with_names(db: AsyncSession, exc: TripException, trip: Trip) -> 
 
 
 def _enqueue_claim_changed(db: AsyncSession, trip: Trip, exc: TripException) -> None:
-    # INFO: a claim is coordination, not an alarm — it refreshes colleagues' screens
-    # without interrupting anyone.
     enqueue_event(db, trip.operator_organization_id, TripEvent(
         id=exc.trip_id, kind=RealtimeKind.EXCEPTION_CLAIMED,
         severity=event_severity(ExceptionSeverity.INFO),
@@ -163,19 +152,12 @@ async def review_exception(
     exc, trip = await _lock_for_review(db, exception_id=exception_id, organization_id=organization_id)
 
     if exc.review_status == ExceptionReviewStatus.REVIEWED:
-        # Same dispatcher: a double-tap, or a request the client retried. Their account
-        # is already the record, so there is nothing to lose and nothing to report —
-        # return the stored row exactly as before.
         if exc.reviewed_by_user_id == user_id:
             logger.info(
                 "Review replayed by the same user: exception=%s org=%s",
                 exception_id, organization_id,
             )
             return await _read_with_names(db, exc, trip)
-        # A different dispatcher got there first — or the row predates reviewer capture
-        # (NULL), where we cannot prove it was this caller and must not assume it. Either
-        # way this call's assessment is about to be dropped, and the caller has to be
-        # told: they may have established something the first reviewer did not.
         logger.info(
             "Review conflicted, already reviewed by another user: exception=%s org=%s "
             "first_reviewer=%s caller=%s",
@@ -185,15 +167,9 @@ async def review_exception(
 
     previous_claimer = exc.claimed_by_user_id
     if previous_claimer is not None and previous_claimer != user_id and not take_over:
-        # A colleague claimed it, and this request didn't say it means to take over —
-        # the page was loaded before their claim. Refuse rather than silently replace
-        # it; the dispatcher can resubmit as "Take over and review".
         raise ExceptionClaimedByColleagueError(str(exception_id))
     now = datetime.now(UTC)
     if previous_claimer != user_id:
-        # Auto-claim (unclaimed) or take over (a colleague's claim), inside the same
-        # locked transaction: no instant exists at which anyone else could claim
-        # between this and the review below, and every reviewed row names who took it on.
         exc.claimed_by_user_id = user_id
         exc.claimed_at = now
         if previous_claimer is not None:
@@ -203,8 +179,6 @@ async def review_exception(
             )
 
     exc.review_status = ExceptionReviewStatus.REVIEWED
-    # Explicit conversion keeps the request-only enum (which intentionally excludes
-    # LEGACY_REVIEW) out of the persisted model while preserving the shared value.
     exc.review_outcome = ExceptionReviewOutcome(review_outcome.value)
     exc.reviewed_by_user_id = user_id
     exc.reviewed_at = now
@@ -212,17 +186,12 @@ async def review_exception(
     exc.contact_method = contact_method
     await _flush_and_anchor(db, exc)
 
-    # Metadata only. review_note is free text a dispatcher typed about a person and
-    # about a live incident; it belongs in the record, never in the log.
     logger.info(
         "Exception reviewed: exception=%s trip=%s by=%s outcome=%s contact=%s",
         exception_id, exc.trip_id, user_id, review_outcome.value,
         contact_method.value if contact_method is not None else None,
     )
 
-    # Other dispatchers in the org are looking at the same list. INFO severity: a
-    # review is progress, not an alarm — it must refresh a screen without
-    # interrupting whoever is working through the queue.
     enqueue_event(
         db, trip.operator_organization_id,
         TripEvent(
@@ -329,8 +298,6 @@ async def review_exceptions_batch(
         select(TripException, Trip)
         .join(Trip, Trip.id == TripException.trip_id)
         .where(TripException.id.in_(exception_ids), Trip.operator_organization_id == organization_id)
-        # A fixed lock order, so two overlapping batches queue behind each other rather
-        # than deadlock. Same row lock as _lock_for_review, for the same reason.
         .order_by(TripException.id)
         .with_for_update(of=TripException)
     )).tuples().all()
@@ -370,12 +337,10 @@ async def review_exceptions_batch(
         await anchor_review(db, exception=exc)
 
     if newly_reviewed:
-        # Metadata only — never the note (see review_exception).
         logger.info(
             "Exceptions batch-reviewed: trip=%s by=%s count=%d outcome=%s",
             trip_id, user_id, len(newly_reviewed), review_outcome.value,
         )
-        # One event for the batch: every screen refetches once either way.
         enqueue_event(db, trip.operator_organization_id, TripEvent(
             id=trip_id, kind=RealtimeKind.EXCEPTION_REVIEWED,
             severity=event_severity(ExceptionSeverity.INFO),

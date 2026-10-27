@@ -11,12 +11,8 @@ export interface SwitchProps {
   disabled?: boolean
 }
 
-// iOS switch proportions — 51×31 track, 27px thumb inset 2px — so the one toggle in the
-// app reads as the platform control a driver already knows, not a web lookalike.
 export function Switch({ checked, onCheckedChange, id, disabled, ...props }: SwitchProps) {
   return (
-    // The Root is the 44px hit area (HIG minimum); the visible track sits centred inside
-    // it, so the control looks native-sized while staying easy to hit in gloves.
     <SwitchPrimitive.Root
       id={id}
       checked={checked}
@@ -33,8 +29,6 @@ export function Switch({ checked, onCheckedChange, id, disabled, ...props }: Swi
         className={cn(
           'relative inline-flex h-[31px] w-[51px] shrink-0 items-center rounded-full',
           'transition-colors duration-200',
-          // Off: a step darker than any card it sits on, plus a hairline ring, so the
-          // off state always shows a track.
           checked
             ? 'bg-secondary'
             : 'bg-surface-container-highest ring-1 ring-inset ring-outline-variant',
@@ -42,8 +36,6 @@ export function Switch({ checked, onCheckedChange, id, disabled, ...props }: Swi
       >
         <SwitchPrimitive.Thumb
           className={cn(
-            // White in both themes, as on iOS: a theme-toned thumb went dark-on-dark at
-            // night and vanished into the track.
             'block h-[27px] w-[27px] rounded-full bg-white shadow-level-3',
             'transition-transform duration-200 ease-out motion-reduce:transition-none',
             checked ? 'translate-x-[22px]' : 'translate-x-[2px]',

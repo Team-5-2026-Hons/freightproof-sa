@@ -24,19 +24,14 @@ interface Props {
 
 const SUMMARY_CLASS = 'flex min-h-11 cursor-pointer list-none items-start gap-2 rounded py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec [&::-webkit-details-marker]:hidden'
 const DETAIL_CLASS = 'space-y-3 pb-3 text-xs text-on-surf-v'
-// Small navigation, not a headline: the exception lines above it are the body's content, this just goes on to the trip page.
 const LINK_CLASS = 'inline-flex min-h-11 items-center gap-1 rounded text-xs font-semibold text-sec underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec'
-// The same compact-row look as the trip page's exception rows: whole line is the target, hover tint, no blue underlined sentence.
-// One line tall to the eye (32px); a pseudo-element reaches 6px into the rows either side so the target is still 44px.
 const EXCEPTION_LINE_CLASS = "relative flex min-h-8 items-start gap-2 rounded px-2 py-1.5 text-xs text-on-surf hover:bg-sec-c/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']"
 const NAME_EXCERPT_WORDS = 8
-// Chip is nowrap, which a long pill would carry past a 320px card; the important modifier is needed because cn() does not merge conflicting utilities.
 const WRAPPING_CHIP = '!whitespace-normal'
 const NO_PHASES_TEXT = 'No phases are attributed to this consignment. See the full trip ledger.'
 
 type MarkerKind = ParcelStep['marker'] | 'not-recorded'
 
-// The dots and rail are the trip page timeline's own (PhaseTimelineItem), so a phase reads the same on both pages.
 const NODE_TYPES: Record<MarkerKind, PhaseNodeType> = { recorded: 'done', in_progress: 'active', warn: 'warn', 'not-recorded': 'pending' }
 const NODE_SIZE = 'h-[30px] w-[30px]'
 
@@ -139,10 +134,8 @@ function StepHeading({ step, expandable = false }: { step: ParcelStep; expandabl
       {step.overridden && <Chip type="exception" className={WRAPPING_CHIP}>Overridden</Chip>}
       {step.relevanceUnknown && <span className="text-xs font-semibold text-on-surf-v">Relevance unknown</span>}
       {step.issuePill && <Chip type="exception" className={WRAPPING_CHIP}>{step.issuePill}</Chip>}
-      {/* Right after the title and pills, not at the far end of the row: on a wide screen the end is a long way from a short title. */}
       {expandable && <Ic n="chev" s={14} className="shrink-0 text-on-surf-v transition-transform group-open:rotate-90 motion-reduce:transition-none" />}
     </span>
-    {/* The gap keeps a pill (taller than the text beside it) from sitting on the line below. */}
     <span className="mt-1.5 block text-xs tabular-nums text-on-surf-v">{step.subline}</span>
   </span>
 }
@@ -150,7 +143,6 @@ function StepHeading({ step, expandable = false }: { step: ParcelStep; expandabl
 function Step({ step, journey, returnTo, line }: { step: ParcelStep; journey: ParcelJourney; returnTo: string; line: boolean }): JSX.Element {
   return <li data-step={step.kind} data-step-key={step.key} className="relative pb-2 pl-[44px]">
     <Rail kind={step.marker} line={line} />
-    {/* The cancellation has nothing to expand, so it is a plain step rather than an empty disclosure. */}
     {step.kind === 'cancelled' ? <div className="min-h-11 py-2"><StepHeading step={step} /></div> : <details className="group">
       <summary className={SUMMARY_CLASS}>
         <StepHeading step={step} expandable />
@@ -207,10 +199,6 @@ export function ParcelTimeline({ journey, returnTo, headingLevel = 3 }: Props): 
   const missing = notRecordedItems(journey)
   const { phaseCount, tripWideExceptionCount } = hiddenLedgerCounts(journey)
   const counts = `${countLabel(phaseCount, 'phase')}${tripWideExceptionCount > 0 ? ` · ${countLabel(tripWideExceptionCount, 'trip-wide exception')}` : ''}`
-  // Rows after the steps, in order. None of them is a recorded step.
-  // "No phases attributed" is only true when nothing is shown as a phase and nothing is
-  // owed to this consignment: pending consignment phases belong in Not recorded, and
-  // recorded phases of unknown relevance are already rendered as steps.
   const hasPhaseRows = steps.some(step => step.kind === 'phase') || journey.phases.some(phase => phase.relevance === 'consignment')
   const tail: TailRow[] = [
     ...(hasPhaseRows ? [] : ['no-phases' as const]),

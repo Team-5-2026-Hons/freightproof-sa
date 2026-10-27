@@ -26,7 +26,6 @@ _REQUIRED_FIELDS = {
     "HEDERA_PRIVATE_KEY": "private-key",
 }
 
-# The driver app's native origins. Fixed by the platforms, not chosen by us.
 _IOS_ORIGIN = "capacitor://localhost"
 _ANDROID_ORIGIN = "https://localhost"
 
@@ -36,7 +35,6 @@ def _settings(**overrides: object) -> Settings:
 
 
 def test_the_native_origins_survive_an_env_override() -> None:
-    # Exactly the shape backend/.env.example used to ship: browser origins only.
     settings = _settings(
         ALLOWED_ORIGINS=["http://localhost:3000", "http://localhost:3001"],
     )
@@ -48,7 +46,6 @@ def test_the_native_origins_survive_an_env_override() -> None:
 
 
 def test_the_native_origins_survive_a_locked_down_production_list() -> None:
-    # The natural thing to do post-merge: lock CORS to the real dispatcher domain.
     settings = _settings(ALLOWED_ORIGINS=["https://www.freightproof.co.za"])
 
     origins = settings.cors_allowed_origins
@@ -70,7 +67,6 @@ def test_the_receiver_origin_is_folded_in() -> None:
 
 
 def test_a_trailing_slash_on_the_receiver_url_does_not_produce_a_mismatched_origin() -> None:
-    # An Origin header never carries a trailing slash, so one here would never match.
     settings = _settings(
         HANDOVER_RECEIVER_BASE_URL="https://receiver.freightproof.co.za/",
     )
@@ -94,7 +90,6 @@ def test_an_origin_listed_explicitly_is_not_duplicated() -> None:
 
 
 def test_an_empty_receiver_url_adds_no_empty_origin() -> None:
-    # An empty string in the allow-list would be a wildcard-shaped footgun, not a no-op.
     settings = _settings(HANDOVER_RECEIVER_BASE_URL="")
 
     origins = settings.cors_allowed_origins
@@ -111,7 +106,6 @@ def test_the_configured_browser_origins_are_preserved_in_order() -> None:
 
 
 def test_the_audit_pack_portal_origin_is_folded_in_without_trailing_slash() -> None:
-    # The insurer's browser calls the public audit-pack API from the portal origin.
     settings = _settings(
         ALLOWED_ORIGINS=["https://www.freightproof.co.za"],
         AUDIT_PACK_PORTAL_BASE_URL="https://portal.freightproof.co.za/",

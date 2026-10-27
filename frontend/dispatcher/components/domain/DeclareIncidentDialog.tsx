@@ -12,7 +12,6 @@ import { sastInputToIso } from '@/lib/format/sast'
 
 interface Props {
   tripId: string
-  /** Pins the declaration to an incident (the hijacking guide's SAPS step). */
   incidentId?: string | null
   open: boolean
   onClose: () => void

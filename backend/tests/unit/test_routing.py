@@ -46,7 +46,6 @@ def _two_leg_payload() -> dict[str, Any]:
                 },
                 "geometry": {
                     "type": "LineString",
-                    # [lng, lat] — the vendor's order, deliberately the reverse of ours.
                     "coordinates": [
                         [28.0473, -26.2041],
                         [28.7, -27.0],
@@ -74,7 +73,6 @@ async def test_compute_truck_route_splits_legs_at_way_points() -> None:
 
     assert len(route.legs) == 2
     assert route.legs[0].coordinates == ((-26.2041, 28.0473), (-27.0, 28.7), (-27.9, 29.4))
-    # Each leg starts where the previous one ended.
     assert route.legs[1].coordinates[0] == route.legs[0].coordinates[-1]
     assert route.legs[1].coordinates[-1] == (-29.7942, 30.982)
     assert route.legs[0].distance_metres == pytest.approx(324566.9)
@@ -93,7 +91,6 @@ async def test_compute_truck_route_sends_lng_lat_snap_radius_and_key_with_instru
     assert request.headers["Authorization"] == "test-ors-key"
     assert body["coordinates"][0] == [28.0473, -26.2041]
     assert body["radiuses"] == [settings.ORS_SNAP_RADIUS_METRES] * 3
-    # Turning instructions off makes ORS drop the per-leg segments we split on.
     assert "instructions" not in body
 
 
@@ -113,7 +110,6 @@ async def test_compute_truck_route_with_one_point_raises() -> None:
 
 @respx.mock
 async def test_compute_truck_route_unroutable_stop_raises() -> None:
-    # The live 404 for a pin too far from a truck-routable road.
     respx.post(_DIRECTIONS_URL).mock(
         return_value=httpx.Response(
             404,
@@ -143,7 +139,6 @@ async def test_compute_truck_route_non_json_body_raises() -> None:
 
 @respx.mock
 async def test_compute_truck_route_leg_count_mismatch_raises() -> None:
-    # Two legs back for a two-point (one-leg) request: never trust a misaligned route.
     respx.post(_DIRECTIONS_URL).mock(return_value=httpx.Response(200, json=_two_leg_payload()))
 
     with pytest.raises(RoutingError, match="Expected 1 legs"):

@@ -23,7 +23,6 @@ describe('isNavItemActive', () => {
   })
 
   it('test_profile_is_active_on_profile_and_on_the_old_settings_path', () => {
-    // /settings now redirects to /profile; while it does, the Profile tab stays lit.
     expect(isNavItemActive('/profile', profile.href, profile.matchPrefixes)).toBe(true)
     expect(isNavItemActive('/settings', profile.href, profile.matchPrefixes)).toBe(true)
   })
@@ -34,7 +33,6 @@ describe('isNavItemActive', () => {
   })
 
   it('test_has_exactly_three_tabs_home_trips_profile', () => {
-    // Settings merged into Profile (Tim, 14 Oct); the separate profile button is gone.
     expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Home', 'Trips', 'Profile'])
     expect(profile.href).toBe(ROUTES.profile)
   })

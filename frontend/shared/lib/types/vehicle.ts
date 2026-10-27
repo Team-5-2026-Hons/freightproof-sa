@@ -25,7 +25,6 @@ export interface Vehicle {
   created_at: string
 }
 
-// Extended vehicle shape returned by GET /api/v1/vehicles/:id — includes event/receipt history.
 export interface VehicleDetail extends Vehicle {
   events: VehicleEvent[]
   receipts: BlockchainReceipt[]

@@ -25,17 +25,6 @@ async def test_verify_returns_no_receipt_when_none_exists(db_session):
     assert out.status == VerifyStatus.NO_RECEIPT
 
 
-# ── Precinct event verification ────────────────────────────────────────────────
-#
-# NOTE for future maintainers: this file previously had no vehicle/driver-event
-# verification tests to mirror, despite the plan text describing "the fixtures
-# and Hedera stubbing the file already uses for test_verify_vehicle_event_*".
-# No such tests or helpers (_stub_hedera_matching, _seed_unanchored_vehicle_event,
-# etc.) exist anywhere in this test suite as of this task. The helpers below are
-# written fresh, following the seeding pattern already established in
-# tests/integration/test_fleet_precincts.py (Organization/User/Precinct rows via
-# db_session, anchor_subject mocked out where the real service is exercised).
-
 
 async def _seed_org_and_user(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     """A minimal owning org and an actor user, for tests that call create_precinct directly."""
@@ -116,9 +105,6 @@ async def _seed_anchored_precinct_event(db: AsyncSession) -> uuid.UUID:
         receipt_type=BlockchainReceiptType.PRECINCT_UPDATED,
         payload_json=payload,
         data_hash=_hash_payload(payload),
-        # hedera_topic_id/hedera_sequence_number are required (non-null, >=1) for
-        # verify_subject to reach the Hedera-match branch at all — without them it
-        # short-circuits to ERROR before ever comparing hashes.
         hedera_topic_id="0.0.999999",
         hedera_sequence_number=1,
     )
@@ -137,7 +123,7 @@ def _stub_hedera_matching(db_session: AsyncSession) -> MagicMock:
     need to inspect the DB because it always returns True — the DB_MISMATCH and
     NO_RECEIPT tests never reach the Hedera call at all (they return earlier).
     """
-    del db_session  # unused — see docstring
+    del db_session
     stub = MagicMock()
     stub.verify_hash.return_value = True
     return stub

@@ -52,7 +52,6 @@ describe('fmtBreakdownVehicle', () => {
   })
 
   it('shows a dash when the recorded vehicle can no longer be found', () => {
-    // The backend returns the id but can look up neither kind nor plate.
     expect(fmtBreakdownVehicle({
       vehicle_id: RECORDED_ID, vehicle_type: null, vehicle_registration: null,
     })).toBe('—')
@@ -79,7 +78,6 @@ describe('fmtExceptionRaisedParts', () => {
   it('returns the day and the time as separate strings, never one joined string', () => {
     const parts = fmtExceptionRaisedParts('2026-10-01T10:50:00Z')
     expect(parts).toEqual({ day: '01 Oct 2026', time: '12:50 SAST' })
-    // Guards the regression: a locale that joins with " at " must not leak into either part.
     expect(parts?.day).not.toMatch(/ at /)
     expect(parts?.time).not.toMatch(/ at /)
   })

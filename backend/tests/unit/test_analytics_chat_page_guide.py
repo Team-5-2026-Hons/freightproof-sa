@@ -21,8 +21,6 @@ from app.analytics.fleet.constants import (
 from app.orchestration.analytics_chat.page_guide import GUIDE, LOW_SAMPLE_TRIPS, SIGNOFF_LIVE, TOPICS, guide_for
 from tests.page_copy import FRONTEND, GUIDE_KEYS, page_lines, page_text
 
-# Chart and tile titles on the page ("title:" and "label:" values). Sub-chart titles of the busy patterns
-# (By hour of day…) and table/legend labels aren't elements of their own.
 _TITLE = re.compile(r"\b(?:title|label):\s*'([^']+)'")
 _NOT_ELEMENTS = re.compile(
     r"^(By |Drivers$|Discs$|Record$|Diesel price|Consumption|Fuel per km|Other running|Driver$|Fixed per trip|Delay$|"
@@ -51,8 +49,6 @@ def test_every_line_the_guide_quotes_is_on_the_page_word_for_word() -> None:
 
 
 def test_every_explanation_question_and_rate_origin_on_the_page_is_in_the_guide() -> None:
-    # 22 Oct: "how do we come up with operating cost?" had nothing to answer from. Now nothing the page explains,
-    # no chart's question and no rate's origin is missing.
     missing = sorted(page_lines(GUIDE_KEYS) - _guide_lines())
 
     assert missing == [], "The page explains these but the guide doesn't carry them; add them to page_guide.py"
@@ -64,7 +60,6 @@ def test_every_chart_and_tile_on_the_page_has_an_entry() -> None:
 
     missing = sorted(title for title in page_titles if not any(entry.startswith(title) for entry in entry_titles))
 
-    # Guards the guard: the reader found the page's charts.
     assert {"Trips over time", "Lane risk", "Cost at a glance", "Live trips", "Unused vehicles"} <= page_titles
     assert missing == [], "These charts or tiles have no guide entry"
 
@@ -78,7 +73,6 @@ def test_every_topic_has_entries_and_every_entry_explains_something() -> None:
 
 
 def test_the_guide_has_no_em_dashes() -> None:
-    # The chat quotes the guide, and an answer must carry none (B44).
     assert "—" not in _all_text()
 
 
@@ -107,21 +101,19 @@ def test_the_starting_rates_are_read_from_the_cost_model() -> None:
     rates = next(e for e in guide_for("cost") if e["title"] == "Cost rates")["method"][0]  # type: ignore[index]
 
     assert f"R {DEFAULT_COST_RATES.diesel_price_per_litre:.2f} per litre" in rates
-    assert "fuel R 17.64 per km" in rates  # 33.29 × 53 ÷ 100, Bruce's calibration (cost spec D3)
+    assert "fuel R 17.64 per km" in rates
     assert f"road factor {DEFAULT_COST_RATES.road_factor}" in rates
 
 
 @pytest.mark.parametrize(
     ("topic", "title", "must_say"),
     [
-        # The facts the 21-22 Oct answers got wrong or couldn't give.
         ("tiles", "Live trips", "planned trips are included"),
         ("activity", "Cancellations over time", "Bucketed by the day the trip was cancelled"),
         ("activity", "Busy patterns", "on trips of any status"),
         ("cost", "Cost at a glance", "never added"),
         ("cost", "Operating cost over time", "road distance × (fuel per km + other running per km)"),
         ("review_desk", "Review desk tab", "Every exception starts as 'needs review'"),
-        # The 22 Oct eval expanded DMPR from memory, wrongly.
         ("cost", "Cost rates", "Department of Mineral and Petroleum Resources"),
     ],
 )

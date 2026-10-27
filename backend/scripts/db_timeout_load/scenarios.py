@@ -18,20 +18,14 @@ from scripts.db_timeout_load.config import FAULT_CONCURRENCY, POOL_CAPACITY
 from scripts.db_timeout_load.harness import Harness
 from scripts.db_timeout_load.metrics import MS_PER_SECOND, RequestSpec, Sample, measure, queue_pool
 
-# Every representative read touches trips, so locking it, or silencing the socket just as
-# a trips statement is sent, puts the fault on the request's first real SQL.
 TRIPS_STATEMENT_MARKER = f"FROM {Trip.__tablename__}"
 LOCK_TRIPS = text(f"LOCK TABLE {Trip.__tablename__} IN ACCESS EXCLUSIVE MODE")
-# A pool timeout must not arrive well before its configured wait; 20% slack allows for
-# event-loop timer granularity without accepting an unrelated early failure.
 EARLY_POOL_FAILURE_FRACTION = 0.8
-# Other backends of this database still waiting for a lock, i.e. on the blocker's table.
 LOCK_WAITER_PIDS = text(
     "SELECT pid FROM pg_stat_activity"
     " WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()"
 )
 CLEAR_ACTIVITY_SNAPSHOT = text("SELECT pg_stat_clear_snapshot()")
-# PostgreSQL acts on a cancel request asynchronously, so allow it a moment to land.
 LOCK_WAITER_SETTLE_SECONDS = 2.0
 LOCK_WAITER_POLL_SECONDS = 0.05
 
@@ -43,7 +37,6 @@ class Wave:
     stimulus: dict[str, object] = field(default_factory=dict)
     failures: list[str] = field(default_factory=list)
     cancellations: int = 0
-    # Requests beyond the FAULT_CONCURRENCY reads, e.g. the chat requests holding slots.
     extra_attempts: int = 0
     fault_removed_at: float | None = None
 
@@ -74,7 +67,6 @@ async def pool_exhaustion(harness: Harness) -> Wave:
 
 
 async def connect_timeout(harness: Harness) -> Wave:
-    # Force fresh connections without replacing the pool or restarting the application.
     async with AsyncExitStack() as stack:
         connections = [await stack.enter_async_context(harness.engine.connect()) for _ in range(POOL_CAPACITY)]
         for connection in connections:
@@ -91,7 +83,6 @@ async def connect_timeout(harness: Harness) -> Wave:
 
 
 async def lock_waiters(blocker: AsyncConnection) -> set[int]:
-    # PostgreSQL snapshots activity once per transaction; clear it so each poll is current.
     await blocker.execute(CLEAR_ACTIVITY_SNAPSHOT)
     return set(await blocker.scalars(LOCK_WAITER_PIDS))
 
@@ -105,12 +96,8 @@ async def settled_lock_waiters(blocker: AsyncConnection) -> int:
 
 async def lock_wave(harness: Harness, specs: list[RequestSpec]) -> Wave:
     async with harness.world.control.begin() as blocker:
-        # This schema contains only this run's synthetic rows. Holding a real conflicting
-        # lock exercises the API command timeout, rather than mocking an exception.
         await blocker.execute(LOCK_TRIPS)
         samples, elapsed = await harness.wave(specs, FAULT_CONCURRENCY, FAULT_CONCURRENCY)
-        # Counted while the lock is still held: a statement still queued here after its
-        # request returned 503 was abandoned by the API but never cancelled in PostgreSQL.
         left_waiting = await settled_lock_waiters(blocker)
     stimulus: dict[str, object] = {"table_lock_acquired": True, "statements_left_waiting": left_waiting}
     wave = Wave(samples, elapsed, stimulus, fault_removed_at=perf_counter())
@@ -138,7 +125,6 @@ async def half_open_command(harness: Harness) -> Wave:
 
     def silence_on_query(connection: Connection, cursor: object, statement: str, *unused: object) -> None:
         nonlocal triggered
-        # After checkout and pre-ping, before the first application query reaches the wire.
         if not triggered and TRIPS_STATEMENT_MARKER in statement:
             triggered = True
             harness.proxy.silence()
@@ -174,7 +160,6 @@ async def cancel_under_contention(harness: Harness) -> Wave:
             tasks = [asyncio.create_task(measure(harness.client, harness.world.reads()[0], samples,
                                                  harness.request_watchdog))
                      for _ in range(FAULT_CONCURRENCY)]
-            # Cancel only once every pool slot has a request waiting on the lock in SQL.
             async with asyncio.timeout(harness.budgets.general_envelope):
                 await ready.wait()
             reached_before_cancel = query_count
@@ -250,13 +235,10 @@ async def chat_long(harness: Harness) -> Wave:
 
 
 async def chat_database_timeout(harness: Harness) -> Wave:
-    # The provider asks for a real analytics tool; the lock makes that tool's SQL time out,
-    # which must reach the shared database 503 handler, not a chat-specific error.
     with patch.object(chat_service, "build_provider", ControlledProvider):
         return await lock_wave(harness, [CHAT])
 
 
-# Keys must match config.FAULT_SCENARIOS (pinned by a unit test).
 SCENARIOS: dict[str, Callable[[Harness], Awaitable[Wave]]] = {
     "pool": pool_exhaustion,
     "connect": connect_timeout,

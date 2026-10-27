@@ -34,11 +34,6 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
-# Provide throwaway config values when no backend/.env is present (e.g. CI), so the app's
-# Settings() can instantiate during tests without real secrets. Gated on .env absence:
-# local dev with a real .env is unaffected, and setdefault never overrides a value already
-# in the environment (so a real CI secret like SUPABASE_SERVICE_ROLE_KEY still wins). The DB
-# integration tests still skip unless TEST_DATABASE_URL is supplied.
 if not (Path(__file__).resolve().parent.parent / ".env").exists():
     for _key, _val in {
         "DATABASE_URL": "postgresql+asyncpg://test:test@localhost/test",
@@ -60,36 +55,12 @@ from app.core.config import settings  # noqa: E402
 from app.db.models import Base  # noqa: E402
 from app.main import app  # noqa: E402
 
-# ── Rate limiting off for the suite ───────────────────────────────────────────
-# A test run is not a traffic model. Several hundred requests arrive from one client in a
-# couple of seconds, which is exactly the shape the global per-IP limit exists to reject —
-# leaving it on makes unrelated tests fail with 429s depending on how many ran before
-# them, and on whether a developer happens to have Redis running locally.
-#
-# It also removes an event-loop hazard: the async Redis client is created once and cached,
-# binding it to whichever loop first used it, while pytest-asyncio gives each test a fresh
-# loop. The cached client then raises "Event loop is closed" on the second test onwards.
-#
-# Set here rather than in an autouse fixture so it applies before the app is exercised at
-# all. The limiter's own tests (tests/unit/test_rate_limit.py) monkeypatch this back on
-# and substitute a fake Redis, so the behaviour is still covered — just not by accident,
-# from every other test in the suite.
 settings.RATE_LIMIT_ENABLED = False
 
-# FP-83: new driver-handover arrangements default OFF in every real environment
-# (DRIVER_SUBSTITUTIONS_ENABLED), but the lifecycle tests arrange handovers throughout, so the
-# suite runs with them on. The disabled mode is asserted explicitly where it matters
-# (test_driver_substitution_endpoints.py), by switching it back off.
 settings.DRIVER_SUBSTITUTIONS_ENABLED = True
 
-# ── Parallel runs (pytest -n N, pytest-xdist) ─────────────────────────────────
-# Each worker is its own process with its own test session, so it gets its own PostgreSQL
-# database (test_engine creates and drops the whole schema, which two workers cannot share)
-# and its own Redis database number (mock-state keys are fixed device ids). A plain `pytest`
-# sets no worker id and uses TEST_DATABASE_URL and REDIS_URL unchanged.
 _XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
 _BASE_TEST_DATABASE_URL = settings.TEST_DATABASE_URL
-# Redis numbers its databases 0-15; 0 is the unchanged default, so workers use 1-15.
 _REDIS_WORKER_DATABASES = 15
 if _XDIST_WORKER and settings.TEST_DATABASE_URL:
     _base_test_url = make_url(_BASE_TEST_DATABASE_URL)
@@ -112,8 +83,6 @@ async def _ensure_database_exists(url: str) -> None:
                 text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": target.database},
             )
             if not exists:
-                # Identifier, not a bind parameter: CREATE DATABASE takes no parameters. The
-                # name is the base test database plus an xdist worker id, never user input.
                 await conn.execute(text(f'CREATE DATABASE "{target.database}"'))
     finally:
         await engine.dispose()
@@ -134,11 +103,8 @@ async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGener
     from app.tasks.evidence_anchors import anchor_event_task, register_evidence_publisher
 
     monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))
-    # Evidence anchors too: a committed critical report must never reach the dev broker, and
-    # a failed publish would fall back to a local anchor against DATABASE_URL.
     monkeypatch.setattr(anchor_event_task, "delay", Mock(return_value=None))
-    register_evidence_publisher()  # app.main does this at startup; service-level tests never import it
-    # FP-83 custody anchors: same rule, a completed test handover never reaches the dev broker.
+    register_evidence_publisher()
     from app.orchestration.substitutions.anchors import _BACKGROUND_CUSTODY_TASKS
     from app.tasks.driver_substitutions import anchor_record_task, register_custody_publisher
 
@@ -168,9 +134,6 @@ async def isolate_sendgrid(monkeypatch: pytest.MonkeyPatch) -> None:
         raise EmailUnavailableError("SendGrid is not reachable in tests")
 
     monkeypatch.setattr("app.orchestration.audit_packs.viewer_password.send_plain_text_email", fake_send)
-
-# ── Test EC key pair (generated once per process) ─────────────────────────────
-# Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.
 
 _TEST_EC_KEY = generate_private_key(SECP256R1(), default_backend())
 _TEST_PRIVATE_PEM = _TEST_EC_KEY.private_bytes(
@@ -225,9 +188,6 @@ def make_token(
     Pass expires_in=-1 to produce an already-expired token.
     """
     now = datetime.now(UTC)
-    # session_id/iat back the one-device-per-driver rule (app/auth/sessions.py). Each
-    # call gets a fresh session by default so unrelated tests never collide over one
-    # driver's session row; pass them explicitly to model two devices.
     issued = issued_at or now
     payload = {
         "session_id": session_id or str(uuid.uuid4()),
@@ -296,8 +256,6 @@ def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-# ── In-process HTTP client ─────────────────────────────────────────────────────
-
 
 @pytest_asyncio.fixture
 async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient, None]:
@@ -314,8 +272,6 @@ async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient,
     ) as ac:
         yield ac
 
-
-# ── DB session fixtures ────────────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="session")
@@ -379,8 +335,6 @@ class FakeMockStateStore:
 
     def __init__(self) -> None:
         self.data: dict[str, dict[str, Any]] = {}
-        # Counts batched reads, so a test can assert the phase gate stays at one
-        # round trip per call however many consignments a trip carries.
         self.batch_calls = 0
 
     async def get_json(self, key: str) -> dict[str, Any] | None:
@@ -398,10 +352,6 @@ class FakeMockStateStore:
         self.data.clear()
         return count
 
-
-# ── Warehouse-scan fixtures ─────────────────────────────────────────────────────
-# Shared by test_consignment_scans.py and test_phases_gate.py, so both agree on one
-# seeded trip shape instead of drifting apart in duplicated fixture bodies.
 
 
 @pytest.fixture

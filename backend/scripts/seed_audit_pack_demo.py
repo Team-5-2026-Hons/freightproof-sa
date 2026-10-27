@@ -70,8 +70,6 @@ from app.orchestration.phases.payloads import (
 )
 from app.storage.supabase_storage import upload_evidence_file
 
-# The DEMO_MODE identity (app/auth/dependencies.py): a local backend run with
-# DEMO_MODE=true acts as this admin dispatcher in this organisation.
 _DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 _DEMO_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 
@@ -82,7 +80,6 @@ HARRISMITH = (Decimal("-28.2726000"), Decimal("29.1294000"))
 DBN = (Decimal("-29.8587000"), Decimal("31.0218000"))
 PMB = (Decimal("-29.6006000"), Decimal("30.3794000"))
 
-# Driver-phone pings every 20 min, with one 47-minute silence — the gap the pack reports.
 PING_INTERVAL = timedelta(minutes=20)
 GAP = timedelta(minutes=47)
 
@@ -282,7 +279,6 @@ async def seed(db: AsyncSession) -> Trip:
             origin_precinct_id=origin.id, destination_precinct_id=dest.id, created_by_user_id=dispatcher.id,
             created_at=t0, trip_type="loaded", pp_manifest=None, pp_manifest_snapshot_sha256=None,
             planned_departure_at=trip.planned_departure_at, planned_arrival_at=trip.planned_arrival_at,
-            # The same v2 shape trips.creation anchors, so verify_subject checks this lock as it does a real one.
             stops=[StopCommitment(s.sequence, s.precinct_id, s.slot_time) for s in (stop_jhb, stop_dbn, stop_pmb)],
         ),
     )

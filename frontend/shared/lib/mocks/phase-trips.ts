@@ -7,14 +7,10 @@ import { ANCHORED_PHASES, STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 
 const peId = (v: string): PhaseEventId => v as unknown as PhaseEventId
 
-// One stop's routing role, which is all the generator needs to decide what happens there.
-// Derived on the backend from the trip's consignments (which pick up / deliver where).
 export interface PlanStopInput {
   trip_stop_id: string
   sequence: number
-  /** Any consignment collects cargo at this stop. */
   picks_up: boolean
-  /** Any consignment delivers cargo at this stop. */
   drops_off: boolean
 }
 
@@ -87,8 +83,6 @@ export function makePhasePlan(
   stops.forEach((stop, i) => {
     if (i === 0) push('activation', stop)
     else {
-      // Every in_transit is followed by arrival at the stop it reaches, even a pickup-only
-      // one: the seal is inspected before the doors open, whatever happens next there.
       push('arrival', stop)
       if (stop.drops_off) push('unloading', stop)
     }
@@ -97,7 +91,6 @@ export function makePhasePlan(
 
     if (i < lastIndex) {
       push('departure', stop)
-      // in_transit anchors to the stop it DEPARTS FROM, never to the one it arrives at.
       push('in_transit', stop)
     } else {
       if (i !== 0 && !stop.drops_off) push('unloading', stop)
@@ -118,15 +111,12 @@ export const SINGLE_LEG_STOPS: readonly PlanStopInput[] = [
   { trip_stop_id: 'b1000000-0000-4000-8000-000000000002', sequence: 2, picks_up: false, drops_off: true },
 ]
 
-// Three-stop cross-dock: consignment A runs 1->3, B runs 1->2, C runs 2->3.
-// Stop 2 therefore both drops off (B) and picks up (C).
 export const CROSS_DOCK_STOPS: readonly PlanStopInput[] = [
   { trip_stop_id: 'b2000000-0000-4000-8000-000000000001', sequence: 1, picks_up: true, drops_off: false },
   { trip_stop_id: 'b2000000-0000-4000-8000-000000000002', sequence: 2, picks_up: true, drops_off: true },
   { trip_stop_id: 'b2000000-0000-4000-8000-000000000003', sequence: 3, picks_up: false, drops_off: true },
 ]
 
-/** 8 rows. */
 export const SINGLE_LEG_PHASE_PLAN: PhaseDescriptor[] = makePhasePlan(
   SINGLE_LEG_TRIP_ID,
   SINGLE_LEG_STOPS,
@@ -134,7 +124,6 @@ export const SINGLE_LEG_PHASE_PLAN: PhaseDescriptor[] = makePhasePlan(
   'c1000000-0000-4000-8000',
 )
 
-/** 13 rows — the multi-stop proof. */
 export const CROSS_DOCK_PHASE_PLAN: PhaseDescriptor[] = makePhasePlan(
   CROSS_DOCK_TRIP_ID,
   CROSS_DOCK_STOPS,

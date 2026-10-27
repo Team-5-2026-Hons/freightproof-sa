@@ -22,8 +22,6 @@ interface Props {
  * before a phase completes.
  */
 export function PhaseAudit({ phase, receipt }: Props) {
-  // Every phase receipt (and an override's) can be rebuilt and verified server-side; the
-  // journey lock is a trip receipt with its own verify path, so key on the subject.
   const verifiable = receipt?.subject_type === 'phase_event'
   const empty = !receipt && !phase.event_hash
   return (

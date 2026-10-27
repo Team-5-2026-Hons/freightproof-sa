@@ -33,8 +33,6 @@ def _dispatcher(org_id: uuid.UUID) -> UserRead:
     )
 
 
-# ── Auth rejection (real dependency, HTTP path, no DB) ─────────────────────────
-
 
 async def test_stream_without_credentials_returns_403(client):
     resp = await client.get("/api/v1/stream")
@@ -58,8 +56,6 @@ async def test_stream_with_expired_dispatcher_token_returns_401(client):
     assert resp.status_code == 401
 
 
-# ── Response shape (endpoint called directly) ─────────────────────────────────
-
 
 async def test_stream_endpoint_returns_event_stream_response(monkeypatch):
     async def _fake_subscribe(_org_id):
@@ -74,8 +70,6 @@ async def test_stream_endpoint_returns_event_stream_response(monkeypatch):
     assert resp.media_type == "text/event-stream"
     assert resp.headers["cache-control"] == "no-cache"
 
-
-# ── Frame formatting + org isolation (generator exercised directly) ───────────
 
 
 async def test_event_stream_delivers_event_as_a_data_frame(monkeypatch):
@@ -114,7 +108,6 @@ async def test_event_stream_subscribes_to_the_callers_org(monkeypatch):
         if frame.startswith("data:"):
             break
 
-    # The endpoint must subscribe to the caller's own org channel — the isolation boundary.
     assert seen["org_id"] == caller_org
 
 
@@ -122,7 +115,7 @@ async def test_event_stream_emits_heartbeat_when_idle(monkeypatch):
     monkeypatch.setattr(stream_mod, "HEARTBEAT_SECONDS", 0.05)
 
     async def _idle_subscribe(_org_id):
-        await asyncio.sleep(3600)  # never yields — forces the idle path
+        await asyncio.sleep(3600)
         yield  # pragma: no cover
 
     monkeypatch.setattr(realtime, "subscribe", _idle_subscribe)

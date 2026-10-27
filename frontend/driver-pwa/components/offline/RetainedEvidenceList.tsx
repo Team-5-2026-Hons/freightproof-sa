@@ -21,8 +21,6 @@ import { StatusBanner } from '@/components/ui/StatusBanner'
 
 const EXPORT_MIME = 'application/json'
 
-// The browser's own download, so the driver can hand the file to dispatch. No upload, no
-// third party: the bytes leave the app only where the driver saves them.
 function downloadJson(filename: string, json: string): void {
   const url = URL.createObjectURL(new Blob([json], { type: EXPORT_MIME }))
   const link = document.createElement('a')
@@ -57,8 +55,6 @@ interface ItemRowProps {
 function ItemRow({ item, onChanged }: ItemRowProps) {
   const { notify } = useToast()
   const [busy, setBusy] = useState(false)
-  // Discard is the only irreversible action on this screen, so it takes a second,
-  // differently worded tap with the consequence stated.
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
 
   const run = async (action: () => Promise<void>) => {
@@ -149,7 +145,6 @@ export function RetainedEvidenceList() {
 
   useEffect(() => { void reload() }, [reload])
 
-  // A retried item goes back to pending; send it now rather than waiting for the next trigger.
   const afterChange = useCallback(async () => {
     await flush()
     await reload()

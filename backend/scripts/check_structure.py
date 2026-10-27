@@ -34,16 +34,12 @@ import json
 import sys
 from pathlib import Path
 
-# A function longer than this must already be in the baseline, or the check fails.
 FUNCTION_LINE_LIMIT = 100
 
 APP_DIR_NAME = "app"
 BASELINE_FILE_NAME = "structure-baseline.json"
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
-# Seeds the baseline's "files" section the first time --update runs. After that the
-# baseline file itself is the source of truth, so removing a file from tracking is a
-# one-line edit to the JSON, not a change to this script.
 INITIAL_TRACKED_FILES: tuple[str, ...] = (
     "app/schemas/trips.py",
     "app/api/v1/endpoints/handover.py",
@@ -62,11 +58,8 @@ class FunctionCollector(ast.NodeVisitor):
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         qualified = ".".join([*self._scope, node.name])
-        # end_lineno is None only for synthetic nodes; parsed source always has it.
         assert node.end_lineno is not None
         self.lengths.append((qualified, node.end_lineno - node.lineno + 1))
-        # "<locals>" mirrors Python's own __qualname__, so a nested function can never
-        # collide with a method of the same name on a class.
         self._scope.extend([node.name, "<locals>"])
         self.generic_visit(node)
         del self._scope[-2:]
@@ -98,8 +91,6 @@ def measure_functions(root: Path) -> FunctionLengths:
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         except SyntaxError as exc:
-            # A file that cannot be parsed cannot be measured. Failing loudly beats
-            # silently skipping it and reporting a clean tree.
             raise SystemExit(f"check_structure: cannot parse {path}: {exc}") from exc
         collector = FunctionCollector()
         collector.visit(tree)

@@ -31,26 +31,20 @@ describe('toastForEvent', () => {
   })
 
   it('evidence_uploaded raises no toast', () => {
-    // An upload is a live-view refresh, not an alert; it must stay silent at any severity.
     expect(toastForEvent(event('evidence_uploaded'))).toBeNull()
     expect(toastForEvent(event('evidence_uploaded', 'critical'))).toBeNull()
   })
 
   it('driver_substitution_changed raises no toast', () => {
-    // A handover is routine record-keeping, not an alert, at any severity.
     expect(toastForEvent(event('driver_substitution_changed'))).toBeNull()
     expect(toastForEvent(event('driver_substitution_changed', 'critical'))).toBeNull()
   })
 
   it('driver_substitution_changed refreshes the trip record', () => {
-    // The current driver, pending arrangement and custody chain all live on the trip.
     expect(KIND_CHANGES_TRIP_RECORD['driver_substitution_changed']).toBe(true)
   })
 
   it('does not raise an alert for progress even when it arrives as critical', () => {
-    // Severity ranks exceptions; it does not turn a completion into an alarm. Guards
-    // against a future emitter setting a band on a lifecycle event and unexpectedly
-    // interrupting every dispatcher in the org.
     expect(toastForEvent(event('phase_completed', 'critical'))).toBeNull()
   })
 
@@ -75,18 +69,12 @@ describe('toastForEvent', () => {
   })
 
   it('ranks a critical exception above a warning one', () => {
-    // The regression that motivated splitting severity out of the kind. Before it, a
-    // driver's panic button published as an ordinary exception while system-detected
-    // seal checks published as loud ones — so a hijacking in progress was quieter on
-    // the dispatcher's screen than a parcel-count mismatch. Both now arrive as
-    // `exception_raised` and are separated only by the band they carry.
     const panic = toastForEvent(event('exception_raised', 'critical'))
     const countCheck = toastForEvent(event('exception_raised', 'warning'))
 
     expect(panic!.title).toBe('Critical exception')
     expect(countCheck!.title).toBe('Exception raised')
     expect(panic!.title).not.toBe(countCheck!.title)
-    // Wording is not ranking. Priority decides which toast survives a burst.
     expect(panic!.priority).toBe('critical')
     expect(countCheck!.priority).toBe('ordinary')
   })
@@ -106,7 +94,6 @@ describe('toastForEvent', () => {
     ))
     fireEvent.click(screen.getByRole('button', { name: 'Show warning' }))
 
-    // The provider owns the shared timeout; the rendered ToastItem has no timer of its own.
     act(() => vi.advanceTimersByTime(TOAST_AUTO_DISMISS_MS - 1))
     expect(screen.getByText('Exception raised')).toBeInTheDocument()
 
@@ -123,9 +110,6 @@ describe('toastForEvent', () => {
   })
 
   it('leaks nothing the channel does not carry', () => {
-    // POPIA: the stream carries an id and a kind. No driver name, no seal number, no
-    // trip reference may appear in copy the dispatcher reads before opening the trip.
-    // INFO is excluded because it raises no toast at all — covered above.
     for (const severity of ['critical', 'warning'] as const) {
       const toast = toastForEvent(event('exception_raised', severity))
       const text = `${toast!.title} ${toast!.body ?? ''}`

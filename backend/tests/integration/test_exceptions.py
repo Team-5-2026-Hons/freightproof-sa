@@ -97,8 +97,6 @@ async def test_driver_raises_panic_exception(client: AsyncClient, seed_trip):
     body = resp.json()
     assert body["severity"] == "critical"
     assert body["source"] == "driver"
-    # CRITICAL findings start NEEDS_REVIEW (FP-146 follow-on) — a panic
-    # button needs a dispatcher's decision now, not just visibility on the list.
     assert body["review_status"] == "needs_review"
 
 
@@ -186,8 +184,6 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
         raise TimeoutError
 
     monkeypatch.setattr(exception_creation, "get_pulsit_client", lambda **_kwargs: StalledTracker())
-    # asyncio is one module object shared by the whole process, so this is the same patch the
-    # old `exception_service.asyncio` spelling made, minus a hop through the facade.
     monkeypatch.setattr(asyncio, "wait_for", timeout_immediately)
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
@@ -281,7 +277,6 @@ async def test_driver_cannot_raise_exception_on_someone_elses_trip(client: Async
         json={"exception_type": "panic_button", "description": "x"},
         headers=auth_header(token),
     )
-    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
     assert resp.status_code == 404
 
 
@@ -394,7 +389,6 @@ async def test_offline_panic_flushed_after_arrival_keeps_its_in_transit_phase(
     drift that made an exception appear to move between phases."""
     trip, driver, phases = seed_trip_with_plan
     captured_phase_event_id = phases["in_transit"].id
-    # The trip advances while the alert is stuck in the queue.
     phases["in_transit"].status = PhaseStatus.COMPLETED
     phases["unloading"].status = PhaseStatus.COMPLETED
     await db_session.flush()
@@ -488,8 +482,6 @@ async def test_exception_with_a_foreign_phase_event_id_still_records(
     assert row.phase_event_id == phases["in_transit"].id
 
 
-# ── Evidence ownership ───────────────────────────────────────────────────────────
-
 
 async def _seed_another_trip(db_session):
     """A second, unrelated org/trip/driver — standing in for "somebody else's evidence"."""
@@ -545,7 +537,6 @@ async def test_supporting_artifact_from_another_trip_is_rejected(
     )
 
     assert resp.status_code == 404
-    # No half-written exception, and no dispatcher-facing ping for a rejected claim.
     rows = await db_session.execute(
         select(TripException).where(TripException.trip_id == trip.id)
     )
@@ -592,8 +583,6 @@ async def test_supporting_artifact_owned_by_this_trip_is_accepted(
     assert resp.status_code == 201
     assert resp.json()["supporting_artifact_id"] == str(artifact_id)
 
-
-# ── client_report_id idempotency ────────────────────────────────────────────────
 
 
 async def test_replaying_the_same_client_report_id_returns_the_original_exception(
@@ -686,8 +675,6 @@ async def test_exception_without_a_client_report_id_still_works(client: AsyncCli
     assert resp.status_code == 201
 
 
-# ── auth ────────────────────────────────────────────────────────────────────────
-
 
 async def test_raise_exception_with_an_invalid_token_returns_401(client: AsyncClient, seed_trip):
     trip, _driver = seed_trip
@@ -711,8 +698,6 @@ async def test_raise_exception_without_a_token_returns_403(client: AsyncClient, 
 
     assert resp.status_code == 403
 
-
-# ── Trailer analytics: which vehicle broke down ─────────────────────────────────
 
 
 async def _attach_trailers(db_session, trip: Trip, count: int) -> list[Vehicle]:
@@ -877,7 +862,6 @@ async def test_replay_with_a_different_vehicle_type_keeps_the_original_vehicle(
     trip, driver = seed_trip
     await _attach_trailers(db_session, trip, 1)
     report_id = str(uuid.uuid4())
-    # One token for both: a replay is the same phone resending its queued report.
     token = make_token(sub=str(driver.id), role="driver")
 
     first = await _post_exception(

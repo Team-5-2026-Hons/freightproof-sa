@@ -68,7 +68,6 @@ export default function TokensPage() {
         </p>
       </header>
 
-      {/* ── COLOURS ─────────────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-6">Colours</h2>
         <div className="flex flex-col gap-8">
@@ -95,7 +94,6 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── TYPOGRAPHY ──────────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-6">Typography: Inter</h2>
         <div className="bg-surface-container-lowest rounded-xl shadow-ambient overflow-hidden">
@@ -130,7 +128,6 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── SHADOWS ─────────────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-2">Ambient Shadows</h2>
         <p className="text-sm text-surface-on-variant mb-6">Soft, large-radius Gaussian. No hard offset shadows anywhere.</p>
@@ -151,7 +148,6 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── BORDER RADII ────────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-6">Border Radii</h2>
         <div className="flex flex-wrap gap-10">
@@ -171,7 +167,6 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── GLASSMORPHISM ───────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-2">Glassmorphism</h2>
         <p className="text-sm text-surface-on-variant mb-6">
@@ -186,7 +181,6 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── Z-INDEX ─────────────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-6">Z-Index Scale</h2>
         <div className="bg-surface-container-lowest rounded-xl shadow-ambient overflow-hidden">
@@ -216,7 +210,6 @@ export default function TokensPage() {
         </div>
       </section>
 
-      {/* ── QUICK REFERENCE ─────────────────────────────────────── */}
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-6">Quick Reference</h2>
         <div className="grid grid-cols-2 gap-3">

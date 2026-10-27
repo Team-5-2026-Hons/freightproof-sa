@@ -127,7 +127,6 @@ async def move_phone(
         )
 
     if body.placement == PHONE_AT_STOP:
-        # MovePhoneRequest's validator guarantees trip_stop_id for this placement.
         assert body.trip_stop_id is not None
         try:
             stop, precinct = await dev_truck_service.resolve_target_stop(
@@ -142,8 +141,6 @@ async def move_phone(
             db, trip_id=trip.id, origin=body.placement == PHONE_AT_ORIGIN,
         )
 
-    # The precinct CENTRE — the same geometry move-truck's at_stop scenario offsets from,
-    # so a phone and a truck placed at one stop agree exactly rather than approximately.
     await dev_demo_phone.stage_phone_position(
         trip.id, lat=precinct.latitude, lng=precinct.longitude,
     )

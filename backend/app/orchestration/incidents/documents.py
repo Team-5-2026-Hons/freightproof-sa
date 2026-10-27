@@ -28,7 +28,6 @@ from app.storage.mime_allowlist import resolve_mime_type
 from app.storage.supabase_storage import upload_evidence_file
 
 _PDF = "application/pdf"
-# incident_updates.to_value is String(50); the name is a label for people, the hash is the identity.
 _FILE_NAME_MAX = 50
 
 
@@ -37,7 +36,6 @@ class DocumentUpload:
     file_bytes: bytes
     declared_mime: str | None
     file_name: str | None
-    # Required: what the document is and why it is on the incident.
     note: str
 
 

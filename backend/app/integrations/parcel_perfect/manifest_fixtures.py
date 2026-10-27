@@ -26,11 +26,6 @@ from app.integrations.parcel_perfect.waybill_fixtures import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Manifest-first fixtures (FP-281). New numbers only: 69/70's waybills are asserted
-# by existing tests and are not modified — they only gain a header.
-# ---------------------------------------------------------------------------
-
 MANIFEST_HAPPY_PATH = 81
 MANIFEST_OPEN_NO_TIMES = 82
 MANIFEST_NO_WAYBILLS = 83
@@ -68,18 +63,6 @@ MANIFEST_DEMO_WAYBILLS: dict[str, PPWaybillResponse] = {
 
 MOCK_WAYBILLS.update(MANIFEST_DEMO_WAYBILLS)
 
-
-# ---------------------------------------------------------------------------
-# Testing batch: 50 waybills on 15 closed, timed manifests (84-98).
-#
-# The wizard is manifest-first and a manifest is spent once it is on a live trip, so
-# 81 alone gives one test trip and then every lookup is MANIFEST_ALREADY_ON_TRIP.
-# These are for spending freely in dev; keep 81 for the walkthrough. Most leave
-# Cape Town because that is where activation is tested on a real phone. The other
-# routes are there so non-CPT origins are exercised too.
-#
-# Waybill numbers follow 81's pattern: MFTWB + manifest number + line on the manifest.
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -208,18 +191,6 @@ class _PPTime:
     hhmm: str
 
 
-# ---------------------------------------------------------------------------
-# Rehearsal batch: 30 clean manifests (101-130) for rehearsing the demo.
-#
-# 24 local (Cavendish, UCT North Stop, UCT South Stop), small enough to carry by hand,
-# and 6 national between the three seeded depots. Every manifest starts with clean cargo:
-# no POD, failure or scans, and nothing here creates a trip. Happy and unhappy runs come
-# from the real driver flow and the dev triggers panel, so this file records no outcome.
-#
-# Waybills follow the testing batch's pattern, MFTWB + manifest number + line, which at
-# three digits gives ten characters and cannot collide with the nine of 81-98.
-# ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class _RehearsalSchedule:
@@ -237,9 +208,6 @@ class _RehearsalManifest:
     schedule: _RehearsalSchedule
 
 
-# Local legs are minutes, not a night: depart 09:00, arrive 09:45, all today. Identical on
-# every local manifest so the start-in-order rule (earlier departure first, same driver,
-# same day) never decides the rehearsal order; activation itself only needs today's date.
 _LOCAL_SCHEDULE = _RehearsalSchedule(
     _PPTime(0, "07:00"), _PPTime(0, "08:15"), _PPTime(0, "09:00"), _PPTime(0, "09:45"),
 )
@@ -251,9 +219,9 @@ def _overnight(arrives: str) -> _RehearsalSchedule:
     return _RehearsalSchedule(_PPTime(0, "12:00"), _PPTime(0, "16:30"), _PPTime(0, "20:00"), _PPTime(1, arrives))
 
 
-_CPT_JNB_SCHEDULE = _overnight("11:00")   # about 15 h
-_CPT_BFN_SCHEDULE = _overnight("07:00")   # about 11 h
-_BFN_JNB_SCHEDULE = _overnight("01:30")   # about 5.5 h
+_CPT_JNB_SCHEDULE = _overnight("11:00")
+_CPT_BFN_SCHEDULE = _overnight("07:00")
+_BFN_JNB_SCHEDULE = _overnight("01:30")
 
 
 def _run(
@@ -270,10 +238,9 @@ def _run(
     }
 
 
-_L = _BatchLine  # (parcels, kg, declared value in rand, description)
+_L = _BatchLine
 
 REHEARSAL_BATCH_MANIFESTS: dict[int, _RehearsalManifest] = {
-    # --- Local: 6 per direction, 1-4 waybills, 2-6 parcels a waybill ---------------------
     **_run(101, _CAVENDISH, _UCT_NORTH, _LOCAL_SCHEDULE,
         (_L(2, 14.0, 3200.0, "Stationery cartons"),),
         (_L(3, 21.5, 5800.0, "Prescribed textbooks"),),
@@ -314,7 +281,6 @@ REHEARSAL_BATCH_MANIFESTS: dict[int, _RehearsalManifest] = {
         (_L(3, 26.0, 5900.0, "Biology specimens"), _L(2, 16.0, 4100.0, "Drone cases"),
          _L(4, 33.0, 7500.0, "Gym equipment"), _L(3, 18.0, 3400.0, "Event signage")),
     ),
-    # --- National: one per route, in the order the brief lists them ---------------------
     **_run(125, _CPT, _JHB, _CPT_JNB_SCHEDULE,
         (_L(6, 240.0, 15800.0, "Wine cartons"), _L(4, 150.0, 9600.0, "Skin-care cartons")),
     ),
@@ -369,7 +335,6 @@ class _ManifestHeaderFixture:
     notes: tuple[tuple[_PPTime, str, str], ...] = ()
 
 
-# Bruce, 28 Jul §9: the client creates the manifest around 12:00 on the day.
 _CREATED = _PPTime(0, "12:00")
 _CLOSED = _PPTime(0, "16:30")
 _DEPARTS = _PPTime(0, "20:00")
@@ -390,11 +355,8 @@ def _closed_manifest(
 
 
 MOCK_MANIFEST_HEADERS: dict[int, _ManifestHeaderFixture] = {
-    # WAY001-003 + MOCKWAY001, all MOCK01. Durban has no demo precinct.
     69: _closed_manifest(_JHB.hub_code, _HUB_DURBAN),
-    # WAY004 is UNMAP9, WAY005 is MOCK01: two clients on one manifest.
     70: _closed_manifest(_JHB.hub_code, _CPT.hub_code),
-    # The four seeded trips (scripts/seed_trips.py), all leaving Cape Town.
     _MANIFEST_SINGLE: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
     _MANIFEST_XDOCK: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
     _MANIFEST_ACTIVE: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
@@ -403,7 +365,6 @@ MOCK_MANIFEST_HEADERS: dict[int, _ManifestHeaderFixture] = {
         _CPT.hub_code, _JHB.hub_code, client_reference="PO-CGY-0081",
         notes=((_PPTime(0, "16:25"), "CGY Dispatch", "Kaapstad → Gauteng: two pallets shrink-wrapped together"),),
     ),
-    # The 12:00 case: open, no vehicle yet, no times.
     MANIFEST_OPEN_NO_TIMES: _ManifestHeaderFixture(
         origin_hub=_CPT.hub_code, destination_hub=_JHB.hub_code, created=_CREATED,
         closed=None, departure=None, arrival=None,
@@ -411,7 +372,6 @@ MOCK_MANIFEST_HEADERS: dict[int, _ManifestHeaderFixture] = {
     MANIFEST_NO_WAYBILLS: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
 }
 
-# Closed and timed like 81, so each testing-batch manifest previews with no warnings.
 MOCK_MANIFEST_HEADERS.update({
     number: _closed_manifest(
         manifest.origin.hub_code, manifest.destination.hub_code,
@@ -421,10 +381,6 @@ MOCK_MANIFEST_HEADERS.update({
 })
 
 
-# Closed and timed, so each rehearsal manifest previews with no warnings beyond the
-# unlinked local hubs. The fixture's times are re-resolved against "today" on every
-# lookup; the mock pins "today" per request, so a preview and the create that follows
-# agree unless the clock crosses midnight between them.
 MOCK_MANIFEST_HEADERS.update({
     number: _ManifestHeaderFixture(
         origin_hub=manifest.origin.hub_code, destination_hub=manifest.destination.hub_code,

@@ -64,8 +64,6 @@ class ReviewRecord:
     outcome: str
     contact_method: str | None
     review_note: str | None
-    # The description of a dispatcher-authored note (override, cancellation); None for an
-    # ordinary review of someone else's report.
     authored_description: str | None
 
 
@@ -75,7 +73,6 @@ class CancellationRecord:
     exception_id: uuid.UUID
     cancelled_by_user_id: uuid.UUID
     closed_at: datetime
-    # The exact persisted cancellation-note description, prefix included.
     cause_description: str
 
 
@@ -186,7 +183,6 @@ def validate_payload_version(payload: object, receipt_type: str) -> None:
     if type(version) is not int or version != EVIDENCE_PAYLOAD_VERSION:
         raise UnsupportedEvidencePayloadError(f"unsupported evidence payload version: {version!r}")
     event_type = payload.get("event_type")
-    # type() first: an array/object kind is unhashable and would crash the set lookup.
     if type(event_type) is not str or event_type not in EVIDENCE_EVENT_TYPES or event_type != receipt_type:
         raise UnsupportedEvidencePayloadError(
             f"evidence event kind {event_type!r} does not match receipt type {receipt_type!r}"

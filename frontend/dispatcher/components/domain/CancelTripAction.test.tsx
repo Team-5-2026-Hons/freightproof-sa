@@ -5,16 +5,11 @@ import { CancelTripDialog } from './CancelTripAction'
 import { cancelTrip } from '@/lib/api/client'
 import type { Trip } from '@shared/lib/types/trip'
 
-// client.ts (even mocked below via importActual, which re-evaluates the real module)
-// imports the Supabase client at module scope, which throws without real env vars in
-// the test environment — mock it the same way lib/api/client.test.ts does.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// Isolate the component from the real HTTP layer — client.ts's own request/retry
-// logic is covered by lib/api/client.test.ts.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
   return { ...actual, cancelTrip: vi.fn() }
@@ -51,8 +46,6 @@ describe('CancelTripDialog — availability', () => {
   })
 
   it.each(['closed', 'cancelled'] as const)('calls onClose once when open and status becomes %s', (status) => {
-    // A background refetch can show someone else already closed/cancelled the trip while
-    // this dialog is open — the parent's `cancelOpen` state must not go stale.
     const onClose = vi.fn()
     const { rerender } = renderDialog({ status: 'active', open: true, onClose })
 
@@ -142,7 +135,6 @@ describe('CancelTripDialog — dismissal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(mockedCancelTrip).not.toHaveBeenCalled()
 
-    // Simulate the parent closing and reopening the dialog.
     rerender(
       <ToastProvider>
         <CancelTripDialog tripId="trip-1" status="active" open={false} onClose={onClose} onCancelled={vi.fn()} />

@@ -82,7 +82,4 @@ def test_facade_import_scan_allows_submodule_imports() -> None:
 
 
 def test_facade_does_not_re_export_the_rebound_token_cache() -> None:
-    # client.py rebinds _cached_token with `global`, so a copy on the facade would be a stale
-    # snapshot that never sees the new token. Leaving it off makes a test that reads or
-    # assigns it through the facade fail loudly instead of silently testing nothing.
     assert not hasattr(facade, "_cached_token")

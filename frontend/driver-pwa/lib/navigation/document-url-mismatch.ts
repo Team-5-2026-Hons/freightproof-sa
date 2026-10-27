@@ -32,9 +32,6 @@
 
 export const HOME_PATH = '/'
 
-// The paths that genuinely ARE Home. '/index.html' because a WebView may reload the
-// resolved filename rather than the clean URL, and a trailing slash because nothing
-// guarantees which form the reload uses.
 const HOME_PATHNAMES: readonly string[] = ['', '/', '/index.html']
 
 /**
@@ -43,8 +40,6 @@ const HOME_PATHNAMES: readonly string[] = ['', '/', '/index.html']
  * the recovery itself is a navigation.
  */
 export function isStrandedHomeDocument(pathname: string): boolean {
-  // Trailing slashes only: a path is never collapsed further, so '/trips/' stays a
-  // non-Home route rather than being normalised into one.
   const trimmed = pathname.replace(/\/+$/, '')
   return !HOME_PATHNAMES.includes(trimmed)
 }

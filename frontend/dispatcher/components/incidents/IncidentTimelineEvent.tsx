@@ -15,18 +15,13 @@ interface Props {
   /** The card was activated. The page answers by showing the incident in the Info panel, so the reader
    *  stays on the trip; the incident's own page is one click further, from there. */
   onOpen: (incidentId: string) => void
-  /** The Info panel is showing this incident: the card wears the selected-exception state. */
   selected?: boolean
 }
 
-// An open or investigating incident is the loudest thing on the rail; a closed one is history, so it
-// drops to the quiet card a transfer wears and keeps only the siren to say what it was.
 const LIVE_NODE = 'bg-err text-err-on'
 const CLOSED_NODE = 'border border-outline-v text-on-surf-v'
 const LIVE_CARD = 'border border-err/40 bg-err-c/40 hover:bg-err-c/60'
 const CLOSED_CARD = 'border border-outline-v/40 bg-surf-lowest hover:bg-surf'
-// While the Info panel shows it: the selected-exception surface replaces the card's own (two
-// background utilities on one element do not combine), keeping the border that says live or closed.
 const SELECTED_CARD = `${EXCEPTION_SELECTED_SURFACE} ${EXCEPTION_SELECTION_OUTLINE}`
 
 /** An incident drawn between phase cards like a driver transfer, but louder while it is live: a filled siren

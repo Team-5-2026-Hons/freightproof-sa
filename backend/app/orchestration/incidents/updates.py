@@ -114,7 +114,6 @@ async def _finding(db: AsyncSession, ledger: OpenLedger, request: ParcelFindingU
         kind=IncidentUpdateKind.PARCEL_FINDING, user_id=user_id, at=at, note=request.note, parcel_id=request.parcel_id,
         from_value=enum_text(named.latest_finding) if named.latest_finding else None, to_value=request.finding.value,
     ))
-    # The parcel's own cache, from the same state the ledger now adds up to.
     named.latest_finding = ledger.state.parcel_findings[request.parcel_id]
 
 

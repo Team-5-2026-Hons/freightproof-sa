@@ -14,10 +14,8 @@ import re
 EM_DASH = "—"
 EN_DASH = "–"
 
-# Spaces and tabs only, never a line break, so a dash at a line's end doesn't join two lines.
 _RANGE = re.compile(rf"(\d)[ \t]*{EM_DASH}[ \t]*(\d)")
 _LINE_START = re.compile(rf"^([ \t]*){EM_DASH}[ \t]*", re.MULTILINE)
-# A comma already before the dash ("x, — y") isn't doubled.
 _ELSEWHERE = re.compile(rf",?[ \t]*{EM_DASH}[ \t]*")
 
 

@@ -9,8 +9,6 @@ import {
   type AddressSuggestion,
 } from '@/lib/geocode/photon'
 
-// Long enough that typing "12 Sookhai Place" is one request, not sixteen — Photon's public
-// instance is fair-use, and every keystroke request is a request against that budget.
 export const ADDRESS_SEARCH_DEBOUNCE_MS = 350
 
 type SearchStatus = 'idle' | 'loading' | 'done' | 'error'
@@ -26,8 +24,6 @@ interface AddressSearchProps {
  */
 export function AddressSearch({ onSelect }: AddressSearchProps): React.JSX.Element {
   const listboxId = useId()
-  // What the input shows vs what is searched: a pick rewrites the input to the chosen
-  // address without that text being searched all over again.
   const [query, setQuery] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [results, setResults] = useState<AddressSuggestion[]>([])
@@ -39,8 +35,6 @@ export function AddressSearch({ onSelect }: AddressSearchProps): React.JSX.Eleme
   useEffect(() => {
     if (searchTerm === '') return
 
-    // Aborts the in-flight request when the dispatcher keeps typing, so a slow answer to
-    // "12 Sook" can never overwrite the answer to "12 Sookhai Place".
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setStatus('loading')
@@ -77,7 +71,6 @@ export function AddressSearch({ onSelect }: AddressSearchProps): React.JSX.Eleme
     setSearchTerm(value)
   }
 
-  // Close on outside click, like SearchSelect.
   useEffect(() => {
     function handlePointerDown(e: MouseEvent): void {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
@@ -107,7 +100,6 @@ export function AddressSearch({ onSelect }: AddressSearchProps): React.JSX.Eleme
       e.preventDefault()
       setActiveIndex((i) => (i <= 0 ? results.length - 1 : i - 1))
     } else if (e.key === 'Enter' && activeIndex >= 0) {
-      // Inside a form-less page, but still: Enter must pick, never submit anything.
       e.preventDefault()
       pick(results[activeIndex])
     }
@@ -167,7 +159,6 @@ export function AddressSearch({ onSelect }: AddressSearchProps): React.JSX.Eleme
               id={optionId(index)}
               role="option"
               aria-selected={index === activeIndex}
-              // mousedown, not click: fires before the input's blur/outside-click close.
               onMouseDown={(e) => { e.preventDefault(); pick(suggestion) }}
               onMouseEnter={() => setActiveIndex(index)}
               className={cn(

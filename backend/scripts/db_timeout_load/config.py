@@ -13,19 +13,14 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
 
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-# Service names inside infrastructure/docker/docker-compose.load.yml (and CI's aliases).
 COMPOSE_DB_HOST = "test-db"
 COMPOSE_REDIS_HOST = "test-redis"
 DATABASE_NAME = "freightproof_test"
 REDIS_DATABASE_PATH = "/0"
 
-# The production default from app/core/config.py (2 retained + 1 overflow). Pinned rather
-# than read from Settings, which cannot be imported until configure_environment has run;
-# the report records whether it still matches the code default.
 POOL_SIZE = 2
 MAX_OVERFLOW = 1
 POOL_CAPACITY = POOL_SIZE + MAX_OVERFLOW
-# Four times the pool's capacity, so every fault wave has requests queued behind it.
 FAULT_CONCURRENCY = 12
 
 PROFILES = ("smoke", "ci", "evidence")
@@ -36,23 +31,16 @@ FAULT_SCENARIOS = (
 )
 SCENARIO_NAMES = (HEALTHY, *FAULT_SCENARIOS)
 CHAT_HOLD_SCENARIOS = frozenset({"chat_short", "chat_long"})
-# A bounded sweep from one request at a time up to the fault-wave size.
 HEALTHY_CONCURRENCY_LEVELS = (1, 3, 6, FAULT_CONCURRENCY)
 DEFAULT_HEALTHY_REQUESTS = 120
 DEFAULT_REPETITIONS = 3
 
-# The chat provider waits for a fraction of the pool-wait budget while its request holds a
-# connection: the short hold stays below the budget (reads must still succeed), the long
-# hold exceeds it (queued reads must hit pool_timeout).
 SHORT_PROVIDER_HOLD_FACTOR = 0.25
 LONG_PROVIDER_HOLD_FACTOR = 1.25
 
-# S in the testing doc: scheduling plus the fixture's ordinary local queries.
 SCHEDULER_ALLOWANCE_SECONDS = 5.0
-# How far past its envelope a request may run before the independent watchdog fires.
 WATCHDOG_MARGIN_SECONDS = 5.0
 
-# Budgets field -> the app setting it overrides.
 BUDGET_SETTINGS = {
     "connect": "DB_CONNECT_TIMEOUT_SECONDS",
     "pool": "DB_POOL_TIMEOUT_SECONDS",
@@ -72,7 +60,6 @@ def database_target(value: str) -> URL:
         or url.database != DATABASE_NAME
         or dict(url.query) not in ({}, {"ssl": "disable"})
     ):
-        # Never include the rejected input: it might contain a real password.
         raise ValueError("Load tests require a local freightproof_test database without connection overrides")
     return url
 
@@ -102,9 +89,6 @@ def configure_environment(database: str, redis: str) -> None:
     redis_target(redis)
     if Path(".env").exists():
         raise ValueError("Run the load test in the isolated image, with no .env in its working directory")
-    # Override inherited integration settings before app.core.config instantiates Settings.
-    # Every external integration is mocked or given a placeholder, so no run can reach
-    # Supabase, Hedera, a partner API or a real AI provider.
     os.environ.update({
         "DATABASE_URL": database,
         "TEST_DATABASE_URL": database,
@@ -141,11 +125,6 @@ class Budgets:
 
     @property
     def general_envelope(self) -> float:
-        # Upper bound for a request whose fault hits SQL: pool wait, ping and reconnect, one
-        # stalled command, then rollback, close and discard (four cleanup budgets), plus the
-        # scheduling allowance. The allowance also covers SQLAlchemy's fixed 2 s close of a
-        # discarded connection when the smoke cleanup budget is shorter. Setup waits use this
-        # bound too. It fits the small fixture; it is never the API's request deadline.
         return (
             self.pool + 2 * self.connect + 2 * self.command + 4 * self.cleanup
             + SCHEDULER_ALLOWANCE_SECONDS
@@ -156,8 +135,6 @@ class Budgets:
         return self.pool * factor
 
     def envelope(self, scenario: str) -> float:
-        # Declared before any fault is injected. A failed checkout runs no application SQL,
-        # so pool and connect faults get tighter bounds than the general one.
         if scenario == "pool":
             return self.pool + 2 * self.cleanup + SCHEDULER_ALLOWANCE_SECONDS
         if scenario == "connect":
@@ -173,11 +150,7 @@ class Budgets:
         return {setting: getattr(self, field) for field, setting in BUDGET_SETTINGS.items()}
 
 
-# Short fault-test budgets so the whole matrix runs in about a minute. Not deployment values.
 SMOKE_BUDGETS = Budgets(connect=0.5, pool=0.5, command=1.0, cleanup=0.5)
-# Shared CI hosts need room for twelve healthy reads through three pool slots. Keep
-# the same budgets during faults AND recovery, and still require bounded failures:
-# no recovery retries, timeout overrides mid-cycle, or accepted recovery 503s.
 CI_BUDGETS = Budgets(connect=2.0, pool=3.0, command=2.0, cleanup=1.0)
 
 
@@ -188,7 +161,6 @@ def budgets_for(profile: str) -> Budgets:
         return CI_BUDGETS
     if profile != "evidence":
         raise ValueError("Unknown load profile")
-    # Read code defaults, rather than accidentally measuring a developer's overrides.
     from app.core.config import Settings
 
     return Budgets(**{

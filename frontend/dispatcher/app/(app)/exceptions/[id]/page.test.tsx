@@ -10,19 +10,11 @@ import type { TripException, TripExceptionDetail } from '@shared/lib/types/excep
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { VehicleId } from '@shared/lib/types/vehicle'
 
-// client.ts imports the Supabase client at module scope, which throws without real env
-// vars — mocked the same way lib/api/client.test.ts and CancelTripAction.test.tsx do.
-// The rest of the module (ApiError, reviewException) is mocked separately below since
-// this page never imports supabase/client directly.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// ForensicModeProvider reads the signed-in user. Nothing these tests assert depends on
-// who that is, so the identity is stubbed rather than an AuthProvider stood up.
-// The claim UI does depend on who is signed in (mine vs a colleague's claim), so the
-// user is a mutable stub the claim tests set; everything else leaves it at null.
 let mockUserId: string | null = null
 vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: mockUserId === null ? null : { id: mockUserId } }),
@@ -41,8 +33,6 @@ vi.mock('@/lib/hooks/useExceptionDetail', () => ({
   useExceptionDetail: vi.fn(),
 }))
 
-// Keep ApiError real (instanceof checks in the page's catch block depend on it) and mock
-// only the one mutation this page calls — same pattern as CancelTripAction.test.tsx.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
   return { ...actual, reviewException: vi.fn(), claimException: vi.fn(), releaseException: vi.fn() }
@@ -119,11 +109,6 @@ function baseException(overrides: Partial<TripExceptionDetail> = {}): TripExcept
   }
 }
 
-// reviewException's real return type (TripExceptionRead on the backend, mirrored by the
-// TripException type — see that type's own header comment) — narrower than
-// TripExceptionDetail. The page discards this response and calls refetchSilent()
-// instead (see reviewException's own doc comment in lib/api/client.ts for why), so only
-// its shape matters here, not its values.
 const REVIEWED_RESPONSE: TripException = {
   id: EXCEPTION_ID as TripException['id'],
   trip_id: '22222222-2222-2222-2222-222222222222',
@@ -165,9 +150,6 @@ function mockDetail(
 
 function renderPage() {
   render(
-    // TripIdStamp reads forensic mode, so the page cannot mount without it. Both
-    // providers are real rather than mocked — neither has any bearing on what these
-    // tests assert, and faking them would only add a second thing that could be wrong.
     <ForensicModeProvider>
       <ToastProvider>
         <ExceptionDetailPage />
@@ -209,7 +191,6 @@ describe('Exception detail — loading and error states', () => {
     expect(screen.getByText('Exception Detail')).toBeInTheDocument()
     const skeleton = screen.getByRole('status', { name: 'Loading exception' })
     expect(skeleton).toHaveAttribute('aria-busy', 'true')
-    // Placeholders must never read as recorded evidence.
     expect(skeleton).toHaveTextContent('')
     expect(screen.queryByLabelText('Review note (required)')).not.toBeInTheDocument()
   })
@@ -230,8 +211,6 @@ describe('Exception detail — loading and error states', () => {
     const backButton = screen.getByRole('button', { name: 'Back' })
     const title = screen.getAllByText('Seal Mismatch')[0]
 
-    // DOCUMENT_POSITION_FOLLOWING: the title comes after Back in the header row, which is
-    // what puts Back on the left rather than in TopBar's right-hand action slot.
     expect(backButton.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
@@ -265,8 +244,6 @@ describe('Exception detail — loading and error states', () => {
   })
 
   it('does not tear down a loaded record when a background refresh fails', () => {
-    // useExceptionDetail refetches on realtime events for this trip; a failed background
-    // refresh must not replace a half-typed review with an error page.
     mockDetail(baseException(), { error: 'Network error' })
     renderPage()
 
@@ -288,8 +265,6 @@ describe('Exception detail — trip lifecycle banner', () => {
     renderPage()
 
     expect(screen.getByText(/trip closed/i)).toBeInTheDocument()
-    // Terminal-trip-safe: the review form is still present and its submit control is
-    // still reachable (disabled only by the empty-field gate, never by trip lifecycle).
     fillValidForm()
     expect(submitButton()).toBeEnabled()
   })
@@ -319,7 +294,6 @@ describe('Exception detail — phase/stop context', () => {
 
     const context = screen.getByRole('region', { name: 'Trip context' })
     expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('Trip-level record, no phase')
-    // Scoped to the context block: the header's own line legitimately starts with the reference.
     expect(within(context).queryByText(/null/i)).not.toBeInTheDocument()
     expect(within(context).queryByText(/^·/)).not.toBeInTheDocument()
   })
@@ -398,7 +372,6 @@ describe('Exception detail: gps_mismatch trigger', () => {
   })
 })
 
-// Trailer analytics: a breakdown shows which vehicle it was recorded against.
 describe('Exception detail — breakdown vehicle', () => {
   /** The value beside the "Vehicle" meta label, or null when there is no such row. */
   function vehicleRow(): string | null {
@@ -475,14 +448,10 @@ describe('Exception detail — review form gating', () => {
   })
 
   it('a keyboard-driven submit with a missing field does not call reviewException', () => {
-    // Tests the early-return guard inside the handler itself, not just the disabled
-    // attribute — a form can still be submitted by pressing Enter in a field.
     mockDetail(baseException())
     renderPage()
 
     fireEvent.change(noteField(), { target: { value: NOTE } })
-    // Outcome left unselected. Submit the form directly rather than clicking the
-    // (disabled) button, to exercise the handler's own guard.
     fireEvent.submit(noteField().closest('form')!)
 
     expect(mockedReviewException).not.toHaveBeenCalled()
@@ -579,8 +548,6 @@ describe('Exception detail — submit outcomes', () => {
   })
 
   it('on success from a trip, returns to that trip rather than the exceptions list', async () => {
-    // The reader came from a trip timeline. Ejecting them to the list after a review
-    // loses the record they were working through.
     searchParams = new URLSearchParams({ returnTo: '/trips/abc?panel=exceptions' })
     mockDetail(baseException())
     renderPage()
@@ -592,8 +559,6 @@ describe('Exception detail — submit outcomes', () => {
   })
 
   it('ignores a return path that would leave the app', async () => {
-    // The parameter is attacker-controllable via the address bar, so an off-origin value
-    // must never become a redirect the app performs on the reader's behalf.
     searchParams = new URLSearchParams({ returnTo: 'https://example.com/phish' })
     mockDetail(baseException())
     renderPage()
@@ -616,9 +581,6 @@ describe('Exception detail — submit outcomes', () => {
 
     await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
     expect(push).not.toHaveBeenCalled()
-    // Exact match on the toast TITLE, not a substring search — the toast body also
-    // contains "already reviewed by a colleague" (the backend's own detail message),
-    // and both must be able to say so without the assertion becoming ambiguous.
     expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
   })
 })
@@ -788,7 +750,6 @@ describe('Exception detail — claim, release and take over', () => {
 
     expect(screen.getByText(/Dispatcher note by Ben/)).toBeInTheDocument()
     expect(screen.queryByText(/Reviewed by Ben/)).not.toBeInTheDocument()
-    // Reviewer and claimer are the same person, so no separate claim line.
     expect(screen.queryByText(/Claimed by/)).not.toBeInTheDocument()
   })
 })
@@ -828,7 +789,6 @@ describe('exception detail header and hierarchy', () => {
     expect(within(context).getByText('Trip').nextElementSibling).toHaveTextContent('FP-2026-0001')
     expect(within(context).getByText('Raised').nextElementSibling).toHaveTextContent(/03 Sep\w* 2026, 12:00 SAST/)
     expect(within(context).getByText('Source').nextElementSibling).toHaveTextContent('System')
-    // Named once on the page, not again in the header.
     expect(screen.getAllByText(/FP-2026-0001/)).toHaveLength(1)
   })
 
@@ -905,7 +865,6 @@ describe('Exception detail — review-only evidence', () => {
 
     expect(screen.queryByText(/anchor/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /verify integrity/i })).not.toBeInTheDocument()
-    // Outside forensic mode the anchored event's HashScan link is hidden too.
     expect(screen.queryByRole('link', { name: /HashScan/ })).not.toBeInTheDocument()
   })
 })

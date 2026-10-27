@@ -28,7 +28,6 @@ from app.storage.supabase_storage import EvidenceObjectIntegrityError, EvidenceS
 from tests.integration._audit_pack_anchor_helpers import anchor_event, raise_critical, review_exception
 from tests.integration.audit_pack_seed import AuditTrip, seed_audit_trip
 
-# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
 pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 PUBLIC = "/api/v1/public/audit-packs"
@@ -105,13 +104,10 @@ async def _events(db: AsyncSession) -> list[str]:
 
 
 async def test_open_shared_pack_returns_manifest_seal_and_logs_view(client: AsyncClient, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}", headers={"User-Agent": "ClaimsBrowser/1.0"})
 
-    # Assert
     assert response.status_code == 200
     body = response.json()
     assert body["manifest"]["trip"]["trip_reference"] == "FP-AUDIT"
@@ -125,65 +121,51 @@ async def test_open_shared_pack_returns_manifest_seal_and_logs_view(client: Asyn
 
 
 async def test_open_shared_pack_unknown_token_is_404_and_logs_nothing(client, db_session, audit_trip, storage):
-    # Act
     response = await client.get(f"{PUBLIC}/not-a-real-token-at-all")
 
-    # Assert
     assert response.status_code == 404
     assert await _events(db_session) == []
 
 
 async def test_open_shared_pack_revoked_is_410_and_logged(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
     await revoke_audit_pack(db_session, pack_id=issued.pack.id, organization_id=audit_trip.org.id,
                             user_id=audit_trip.dispatcher.id)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}")
 
-    # Assert
     assert response.status_code == 410
     assert "revoked" in response.json()["detail"]
     assert await _events(db_session) == ["denied_revoked"]
 
 
 async def test_open_shared_pack_expired_is_410_and_logged(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
     issued.pack.expires_at = datetime.now(UTC) - timedelta(minutes=1)
     await db_session.flush()
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}")
 
-    # Assert
     assert response.status_code == 410
     assert "expired" in response.json()["detail"]
     assert await _events(db_session) == ["denied_expired"]
 
 
 async def test_shared_pdf_download_is_logged(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}/pdf")
 
-    # Assert
     assert response.status_code == 200
     assert hashlib.sha256(response.content).hexdigest() == issued.pack.pdf_sha256
     assert await _events(db_session) == ["pdf_downloaded"]
 
 
 async def test_shared_artifact_in_manifest_is_served(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}/artifacts/{audit_trip.seal_photo.id}")
 
-    # Assert
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/jpeg"
     assert hashlib.sha256(response.content).hexdigest() == audit_trip.seal_photo.file_hash
@@ -191,20 +173,16 @@ async def test_shared_artifact_in_manifest_is_served(client, db_session, audit_t
 
 
 async def test_shared_artifact_not_in_manifest_is_404(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}/artifacts/{uuid.uuid4()}")
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_shared_artifact_integrity_failure_is_409_not_503(
     client, db_session, audit_trip, storage, monkeypatch: pytest.MonkeyPatch,
 ):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
     async def tampered_download(*, s3_bucket: str, s3_key: str) -> bytes:
@@ -212,10 +190,8 @@ async def test_shared_artifact_integrity_failure_is_409_not_503(
 
     monkeypatch.setattr(access, "download_evidence_file", tampered_download)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}/artifacts/{audit_trip.seal_photo.id}")
 
-    # Assert
     assert response.status_code == 409
     assert "no longer matches" in response.json()["detail"]
 
@@ -223,7 +199,6 @@ async def test_shared_artifact_integrity_failure_is_409_not_503(
 async def test_shared_artifact_storage_outage_is_503(
     client, db_session, audit_trip, storage, monkeypatch: pytest.MonkeyPatch,
 ):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
     async def storage_down(*, s3_bucket: str, s3_key: str) -> bytes:
@@ -231,21 +206,16 @@ async def test_shared_artifact_storage_outage_is_503(
 
     monkeypatch.setattr(access, "download_evidence_file", storage_down)
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}/artifacts/{audit_trip.seal_photo.id}")
 
-    # Assert
     assert response.status_code == 503
 
 
 async def test_pack_seal_check_by_id_shows_no_evidence(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     response = await client.get(f"{PUBLIC}/seal/{issued.pack.id}")
 
-    # Assert
     assert response.status_code == 200
     body = response.json()
     assert body["pdf_sha256"] == issued.pack.pdf_sha256
@@ -255,23 +225,18 @@ async def test_pack_seal_check_by_id_shows_no_evidence(client, db_session, audit
 
 
 async def test_pack_seal_check_unknown_id_is_404(client, db_session, audit_trip, storage):
-    # Act
     response = await client.get(f"{PUBLIC}/seal/{uuid.uuid4()}")
 
-    # Assert
     assert response.status_code == 404
 
 
 async def test_live_verification_reports_verified_records_and_seal(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         mirror.return_value.verify_hash.return_value = True
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
-    # Assert
     assert response.status_code == 200
     body = response.json()
     assert body["seal_status"] == "verified"
@@ -281,23 +246,19 @@ async def test_live_verification_reports_verified_records_and_seal(client, db_se
 
 
 async def test_live_verification_detects_record_changed_after_issue(client, db_session, audit_trip, storage):
-    # Arrange: the snapshot is frozen, but someone edits the live seal number afterwards.
     issued = await _issue(db_session, audit_trip)
     audit_trip.departure.seal_number = "SEAL-FORGED"
     await db_session.flush()
 
-    # Act
     with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         mirror.return_value.verify_hash.return_value = True
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
-    # Assert
     statuses = {r["subject_id"]: r["status"] for r in response.json()["records"]}
     assert statuses[str(audit_trip.departure.id)] == "db_mismatch"
 
 
 async def test_live_verification_counts_records_added_after_issue(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
     db_session.add(TripException(
         id=uuid.uuid4(), trip_id=audit_trip.trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
@@ -306,46 +267,36 @@ async def test_live_verification_counts_records_added_after_issue(client, db_ses
     ))
     await db_session.flush()
 
-    # Act
     with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         mirror.return_value.verify_hash.return_value = True
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
-    # Assert
     assert response.json()["records_added_since_issue"] == 1
 
 
 async def test_live_verification_mirror_down_is_error_not_mismatch(client, db_session, audit_trip, storage):
-    # Arrange
     issued = await _issue(db_session, audit_trip)
 
-    # Act
     with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         from app.blockchain.hedera import HederaVerifyError
         mirror.return_value.verify_hash.side_effect = HederaVerifyError("mirror down")
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
-    # Assert
     assert response.json()["seal_status"] == "error"
 
 
-@pytest.mark.real_pdf  # reads the rendered PDF itself
+@pytest.mark.real_pdf
 async def test_shared_incident_sheet_is_rendered_from_the_frozen_pack(client, db_session, audit_trip, storage):
-    # Arrange: issue, then change the live trip — the sheet must still show the snapshot.
     issued = await _issue(db_session, audit_trip)
     audit_trip.panic.severity = "warning"
     await db_session.flush()
 
-    # Act
     response = await client.get(f"{PUBLIC}/{issued.raw_token}/incident-sheet.pdf")
 
-    # Assert
     assert response.status_code == 200
     assert response.content.startswith(b"%PDF-")
     assert await _events(db_session) == ["pdf_downloaded"]
 
-
-# ── FP-290 Task 5: anchored exception actions in a shared pack ───────────────────
 
 
 @pytest.fixture(autouse=True)
@@ -366,8 +317,6 @@ async def _verify(client: AsyncClient, token: str) -> dict:
 async def test_live_verification_checks_the_frozen_receipt_not_the_latest(
     client: AsyncClient, db_session, audit_trip, storage,
 ):
-    # Arrange: a duplicate, later receipt for the same event (a crash after Hedera accepted
-    # a message can leave one). The pack froze the first.
     _exception, event = await raise_critical(db_session, audit_trip)
     frozen = await anchor_event(db_session, audit_trip, event)
     issued = await _issue(db_session, audit_trip)
@@ -429,7 +378,6 @@ async def test_records_added_since_issue_counts_a_new_critical_report_once(
 async def test_records_added_since_issue_ignores_retries_and_late_receipts(
     client: AsyncClient, db_session, audit_trip, storage,
 ):
-    # Arrange: the event exists at issue time, still pending; the receipt lands afterwards.
     _exception, event = await raise_critical(db_session, audit_trip)
     issued = await _issue(db_session, audit_trip)
     await anchor_event(db_session, audit_trip, event)

@@ -102,8 +102,6 @@ async def _seed_fortnight(db: AsyncSession, operator: Operator, depots: dict[str
     await seed_trip(db, other, stops=[o, d], start=at_sast(_day(2), 6))
 
 
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
-
 
 async def test_fleet_routes_without_token_returns_403(client: AsyncClient) -> None:
     response = await client.get(_ROUTES, params=_params())
@@ -133,8 +131,6 @@ async def test_fleet_routes_rejects_a_start_after_the_end(client: AsyncClient, o
     assert response.status_code == 422
 
 
-# ── 200 ──────────────────────────────────────────────────────────────────────
-
 
 async def test_fleet_routes_for_an_org_without_trips_are_empty(client: AsyncClient, operator: Operator) -> None:
     response = await client.get(_ROUTES, params=_params(), headers=headers(operator))
@@ -152,8 +148,6 @@ async def test_fleet_routes_sites_count_pickups_and_loaded_deliveries(
     response = await client.get(_ROUTES, params=_params(), headers=headers(operator))
 
     assert response.status_code == 200
-    # D and O tie on 2 and go by name; T3's unloading at O (empty run) and T4's overridden
-    # loading at O count for nothing. Client-owned, unshared precincts are still named.
     assert [
         (row["precinct_name"], row["pickup_count"], row["delivery_count"]) for row in response.json()["sites"]
     ] == [("D", 0, 2), ("O", 2, 0), ("X", 0, 1)]
@@ -174,7 +168,6 @@ async def test_fleet_routes_lanes_pool_driving_time_and_count_problems_without_n
     busiest = lanes[0]
     minutes = busiest["driving_minutes"]
     assert minutes["sample_count"] == 2
-    # Pooled [300, 420]: median 360; P90 = 300 + 0.9 * 120 = 408.
     assert (minutes["median"], minutes["p90"]) == pytest.approx((360, 408))
     assert (busiest["problem_count"], busiest["problems_per_trip"]) == (2, pytest.approx(1.0))
     assert [lane["problem_count"] for lane in lanes[1:]] == [0, 0]

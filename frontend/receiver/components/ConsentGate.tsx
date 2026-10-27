@@ -56,8 +56,6 @@ export function ConsentGate({ onProceed, onDecline, busy }: ConsentGateProps) {
         >
           I don&apos;t have my ID with me
         </button>
-        {/* Declining is a first-class outcome, not an escape hatch buried in small print.
-            The delivery still confirms; only the strength of the evidence changes. */}
         <button
           type="button"
           className="px-4 py-3 text-sm text-neutral-500 underline disabled:opacity-40"

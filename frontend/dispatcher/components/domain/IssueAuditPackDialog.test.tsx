@@ -56,15 +56,12 @@ describe('IssueAuditPackDialog', () => {
   })
 
   it('sends private-by-default choices and shows the share link once', async () => {
-    // Arrange
     vi.mocked(issueAuditPack).mockResolvedValue(ISSUED)
     const { onIssued } = renderDialog()
     await fillRecipient()
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Issue pack' }))
 
-    // Assert
     expect(issueAuditPack).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       recipient_name: 'Jane Adjuster', purpose: 'insurance_claim', include_full_driver_id: false,
       include_location_trail: true, expires_in_days: 30, recipient_email: 'jane@santam.example', external_reference: null,
@@ -77,16 +74,13 @@ describe('IssueAuditPackDialog', () => {
   })
 
   it('keeps Issue disabled until the recipient email looks like an address', async () => {
-    // Arrange
     renderDialog()
     await userEvent.type(screen.getByLabelText('Recipient name'), 'Jane Adjuster')
     await userEvent.type(screen.getByLabelText('Recipient organisation'), 'Santam Claims')
 
-    // Act: the error shows once the field is left, not while it is still being typed
     await userEvent.type(screen.getByLabelText('Recipient email'), 'jane@santam')
     await userEvent.tab()
 
-    // Assert
     expect(screen.getByRole('button', { name: 'Issue pack' })).toBeDisabled()
     expect(screen.getByText(/Enter a full email address/)).toBeInTheDocument()
 
@@ -95,15 +89,12 @@ describe('IssueAuditPackDialog', () => {
   })
 
   it('explains a missing admin role', async () => {
-    // Arrange
     vi.mocked(issueAuditPack).mockRejectedValue(new ApiError(403, 'Admin dispatcher role required.'))
     renderDialog()
     await fillRecipient()
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Issue pack' }))
 
-    // Assert
     expect(await screen.findByText('Only admin dispatchers can issue audit packs.')).toBeInTheDocument()
   })
 })

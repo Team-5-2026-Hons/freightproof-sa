@@ -163,7 +163,6 @@ async def test_route_second_request_is_served_from_cache(client: AsyncClient, db
     router = install_router(monkeypatch, FakeRouter())
     url = f"/api/v1/trips/me/{seeded['trip'].id}/route"
 
-    # One token for both: minting a second would trip the one-device session rule.
     headers = driver_headers(seeded["driver"])
     first = await client.get(url, headers=headers)
     second = await client.get(url, headers=headers)
@@ -174,7 +173,6 @@ async def test_route_second_request_is_served_from_cache(client: AsyncClient, db
 
 
 async def test_route_without_credentials_returns_403(client: AsyncClient, db_session, fake_redis):
-    # 403, not 401: matches every other /trips/me endpoint (HTTPBearer's missing-header response).
     seeded = await make_trip(db_session)
 
     resp = await client.get(f"/api/v1/trips/me/{seeded['trip'].id}/route")
@@ -237,7 +235,6 @@ async def test_route_provider_failure_returns_null_and_is_not_cached(
     router = install_router(monkeypatch, FakeRouter(error=RoutingError("ORS 503")))
     url = f"/api/v1/trips/me/{seeded['trip'].id}/route"
 
-    # One token for both: minting a second would trip the one-device session rule.
     headers = driver_headers(seeded["driver"])
     first = await client.get(url, headers=headers)
     second = await client.get(url, headers=headers)

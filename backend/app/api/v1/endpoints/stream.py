@@ -20,12 +20,8 @@ from app.schemas.people import UserRead
 router = APIRouter(prefix="/stream", tags=["stream"])
 logger = logging.getLogger(__name__)
 
-# Idle time before a keep-alive comment, so proxies don't close the connection.
-# Module-level so tests can shorten it.
 HEARTBEAT_SECONDS = 15.0
 
-# no-cache: SSE must never be cached. X-Accel-Buffering: no disables nginx response
-# buffering, which would otherwise hold events back until the buffer fills.
 _SSE_HEADERS = {
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
@@ -40,7 +36,6 @@ async def _event_stream(org_id: UUID) -> AsyncIterator[str]:
     main loop drains it, timing out to a heartbeat when idle. Timeout wraps the queue
     read, not the Redis subscription, so cancellation stays clean.
     """
-    # None on the queue means the subscription has ended, cleanly or not.
     queue: asyncio.Queue[realtime.TripEvent | None] = asyncio.Queue()
 
     async def _pump() -> None:
@@ -50,13 +45,11 @@ async def _event_stream(org_id: UUID) -> AsyncIterator[str]:
         except Exception:
             logger.exception("Realtime subscription failed: org=%s", org_id)
         finally:
-            # Tell the main loop. Without this a dead subscription is silent: the loop
-            # keeps sending heartbeats and the browser shows "Live" while receiving nothing.
             queue.put_nowait(None)
 
     pump_task = asyncio.create_task(_pump())
     try:
-        yield ": connected\n\n"  # open the stream immediately, before the first real event
+        yield ": connected\n\n"
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
@@ -64,12 +57,10 @@ async def _event_stream(org_id: UUID) -> AsyncIterator[str]:
                 yield ": heartbeat\n\n"
                 continue
             if event is None:
-                # End the response; the browser's backoff reconnects with a fresh subscription.
                 logger.warning("Realtime subscription ended; closing stream: org=%s", org_id)
                 return
             yield f"data: {event.model_dump_json()}\n\n"
     finally:
-        # Client disconnected — stop the pump and let its Redis subscription tear down.
         pump_task.cancel()
         with suppress(asyncio.CancelledError):
             await pump_task

@@ -10,13 +10,10 @@ import { ReceiverHandover } from '../ReceiverHandover'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// StepHeader calls useRouter — stub it so the component mounts under jsdom.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }))
 
-// Stubbed to a plain button, so these tests assert the GATE rather than
-// SwipeToConfirm's pointer-drag internals (which have their own suite).
 vi.mock('@/components/phase/SwipeToConfirm', () => ({
   SwipeToConfirm: ({ label, onConfirm, disabled }: { label: string; onConfirm: () => void; disabled?: boolean }) => (
     <button onClick={onConfirm} disabled={disabled}>{label}</button>
@@ -97,7 +94,6 @@ describe('ReceiverHandover', () => {
   })
 
   it('offers no way forward until the receiver has confirmed', () => {
-    // The load-bearing assertion. No swipe, no button, no link out of this step.
     mockHook()
     renderStep(makeDraft())
 
@@ -123,9 +119,6 @@ describe('ReceiverHandover', () => {
   })
 
   it('shows the confirmed state from the DRAFT, not from the hook', () => {
-    // A driver who backgrounds the app mid-handover comes back to a freshly mounted hook
-    // with no confirmation in it. The draft is what persists, so it is what decides —
-    // otherwise the driver is sent back to a QR for a delivery already confirmed.
     mockHook({ signatureArtifactId: null, confirmedAt: null })
     renderStep(makeDraft({
       podSignatureArtifactId: 'art-1', receiverConfirmedAt: '2026-09-13T10:05:00.000Z',
@@ -173,7 +166,6 @@ describe('ReceiverHandover — the QR plate', () => {
     mockHook({ scanUrl: null })
     renderStep(makeDraft())
 
-    // jsdom has no layout; this guards the structure that collapsed in a real browser.
     expect(screen.getByTestId('qr').parentElement).toHaveClass('w-full')
   })
 })

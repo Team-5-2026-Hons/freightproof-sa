@@ -45,7 +45,6 @@ import { IncidentTimeline } from './IncidentTimeline'
 
 interface Props {
   incidentId: string
-  /** Where Back goes: the trip it was opened from, else the incidents list (already validated). */
   backHref: string
   onNavigate: (href: string) => void
 }
@@ -244,8 +243,6 @@ export function IncidentDetailView({ incidentId, backHref, onNavigate }: Props):
       <AttachDocumentDialog open={dialog?.kind === 'document'} onClose={() => setDialog(null)}
         onSubmit={(file, note) => act(() => attachIncidentDocument(incidentId, file, note), 'Document attached')} />
       {dialog?.kind === 'pack' && (
-        // Issued here, not on the trip page: the guide's last step should not take the
-        // dispatcher away from the incident they are working.
         <IncidentIssuePackDialog tripId={incident.trip_id} onClose={() => setDialog(null)}
           onIssued={() => { refetchSilent(); evidence.refetchSilent() }} />
       )}

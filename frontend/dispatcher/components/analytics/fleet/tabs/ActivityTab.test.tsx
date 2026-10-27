@@ -18,7 +18,6 @@ vi.mock('@/lib/api/client', () => ({
 
 const mockedGet = vi.mocked(api.get)
 
-// A Wednesday; the last week bucket (w/c 14 Sep) is still running.
 const TODAY = '2026-09-16'
 const QUERY: TabQuery = { start: '2026-08-31', end: TODAY, grain: 'week', grainAdjusted: false, disabledGrains: [] }
 const ALL_TIME: PeriodSelection = { preset: 'all_time' }

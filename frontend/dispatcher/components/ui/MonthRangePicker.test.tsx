@@ -56,7 +56,6 @@ describe('MonthRangePicker', () => {
   })
 
   it('clamps a year change that would land in a future month', async () => {
-    // November 2025 moved to 2026 would be November 2026 — after the latest month.
     const onChange = renderPicker({ start: '2025-11-01', end: '2026-09-01' })
 
     await userEvent.selectOptions(screen.getByLabelText('From year'), '2026')
@@ -67,7 +66,6 @@ describe('MonthRangePicker', () => {
   it('only ever emits first-of-month bounds', async () => {
     const onChange = renderPicker({ start: '2026-03-01', end: '2026-05-01' })
 
-    // August is past the May end, so this one also exercises the end following the start.
     await userEvent.selectOptions(screen.getByLabelText('From month'), '8')
     await userEvent.selectOptions(screen.getByLabelText('To year'), '2024')
     await userEvent.selectOptions(screen.getByLabelText('To month'), '1')

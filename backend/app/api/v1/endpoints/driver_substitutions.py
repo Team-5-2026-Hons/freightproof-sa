@@ -62,7 +62,6 @@ from app.schemas.evidence import EvidenceArtifactRead
 from app.schemas.people import DriverRead, UserRead
 
 _TAGS: list[str | Enum] = ["driver-substitutions"]
-# Documented on every mutation: the coded conflict body the contract defines.
 _CONFLICTS: dict[int | str, dict[str, object]] = {
     409: {"model": SubstitutionErrorResponse}, 503: {"model": SubstitutionErrorResponse},
 }
@@ -127,8 +126,6 @@ class _HandoverUploadForm(_UploadForm):
 
     role: Annotated[SubstitutionRole, Form()]
 
-
-# ── dispatcher ───────────────────────────────────────────────────────────────
 
 dispatcher_router = APIRouter(prefix="/trips/{trip_id}/driver-substitutions", tags=_TAGS)
 
@@ -224,8 +221,6 @@ async def correct_substitution_endpoint(
         )
 
 
-# ── dispatcher review of late evidence ───────────────────────────────────────
-
 late_evidence_router = APIRouter(prefix="/trips/{trip_id}/late-evidence", tags=_TAGS)
 
 
@@ -250,8 +245,6 @@ async def acknowledge_late_evidence_endpoint(
             db, trip_id=trip_id, evidence_id=evidence_id, actor=current_user, payload=payload,
         )
 
-
-# ── driver ───────────────────────────────────────────────────────────────────
 
 driver_router = APIRouter(prefix="/trips/me", tags=_TAGS)
 

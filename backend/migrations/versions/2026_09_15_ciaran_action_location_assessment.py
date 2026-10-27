@@ -50,7 +50,6 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_action_location"
 down_revision = "tom_live_analytics_views"
 branch_labels = None
@@ -65,19 +64,14 @@ _CHECKPOINT_SEPARATION_INDEX = "uq_exceptions_checkpoint_separation"
 
 
 def upgrade() -> None:
-    # ── phase_events ─────────────────────────────────────────────────────────
     op.add_column("phase_events", sa.Column(_ASSESSMENT_COLUMN, JSONB, nullable=True))
-    # No reader/writer yet — see module docstring.
     op.add_column(
         "phase_events",
         sa.Column("location_warning_acknowledged_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.add_column("phase_events", sa.Column("location_warning_reason", sa.Text(), nullable=True))
 
-    # ── checkpoints ──────────────────────────────────────────────────────────
     op.add_column("checkpoints", sa.Column(_ASSESSMENT_COLUMN, JSONB, nullable=True))
-    # Mirrors exceptions.client_report_id exactly (migration
-    # ciaran_exc_idempotency); no caller populates these yet.
     op.add_column(
         "checkpoints", sa.Column("client_report_id", UUID(as_uuid=True), nullable=True)
     )
@@ -96,13 +90,8 @@ def upgrade() -> None:
         postgresql_where=sa.text("client_report_id IS NOT NULL"),
     )
 
-    # ── exceptions ───────────────────────────────────────────────────────────
     op.add_column("exceptions", sa.Column(_ASSESSMENT_COLUMN, JSONB, nullable=True))
 
-    # One DRIVER_VEHICLE_SEPARATION finding per source event. Scoped to
-    # this exception_type only (never broadened) so GPS_MISMATCH — which can
-    # legitimately coexist with a separation finding on the very same phase_event_id
-    # — keeps allowing as many rows as it always has.
     op.create_index(
         _PHASE_SEPARATION_INDEX,
         "exceptions",

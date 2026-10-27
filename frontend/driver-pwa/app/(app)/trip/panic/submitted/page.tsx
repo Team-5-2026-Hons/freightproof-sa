@@ -5,7 +5,6 @@
 import { Suspense } from 'react'
 import PanicSubmittedPageClient from './PanicSubmittedPageClient'
 
-// useSearchParams() requires Suspense for the output: 'export' build. Mirrors app/otp/page.tsx.
 export default function PanicSubmittedPage() {
   return (
     <Suspense

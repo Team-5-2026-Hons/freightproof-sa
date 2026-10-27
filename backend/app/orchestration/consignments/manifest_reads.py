@@ -67,14 +67,12 @@ async def get_manifest_for_dispatcher(
         raise ResourceNotFoundError("Trip", str(trip_id))
 
     if trip.trip_type == TripType.EMPTY_LEG.value:
-        # Repositioning run: no cargo by definition — a defined zero, not a 404.
         return ManifestResponse(
             trip_id=trip_id, total_parcel_count=0, origin_scan_complete=False,
             consignments=[], pulled_at=trip.updated_at,
         )
 
     stored = await load_creation_snapshot(db, trip_id)
-    # Sent as its display summary: the stored JSON also carries receiver contact details.
     snapshot = snapshot_read(stored) if stored is not None else None
 
     try:
@@ -82,8 +80,6 @@ async def get_manifest_for_dispatcher(
     except ResourceNotFoundError:
         if snapshot is None:
             raise
-        # A cancelled trip whose waybills moved to its replacement (spec §10.5): the
-        # snapshot is now its only cargo record, so it is returned rather than a 404.
         return ManifestResponse(
             trip_id=trip_id, total_parcel_count=0, origin_scan_complete=False,
             consignments=[], pulled_at=trip.updated_at, pp_manifest_snapshot=snapshot,
@@ -133,12 +129,10 @@ async def get_linehaul_for_driver(
 
     horse_result = await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))
     horse = horse_result.scalar_one()
-    # The driver now holding the trip, which is the caller (checked above), not the original.
     driver_result = await db.execute(select(Driver).where(Driver.id == driver_id))
     driver = driver_result.scalar_one()
 
     if trip.trip_type == TripType.EMPTY_LEG.value:
-        # Repositioning run: no cargo by definition — a defined zero, not a 404.
         return LinehaulResponse(
             trip_id=trip_id,
             vehicle_registration=horse.registration,
@@ -151,12 +145,6 @@ async def get_linehaul_for_driver(
 
     loaded = await _load_consignments_and_parcels(db, trip_id)
 
-    # Consolidated-unit grain (pallets), summed across all consignments — the driver counts
-    # pallets, never parcels (Bruce, 24 Jun). Legacy fallback applies per-consignment: each
-    # consignment created before FP-112 has no unit_count_expected, so that consignment's
-    # parcel count is used instead — a whole-trip fallback would silently drop the legacy
-    # consignment's units whenever another consignment on the same trip already has a unit
-    # count set. Remove the fallback once FP-114 populates unit counts everywhere.
     all_parcels = [p for _, parcels in loaded for p in parcels]
     consolidated_unit_count = sum(
         c.unit_count_expected if c.unit_count_expected is not None else len(parcels)

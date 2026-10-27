@@ -16,24 +16,17 @@ interface Props {
   artifactError?: string | null
   onRetryArtifacts?: () => void
   phase: PhaseDescriptor
-  /** Manifest baseline from Parcel Perfect's tracks[]. Null when the trip has no PP reference. */
   expectedCount: number | null
-  /** Live, summed scanned_out_count for this stop; read only while loading is open —
-   *  once resolved, phase.parcel_count_origin (the stamped tally) takes over. */
   liveScannedOutCount: number | null
   artifactsById: Map<string, EvidenceArtifactWithUrl>
   precinct: Precinct | undefined
 }
 
-// Loading is system-observed: the warehouse's scan records what went on the truck.
 export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts, phase, expectedCount, liveScannedOutCount, artifactsById, precinct }: Props) {
-  // parcel_count_origin is written once at phase close (the evidence); scanned_out_count
-  // is recomputed every request until then — swapping one in for the other is not allowed.
   const resolved = isClosedPhaseStatus(phase.status)
   const scanned = resolved ? phase.parcel_count_origin : liveScannedOutCount
   const scannedLabel = resolved ? 'Scanned onto truck' : 'Scanned onto truck (in progress)'
 
-  // Null is not zero: no baseline means nothing to compare, not "nothing was loaded".
   const hasBoth = expectedCount !== null && scanned !== null
   const missing = hasBoth ? expectedCount - scanned : 0
 
@@ -48,9 +41,6 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           {missing === 0 ? 'All parcels scanned ✓' : missing < 0 ? `${Math.abs(missing)} excess scanned` : `${missing} not scanned ✗`}
         </div>
       )}
-      {/* linehaul_photo_artifact_id, not waybill_photo_artifact_id — that one is only set
-          on the departure phase's row. No wrapping Section: EvidencePhoto already
-          renders its own label, matching Departure/Confirmation's pattern. */}
       <div className="py-3 first:pt-0 last:pb-0">
         <EvidencePhoto
           loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
@@ -59,9 +49,6 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           artifact={phase.linehaul_photo_artifact_id ? artifactsById.get(phase.linehaul_photo_artifact_id) : undefined}
         />
       </div>
-      {/* The PDF is a derived readable copy of the scan (the driver app drops it if it fails to
-          build, and older trips predate it), so a loading without one is not missing evidence:
-          no "Not captured" row for it. */}
       {phase.linehaul_pdf_artifact_id && (
         <div className="py-3 first:pt-0 last:pb-0">
           <EvidenceDocument
@@ -72,7 +59,6 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           />
         </div>
       )}
-      {/* Guards against an empty "Location at loading" heading when nothing was recorded. */}
       {hasLocationEvidence(locationEvidenceForPhase(phase, precinct)) && (
         <PhaseLocationSection phase={phase} precinct={precinct} title="Location at loading" />
       )}

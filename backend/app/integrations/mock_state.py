@@ -23,12 +23,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Namespaced so a flush is scoped precisely and never touches Celery's own
-# broker keys in the same Redis instance.
 MOCK_STATE_PREFIX = "freightproof:mock:"
 
-# Demo scaffolding, not evidence — long enough for any demo, short enough
-# that abandoned state expires on its own.
 MOCK_STATE_TTL_SECONDS = 60 * 60 * 24
 
 
@@ -80,7 +76,6 @@ class RedisMockStateStore:
         try:
             parsed: dict[str, Any] = json.loads(raw)
         except json.JSONDecodeError:
-            # A writer bug, not a reason to fail a demo — log loudly, treat as absent.
             logger.error("Corrupt mock state at key %s — treating as unset", key)
             return None
         return parsed
@@ -95,14 +90,12 @@ class RedisMockStateStore:
 
     async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
         if not keys:
-            # MGET with no arguments errors, and "nothing to gate" is common.
             return []
         client = redis.from_url(self._redis_url, decode_responses=True)
         try:
             raws = await client.mget(keys)
         finally:
             await client.aclose()
-        # strict=True: a length mismatch means a broken client, not something to paper over.
         return [self._decode(key, raw) for key, raw in zip(keys, raws, strict=True)]
 
     async def set_json(self, key: str, value: dict[str, Any]) -> None:

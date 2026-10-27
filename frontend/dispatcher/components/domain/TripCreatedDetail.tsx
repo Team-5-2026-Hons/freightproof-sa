@@ -7,22 +7,12 @@ import { manifestLabel } from '@/lib/format/manifest'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
 
-// Declared value and manifest number are independently nullable, so the separator is
-// joined between the parts that exist rather than appended to the first — otherwise a
-// consignment with a value but no manifest number renders a dangling "· ".
 function consignmentMeta(c: ConsignmentRead): string {
   return [
-    // declared_value is a backend Decimal (monetary — needs exact base-10 arithmetic),
-    // so it arrives over the wire as a JSON string. String.toLocaleString() exists but
-    // ignores its arguments and returns the string unchanged, silently dropping
-    // thousands separators — Number() coercion is safe whether it arrives as a string
-    // or a number.
     c.declared_value !== null ? `Declared R${Number(c.declared_value).toLocaleString('en-ZA')}` : null,
     c.pp_manifest_number !== null ? `Manifest ${c.pp_manifest_number}` : null,
   ].filter((part): part is string => part !== null).join(' · ')
 }
-
-// ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
   trip: Trip
@@ -30,15 +20,9 @@ interface Props {
 
 export function TripCreatedDetail({ trip }: Props) {
   const { driver, horse } = trip
-  // Found by TYPE, never by array index. The backend happens to order receipts by
-  // created_at (resource_service.py) so the journey lock is usually first, but "usually"
-  // is not a contract — and this panel labels whatever it finds as the journey lock hash.
   const receipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') ?? null
   const isPending = !isAnchoredTopic(receipt?.hedera_topic_id)
 
-  // Units (pallets) are dispatcher-entered and never come from a manifest (pallets are
-  // deferred, FP-281 §14), so manifest trips have none. A total is shown only when every
-  // waybill has a count: summing the missing ones as zero printed "0 units", which is false.
   const unitCounts   = trip.consignments.map(c => c.unit_count_expected)
   const totalUnits   = unitCounts.every((n): n is number => n !== null)
     ? unitCounts.reduce((sum, n) => sum + n, 0)
@@ -48,7 +32,6 @@ export function TripCreatedDetail({ trip }: Props) {
   return (
     <PhaseDetailCard>
 
-      {/* Driver ─────────────────────────────────────────────────────────── */}
       {driver && (
         <Section title="Driver">
           <Field label="Full name"      value={driver.full_name} />
@@ -58,7 +41,6 @@ export function TripCreatedDetail({ trip }: Props) {
         </Section>
       )}
 
-      {/* Vehicle ─────────────────────────────────────────────────────────── */}
       {horse && (
         <Section title="Horse (Vehicle)">
           <Field label="Registration" value={horse.registration} mono />
@@ -68,7 +50,6 @@ export function TripCreatedDetail({ trip }: Props) {
         </Section>
       )}
 
-      {/* Trailers ────────────────────────────────────────────────────────── */}
       {trip.trailers.length > 0 && (
         <Section title={`Trailer${trip.trailers.length > 1 ? 's' : ''}`}>
           {trip.trailers.map((trailer, index) => (
@@ -82,9 +63,6 @@ export function TripCreatedDetail({ trip }: Props) {
         </Section>
       )}
 
-      {/* Trip type ───────────────────────────────────────────────────────── */}
-      {/* The manifest key and planned times are in the journey lock (FP-281 §9), so the
-          creation record shows them beside the other locked parameters. */}
       <Section title="Trip">
         <Field label="Type" value={trip.trip_type === 'loaded' ? 'Loaded' : 'Empty leg'} />
         <Field label="Manifest" value={manifestLabel(trip.pp_manifest, trip.trip_type)} mono={trip.pp_manifest !== null} />
@@ -92,16 +70,12 @@ export function TripCreatedDetail({ trip }: Props) {
         <Field label="Planned arrival" value={fmtFull(trip.planned_arrival_at)} />
       </Section>
 
-      {/* Tracking ───────────────────────────────────────────────────────── */}
       {trip.pulsit_trip_reference_id && (
         <Section title="Tracking">
           <CopyField label="Pulsit tracking reference" value={trip.pulsit_trip_reference_id} mono span />
         </Section>
       )}
 
-      {/* Consignments — what was committed to this truck at creation. This belongs on the
-          creation event rather than in the sidebar because it describes the state that was
-          hashed into the journey lock, not current state. */}
       {trip.consignments.length > 0 && (
         <div className="py-3">
           <div className="text-[13px] font-[800] tracking-[0.09em] uppercase text-on-surf mb-[6px]">
@@ -136,7 +110,6 @@ export function TripCreatedDetail({ trip }: Props) {
         </div>
       )}
 
-      {/* Blockchain — forensic detail; hidden for non-admin / forensic-off dispatchers. */}
       {receipt && (
         <ForensicOnly>
           <Section title="Blockchain">

@@ -36,7 +36,6 @@ function RouteEndField(
     return (
       <div className="min-w-0 flex-1">
         <FieldLabel>{label}</FieldLabel>
-        {/* Read-only and visibly so: the manifest decides this end, not the dispatcher. */}
         <p className="rounded-t-sm border-b-2 border-outline-v/40 bg-surf-low px-3 py-[10px] text-[14px] font-[600] text-on-surf">
           {end.name}
         </p>

@@ -27,27 +27,21 @@ beforeEach(() => {
 
 describe('DeclareIncidentDialog', () => {
   it('keeps Save disabled until a fact other than a note is entered', async () => {
-    // Arrange
     renderDialog()
 
-    // Act
     await userEvent.type(screen.getByLabelText('Note (optional)'), 'called SAPS')
 
-    // Assert
     expect(screen.getByRole('button', { name: 'Save details' })).toBeDisabled()
   })
 
   it('sends typed times as SAST and blank fields as null', async () => {
-    // Arrange
     vi.mocked(recordIncidentDeclaration).mockResolvedValue({} as Awaited<ReturnType<typeof recordIncidentDeclaration>>)
     const { onDeclared } = renderDialog()
     await userEvent.type(screen.getByLabelText('Case (CAS) number'), '123/09/2026')
     await userEvent.type(screen.getByLabelText('Reported to SAPS at'), '2026-09-12T13:40')
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Save details' }))
 
-    // Assert
     expect(recordIncidentDeclaration).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       saps_cas_number: '123/09/2026', reported_to_saps_at: '2026-09-12T13:40:00+02:00',
       saps_station: null, client_notified_at: null, exception_id: null,

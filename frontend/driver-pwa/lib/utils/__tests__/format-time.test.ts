@@ -1,10 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { formatDateTime, formatTime, formatTimeWithSeconds } from '../format-time'
 
-// Output pinned to en-ZA; the formatters are built lazily on first call, so the same
-// instant must format identically on the first and every later call.
 describe('format-time', () => {
-  const instant = new Date(2026, 6, 1, 6, 5, 9) // local time: 06:05:09 on Wed 1 Jul 2026
+  const instant = new Date(2026, 6, 1, 6, 5, 9)
 
   test('formatTime renders hours and minutes and is stable across calls', () => {
     const first = formatTime(instant)

@@ -18,7 +18,6 @@ function loaded(manifest: Manifest, overrides: Partial<UseManifestResult> = {}):
   }
 }
 
-// What piece A returns for a cancelled trip whose waybills moved to its replacement.
 const MOVED: Manifest = {
   trip_id: 'trip-cancelled',
   total_parcel_count: 0,

@@ -8,15 +8,12 @@
 import type { PhaseType } from '@shared/lib/types/phase'
 import type { PhaseCheck } from './checks'
 
-/** Narrowest card body, in px, that still reads well as two columns. */
 export const SPLIT_MIN_PX = 740
 
 export type BodyLayout = 'split' | 'stacked'
 
 interface Input {
-  /** The observed card-body width, or null before the first measurement. */
   widthPx: number | null
-  /** Checks the card has to show; a card with none leaves the second column empty. */
   checkCount: number
   phaseType: PhaseType
 }

@@ -1,7 +1,6 @@
 // All dispatcher route strings in one place — never write URL literals in components.
 
 export const ROUTES = {
-  // The public landing page owns '/', so the signed-in dashboard lives one level down.
   landing:         '/',
   home:            '/dashboard',
   analytics:       '/analytics',

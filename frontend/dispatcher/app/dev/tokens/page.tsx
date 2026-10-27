@@ -9,9 +9,6 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { useAuth } from '@/lib/hooks/useAuth'
 
 export default function DevTokensPage() {
-  // This page exposes a force-sign-in control wired to NEXT_PUBLIC_DEV_* credentials, which are
-  // inlined into the client bundle. It must never be reachable in a production build. NODE_ENV is
-  // a build-time constant, so this branch is fixed per build (no rules-of-hooks concern below).
   if (process.env.NODE_ENV === 'production') notFound()
 
   const { user, signIn, signOut } = useAuth()

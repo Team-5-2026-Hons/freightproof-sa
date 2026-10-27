@@ -168,7 +168,6 @@ async def test_record_locations_404_for_another_drivers_trip(client: AsyncClient
         headers=auth_header(token),
     )
 
-    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
     assert resp.status_code == 404
     stored = (await db_session.execute(
         select(TripLocationPing).where(TripLocationPing.trip_id == trip.id)

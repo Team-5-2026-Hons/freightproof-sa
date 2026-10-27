@@ -33,7 +33,6 @@ from pathlib import Path
 
 from alembic import op
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "tim_dsub_driver_analytics"
 down_revision = "tim_dsub_anchor_index"
 branch_labels = None
@@ -183,9 +182,6 @@ FROM contributions
 GROUP BY operator_organization_id, driver_id, month_start
 """
 
-# Recreating a view drops its REVOKE, and Supabase's default privileges grant every new public
-# object to anon/authenticated: without this every operator's driver analytics would be readable
-# cross-tenant through the Data API (tom_live_analytics_views' reasoning). No-op on plain Postgres.
 _REVOKE_DATA_API_ACCESS = """
 DO $$
 DECLARE

@@ -9,13 +9,7 @@
 // the screen was showing when the driver acted.
 
 export interface CustodyStamp {
-  /** The signed-in driver's account id. null only when nobody is signed in. */
   actorId: string | null
-  /**
-   * The custody period the server last reported for THIS trip. null when the server sent
-   * none (an older backend, or a trip this phone has not loaded) — the wire field is then
-   * omitted, which the contract accepts only on a trip with no substitution.
-   */
   custodySequence: number | null
 }
 
@@ -49,8 +43,6 @@ export function invalidateActorLease(): number {
   return generation
 }
 
-// Supabase subjects and fleet driver IDs are different identities. A session boundary
-// invalidates immediately; only its resolved profile may later bind the fleet ID.
 export function observeAuthSession(subject: string | null): number {
   if (subject !== authSubject) {
     authSubject = subject
@@ -94,12 +86,9 @@ function announceActor(actorId: string | null): void {
  * doing that mid-render would be a React error.
  */
 export function setCustodyContext(next: CustodyContextState): void {
-  // A stale TripContext render cannot revive a signed-out or superseded profile.
   if (next.actorId !== state.actorId) return
   const changed = next.tripId !== state.tripId || next.custodySequence !== state.custodySequence
   state = next
-  // TripContext feeds this during render. Notify later so a mounted background
-  // status consumer updates on period changes without setting state mid-render.
   if (changed) setTimeout(() => tripCustodyListeners.forEach(listener => listener()), 0)
 }
 

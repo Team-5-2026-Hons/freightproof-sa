@@ -24,9 +24,6 @@ from app.schemas.people import DriverRead
 router = APIRouter(prefix="/trips/{trip_id}/locations", tags=["locations"])
 
 
-# Sized for an offline-queue flush, not a steady trickle: the PWA banks fixes while out of
-# signal and posts the backlog on reconnect. Each request already carries up to
-# MAX_PINGS_PER_REQUEST fixes, so a day's backlog is a handful of calls, well inside this.
 @router.post("", response_model=LocationPingBatchResult, status_code=http_status.HTTP_201_CREATED,
              dependencies=[Depends(rate_limit(EVIDENCE_WRITE))])
 async def record_locations_endpoint(

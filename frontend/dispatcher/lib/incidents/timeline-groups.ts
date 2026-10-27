@@ -1,12 +1,7 @@
 import type { IncidentUpdate, IncidentUpdateKind } from '@/lib/types/incident'
 
-/** Fewer than this is just a short list; folding one or two entries hides more than it saves. */
 export const MIN_RUN_LENGTH = 3
 
-// Only entries that are bulk bookkeeping: naming 48 parcels or grouping a batch of exceptions is 48
-// near-identical lines that bury the status changes, notes and findings around them. Anything that
-// carries its own content (a note, a finding, a document, a close) stays a row of its own, since
-// folding it would hide exactly the substantive updates this exists to surface.
 const FOLDABLE_KINDS: ReadonlySet<IncidentUpdateKind> = new Set<IncidentUpdateKind>(['parcel_added', 'exception_linked'])
 
 export type TimelineRow =
@@ -14,7 +9,6 @@ export type TimelineRow =
   | { type: 'run'; kind: IncidentUpdateKind; updates: IncidentUpdate[] }
 
 function canFold(update: IncidentUpdate): boolean {
-  // A note is the dispatcher's own words, so an entry carrying one is never folded away.
   return FOLDABLE_KINDS.has(update.kind) && update.note === null
 }
 

@@ -27,8 +27,6 @@ from app.main import app
 from app.schemas.people import UserRead
 from tests.conftest import auth_header, make_token, make_jwks
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
 _ORG_ID = uuid.uuid4()
 _ORG_NAME = "Load Factor Transport"
 _USER_ID = uuid.uuid4()
@@ -60,9 +58,7 @@ async def _mock_db() -> AsyncGenerator:
 async def client_with_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncClient, None]:
     """Client with JWKS patched and DB dependency overridden."""
     _settings = __import__("app.core.config", fromlist=["settings"]).settings
-    # DEMO_MODE bypasses all JWT checks — disable it so these tests exercise real auth.
     monkeypatch.setattr(_settings, "DEMO_MODE", False)
-    # Patch JWKS so token verification uses the test EC key pair, not Supabase's live endpoint.
     monkeypatch.setattr("app.auth.dependencies._get_jwks", make_jwks)
 
     app.dependency_overrides[get_db] = _mock_db
@@ -76,8 +72,6 @@ async def client_with_db(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[Asyn
         app.dependency_overrides.pop(get_db, None)
 
 
-# ── Happy path ────────────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_get_me_returns_user_for_valid_dispatcher(
@@ -85,7 +79,6 @@ async def test_get_me_returns_user_for_valid_dispatcher(
     client_with_db: AsyncClient,
 ) -> None:
     active_user = _make_user()
-    # Override the full dependency so DB lookup is bypassed.
     app.dependency_overrides[get_current_dispatcher] = lambda: active_user
 
     try:
@@ -154,12 +147,9 @@ async def test_get_me_returns_the_dispatchers_own_organisation_name(
     assert body["organization_id"] == str(own.id)
 
 
-# ── Rejection paths ───────────────────────────────────────────────────────────
-
 
 @pytest.mark.asyncio
 async def test_get_me_no_token_returns_403(client_with_db: AsyncClient) -> None:
-    # HTTPBearer returns 403 (not 401) when the header is entirely absent.
     response = await client_with_db.get("/api/v1/auth/me")
 
     assert response.status_code == 403

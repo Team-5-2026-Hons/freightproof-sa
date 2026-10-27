@@ -10,12 +10,10 @@ import type { VehicleId, VehicleType } from './vehicle'
 
 export interface DriverMetrics {
   driver_id: DriverId
-  /** null when no driver record in the caller's organisation matches the id. */
   driver_name: string | null
   trip_count: number
   trips_with_exceptions_count: number
   total_exceptions_count: number
-  // Severities stay separate counts — never blended into one number.
   info_exceptions_count: number
   warning_exceptions_count: number
   critical_exceptions_count: number
@@ -35,8 +33,6 @@ export interface DriverMetrics {
   confirmation_dwell_events_count: number
   phase_events_count: number
   override_count: number
-  // FP-83: closed trips this driver shared through a handover. Excluded from trip_count and the
-  // whole-trip rates (they cannot be fairly split); optional until every consumer's fixtures carry it.
   shared_trip_count?: number
   exception_trip_rate: number | null
   on_time_departure_rate: number | null
@@ -46,16 +42,12 @@ export interface DriverMetrics {
   departure_dwell_minutes_avg: number | null
   arrival_dwell_minutes_avg: number | null
   unloading_dwell_minutes_avg: number | null
-  /** Not purely driver behaviour — a slow receiver also lengthens it; show that caveat beside this number. */
   confirmation_dwell_minutes_avg: number | null
 }
 
 export interface VehicleMetrics {
   vehicle_id: VehicleId
-  /** null when no vehicle in the caller's organisation matches the id. */
   registration: string | null
-  /** Horses and trailers come back in one list, so each row says which it is. null when
-   *  no vehicle in the caller's organisation matches the id, the same as registration. */
   vehicle_type: VehicleType | null
   trip_count: number
   mechanical_exceptions_count: number
@@ -72,7 +64,6 @@ export interface VehicleMetrics {
 export interface VehicleStreak {
   vehicle_id: VehicleId
   highest_streak_trips: number
-  /** null until a mechanical incident has closed at least one streak. */
   lowest_streak_trips: number | null
   trips_since_last_incident: number
 }
@@ -95,10 +86,7 @@ export interface LaneMetrics {
   destination_precinct_name: string | null
   trip_count: number
   exception_count: number
-  /** How long the route physically takes. */
   actual_transit_minutes: DurationStats
-  /** Actual minus planned, per trip — positive is late. Fewer samples than
-   *  actual_transit_minutes when some trips had no plan. */
   schedule_delta_minutes: DurationStats
   exception_density: number | null
 }
@@ -108,9 +96,6 @@ export interface FacilityMetrics {
   precinct_name: string | null
   confirmed_count: number
   mismatch_count: number
-  /** No Pulsit reading was taken. A coverage problem, deliberately kept OUT of
-   *  corroboration_rate's denominator — "could not check" is not a failure. */
   unwitnessed_count: number
-  /** confirmed / (confirmed + mismatch). */
   corroboration_rate: number | null
 }

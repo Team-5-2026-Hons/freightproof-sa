@@ -40,7 +40,7 @@ class ConsignmentSyncResult:
     """Result of a sync — the upserted row plus a non-fatal warning, if any."""
 
     consignment: Consignment
-    warning: str | None  # e.g. unmapped PP account — surfaced, never fatal
+    warning: str | None
 
 
 def serialise_waybill(w: PPWaybillResponse) -> dict[str, Any]:
@@ -133,7 +133,6 @@ async def fetch_and_sync_consignment(
         ConsignmentAlreadyAssignedError: see sync_consignment_from_waybill.
         Any exception from get_pp_client().get_single_waybill() propagates unchanged.
     """
-    # Fetched first so a PP error aborts before any DB interaction.
     logger.info("fetch_and_sync_consignment pp_reference=%s", pp_reference)
     waybill: PPWaybillResponse = await get_pp_client().get_single_waybill(pp_reference)
     return await sync_consignment_from_waybill(
@@ -162,10 +161,6 @@ async def sync_consignment_from_waybill(
             were scanned there.
     """
     pp_reference = waybill.details.waybill
-    # FOR UPDATE holds the row for the rest of this transaction, so a second caller
-    # at the same waybill waits here rather than reading a trip_id about to change
-    # underneath it. Without it, two callers could both read trip_id=None and both
-    # write their own trip_id below, silently taking the cargo off the earlier trip.
     existing_result = await db.execute(
         select(Consignment)
         .where(Consignment.parcel_perfect_reference == pp_reference)
@@ -174,9 +169,6 @@ async def sync_consignment_from_waybill(
     )
     consignment: Optional[Consignment] = existing_result.scalar_one_or_none()
 
-    # Moving a waybill between trips is refused unless its trip was cancelled and
-    # nothing on it was scanned (see _release_from_cancelled_trip). Same trip_id is not
-    # a conflict — that's the Celery refresh poll re-syncing onto the trip it already has.
     if (
         consignment is not None
         and consignment.trip_id is not None
@@ -187,10 +179,6 @@ async def sync_consignment_from_waybill(
             db, consignment, pp_reference=pp_reference, new_trip_id=trip_id,
         )
 
-    # Resolved from accnum, PP's source of truth for client attribution. Skipped
-    # when already linked to a client org: re-querying on every Celery refresh is
-    # wasted work, and a later org-row deletion would otherwise emit a spurious
-    # warning for an already-attributed consignment.
     warning: str | None = None
     client_org_id: Optional[uuid.UUID] = None
     if consignment is None or consignment.client_organization_id is None:
@@ -209,7 +197,6 @@ async def sync_consignment_from_waybill(
 
     raw_json: dict[str, Any] = serialise_waybill(waybill)
     parcel_count: int = len(waybill.tracks)
-    # declared_value from PP arrives as float | None; Numeric(15,2) accepts Decimal.
     declared_value: Optional[Decimal] = (
         Decimal(str(waybill.details.declared_value))
         if waybill.details.declared_value is not None
@@ -233,17 +220,12 @@ async def sync_consignment_from_waybill(
         )
         db.add(consignment)
     else:
-        # trip_id/client_organization_id are set only if currently unset, so a
-        # dispatcher-entered or already-resolved value is never clobbered.
-        # unit_count_expected is overwritten only when explicitly supplied, so
-        # the Celery refresh poll can't blank a dispatcher-entered count.
         logger.info("Updating existing Consignment id=%s for pp_reference=%s", consignment.id, pp_reference)
         consignment.pp_raw_json = raw_json
         consignment.parcel_count_expected = parcel_count
         consignment.pp_manifest_number = waybill.details.manifest
         if trip_id is not None and consignment.trip_id is None:
             consignment.trip_id = trip_id
-            # Attaching (or re-attaching after a cancelled trip): the leg is this trip's.
             if origin_precinct_id is not None:
                 consignment.origin_precinct_id = origin_precinct_id
             if destination_precinct_id is not None:
@@ -253,21 +235,15 @@ async def sync_consignment_from_waybill(
         if consignment.client_organization_id is None:
             consignment.client_organization_id = client_org_id
 
-    # Flush so consignment.id resolves for the Parcel FK below. This is also where
-    # the insert race surfaces: the unique constraint on parcel_perfect_reference
-    # lets exactly one of two racing callers through and rejects the other (23505).
     try:
         await db.flush()
     except IntegrityError as exc:
         if not is_unique_violation(exc):
             raise
-        # Only read the winner after a successful rollback of the rejected unit of work.
         if not await rollback_after_error(db):
             raise
         owner_reference = await get_assigned_trip_reference(db, pp_reference)
         if owner_reference is None:
-            # Not "already assigned to another trip" — the row exists on no trip,
-            # or the winner rolled back too. A truthful 500 beats a tidy lie.
             logger.error(
                 "Unique violation on pp_reference=%s but no owning trip found", pp_reference
             )
@@ -283,7 +259,6 @@ async def sync_consignment_from_waybill(
     )
     existing_barcodes: set[str] = {row[0] for row in existing_barcodes_result.fetchall()}
 
-    # Insert only barcodes that are new — never delete existing Parcel rows.
     new_parcels_added: int = 0
     for track in waybill.tracks:
         if track.trackno not in existing_barcodes:
@@ -350,8 +325,6 @@ async def incident_references_by_consignment(
         .order_by(Parcel.consignment_id, Incident.incident_number)
     )).tuples().all()
     by_consignment: dict[uuid.UUID, list[str]] = {}
-    # Same "INC<n>" the dispatcher sees (orchestration.incidents.creation.reference); not imported
-    # because that package depends on trips, which depend on this module.
     for consignment_id, number in rows:
         by_consignment.setdefault(consignment_id, []).append(f"INC{number}")
     return {consignment_id: tuple(refs) for consignment_id, refs in by_consignment.items()}
@@ -395,8 +368,6 @@ async def _release_from_cancelled_trip(
         )
         raise ConsignmentScannedOnCancelledTripError(pp_reference, owner_reference)
 
-    # The parcels are about to be deleted, and an incident's ledger and affected-cargo list point
-    # at them. Refuse by name rather than let the foreign key surface as a 500.
     if cited := await incident_references_citing(db, consignment.id):
         logger.warning(
             "Refused moving consignment pp_reference=%s off cancelled trip %s: cited by %s",
@@ -408,11 +379,6 @@ async def _release_from_cancelled_trip(
         "Moving consignment pp_reference=%s off cancelled trip %s to trip %s",
         pp_reference, owner_reference, new_trip_id,
     )
-    # Safe to discard: no stamps (checked above), and scan ingestion waits on this same
-    # consignment lock. The replacement's expected parcels come from its own PP read.
-    # Incident writes lock the incident, not this consignment, so one can cite a parcel between
-    # the check above and this delete. The foreign key then decides: roll back to the savepoint
-    # and report the same refusal instead of a dead transaction.
     try:
         async with db.begin_nested():
             await db.execute(delete(Parcel).where(Parcel.consignment_id == consignment.id))
@@ -423,7 +389,6 @@ async def _release_from_cancelled_trip(
         raise ConsignmentCitedByIncidentError(pp_reference, owner_reference, cited) from exc
     consignment.unit_count_expected = None
     consignment.trip_id = None
-    # The cancelled trip's stops; the caller stamps the new route's stops after sync.
     consignment.pickup_stop_id = None
     consignment.delivery_stop_id = None
 
@@ -438,9 +403,6 @@ async def get_assigned_trip_reference(db: AsyncSession, pp_reference: str) -> Op
     Returns None both when no Consignment exists yet and when one exists but
     isn't yet linked to a trip.
     """
-    # parcel_perfect_reference is unique, so at most one Consignment can match.
-    # .limit(1) kept over scalar_one_or_none(): this advisory read must never
-    # raise at a dispatcher mid-lookup.
     result = await db.execute(
         select(Trip.trip_reference)
         .join(Consignment, Consignment.trip_id == Trip.id)

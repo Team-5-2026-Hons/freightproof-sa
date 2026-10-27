@@ -35,8 +35,6 @@ def _sast(day: int, hour: int) -> datetime:
     return datetime(2026, 9, day, hour, tzinfo=OPERATIONS_TZ)
 
 
-# ── Lateness bands (chart 2.2) ───────────────────────────────────────────────
-
 
 @pytest.mark.parametrize(
     ("delta_minutes", "expected"),
@@ -59,8 +57,6 @@ def test_lateness_band_edges(delta_minutes: float, expected: LatenessBand) -> No
     assert result is expected
 
 
-# ── Driving time by block (chart 3.5) ────────────────────────────────────────
-
 
 def test_driving_minutes_split_across_two_blocks() -> None:
     result = driving_minutes_by_block(_sast(14, 17), _sast(14, 20))
@@ -78,7 +74,6 @@ def test_driving_minutes_split_across_midnight() -> None:
 
 
 def test_driving_minutes_given_in_utc_are_split_in_sast() -> None:
-    # 04:00-05:00 UTC is 06:00-07:00 SAST: morning, not night.
     result = driving_minutes_by_block(
         datetime(2026, 9, 14, 4, tzinfo=UTC), datetime(2026, 9, 14, 5, tzinfo=UTC),
     )
@@ -108,10 +103,10 @@ def test_a_leg_that_ends_before_it_starts_counts_no_driving() -> None:
 @pytest.mark.parametrize(
     ("instant", "expected"),
     [
-        (datetime(2026, 9, 14, 23, 30, tzinfo=UTC), DayBlock.NIGHT),  # 01:30 SAST
-        (datetime(2026, 9, 14, 4, 0, tzinfo=UTC), DayBlock.MORNING),  # 06:00 SAST
-        (datetime(2026, 9, 14, 9, 59, tzinfo=UTC), DayBlock.MORNING),  # 11:59 SAST
-        (datetime(2026, 9, 14, 16, 0, tzinfo=UTC), DayBlock.EVENING),  # 18:00 SAST
+        (datetime(2026, 9, 14, 23, 30, tzinfo=UTC), DayBlock.NIGHT),
+        (datetime(2026, 9, 14, 4, 0, tzinfo=UTC), DayBlock.MORNING),
+        (datetime(2026, 9, 14, 9, 59, tzinfo=UTC), DayBlock.MORNING),
+        (datetime(2026, 9, 14, 16, 0, tzinfo=UTC), DayBlock.EVENING),
     ],
 )
 def test_day_block_reads_the_sast_clock(instant: datetime, expected: DayBlock) -> None:
@@ -119,8 +114,6 @@ def test_day_block_reads_the_sast_clock(instant: datetime, expected: DayBlock) -
 
     assert result is expected
 
-
-# ── Review queue reconstruction (chart 4.2) ──────────────────────────────────
 
 
 def test_an_item_raised_before_and_reviewed_after_was_waiting() -> None:
@@ -158,8 +151,6 @@ def test_an_item_raised_exactly_at_the_instant_was_not_yet_waiting() -> None:
 
     assert result == 0
 
-
-# ── Expiry bands (Licences & discs tile) ─────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -203,8 +194,6 @@ def test_count_expiry_bands_counts_each_date_once_and_skips_distant_ones() -> No
     )
 
 
-# ── Review age bands (chart 4.1) ─────────────────────────────────────────────
-
 
 @pytest.mark.parametrize(
     ("age", "expected"),
@@ -223,16 +212,13 @@ def test_review_age_band_edges(age: timedelta, expected: ReviewAgeBand) -> None:
     assert result is expected
 
 
-# ── Busy patterns (chart 1.3) ────────────────────────────────────────────────
-
 
 def test_pattern_set_counts_in_sast_and_divides_by_occurrences() -> None:
-    # Monday 7 Sep to Sunday 20 Sep: 14 days, every weekday twice.
     days = occurrence_days(date(2026, 9, 7), date(2026, 9, 20))
     instants = [
-        datetime(2026, 9, 7, 5, 10, tzinfo=UTC),  # 07:10 SAST, Monday 7th
-        datetime(2026, 9, 14, 5, 40, tzinfo=UTC),  # 07:40 SAST, Monday 14th
-        datetime(2026, 9, 18, 23, 30, tzinfo=UTC),  # 01:30 SAST, Saturday 19th
+        datetime(2026, 9, 7, 5, 10, tzinfo=UTC),
+        datetime(2026, 9, 14, 5, 40, tzinfo=UTC),
+        datetime(2026, 9, 18, 23, 30, tzinfo=UTC),
     ]
 
     result = build_pattern_set(instants, days)
@@ -266,8 +252,6 @@ def test_a_date_the_period_never_reaches_has_no_average() -> None:
     assert by_date[31].average_per_day is None
     assert by_date[10].average_per_day == 0.0
 
-
-# ── Plan spread bands ─────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(

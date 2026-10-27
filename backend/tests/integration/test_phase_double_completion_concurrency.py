@@ -35,7 +35,6 @@ from tests.integration.test_trip_cancel_concurrency import (
     _tear_down,
 )
 
-# Upper bound for anything that should finish once the hold is released.
 _COMPLETION_TIMEOUT_SECONDS = 10
 
 
@@ -98,6 +97,6 @@ async def test_two_concurrent_completions_of_one_phase_complete_it_once(
     assert activation.completed_at is not None
     assert TripStatus(trip_status) == TripStatus.ACTIVE
     assert exceptions == 0
-    assert phase_rows == 3  # trip_creation, activation, loading: neither call added a row
+    assert phase_rows == 3
     anchor_phase_event_task.delay.assert_called_once()
     assert anchor_phase_event_task.delay.call_args.args[0] == str(world.activation_id)

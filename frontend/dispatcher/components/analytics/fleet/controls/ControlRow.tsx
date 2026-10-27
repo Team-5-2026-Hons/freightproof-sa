@@ -22,14 +22,11 @@ export interface TabControls {
 
 interface ControlRowProps {
   controls: TabControls
-  /** resolveTabQuery(controls, …): worked out once by the page, which also fetches with it. */
   query: TabQuery
   onChange: (controls: TabControls) => void
-  /** Tabs with no chart over time (Routes & sites) have a Period but no View by. */
   showGrain: boolean
   today: string
   allTimeStart: string | null
-  /** How this tab's figures are counted, shown behind the Information button. */
   notes: readonly string[]
 }
 

@@ -2,12 +2,6 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Modal } from './Modal'
 
-// jsdom 25 does not implement window.PointerEvent, so fireEvent.pointerDown/Up/Cancel
-// would otherwise dispatch a bare Event with no clientX/clientY/pointerId — the gesture
-// bookkeeping under test here reads exactly those fields, so without this the pointer
-// tests below would pass vacuously (no gesture ever recorded) rather than exercising the
-// real logic. Polyfilled only when missing, so a future jsdom upgrade that adds real
-// support keeps using it instead.
 if (typeof window.PointerEvent === 'undefined') {
   class PointerEvent extends MouseEvent {
     readonly pointerId: number
@@ -47,9 +41,6 @@ it('fills 80% of the viewport over a blurred page when zoomed', () => {
   expect(dialog).not.toHaveClass('w-[calc(100%_-_2rem)]')
 })
 
-// jsdom's layout engine never runs, so a real element's getBoundingClientRect() always
-// returns an all-zero rect — every "inside" vs "outside" pointer test below has to stub
-// the dialog's own rect to give outsideDialog() something meaningful to compare against.
 function stubDialogRect(dialog: HTMLElement, rect: { left: number; top: number; right: number; bottom: number }): void {
   const domRect: DOMRect = {
     ...rect,
@@ -64,8 +55,6 @@ function stubDialogRect(dialog: HTMLElement, rect: { left: number; top: number; 
   vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue(domRect)
 }
 
-// Shared rect for every pointer test below: a 400x300 box with (200, 200) clearly inside
-// and (50, 50) clearly outside on every edge.
 const DIALOG_RECT = { left: 100, top: 100, right: 500, bottom: 400 }
 const INSIDE = { x: 200, y: 200 }
 const OUTSIDE_A = { x: 50, y: 50 }
@@ -94,11 +83,6 @@ it('applies max-w-6xl for the xl size', () => {
   expect(screen.getByRole('dialog', { name: 'Wide review' })).toHaveClass('max-w-6xl')
 })
 
-// Regression for the map-panning defect: a Leaflet drag that starts on content inside
-// the dialog (e.g. the map) and is released over the backdrop still produces a native
-// `click` targeting the `<dialog>` element itself, indistinguishable from a real
-// backdrop click by target alone. Only a gesture that both started AND ended outside the
-// dialog's own box may dismiss.
 it('does not dismiss a gesture beginning inside the dialog', () => {
   const close = vi.fn()
   render(<Modal open title="Map" onClose={close}><div data-testid="map">Map</div></Modal>)
@@ -214,7 +198,6 @@ it('scrolls its body, not the dialog, so the scrollbar stays inside the rounded 
   expect(dialog).not.toHaveClass('overflow-y-auto')
   const body = screen.getByText('body copy').parentElement!
   expect(body).toHaveClass('overflow-y-auto')
-  // Header and footer sit outside the scroller.
   expect(body).not.toContainElement(screen.getByRole('heading', { name: 'Long form' }))
   expect(body).not.toContainElement(screen.getByRole('button', { name: 'Save' }))
 })

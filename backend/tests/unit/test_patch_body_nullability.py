@@ -28,8 +28,6 @@ from app.schemas.organisations import PrecinctUpdateBody
 from app.schemas.people import DriverUpdateBody
 from app.schemas.vehicles import VehicleUpdateBody
 
-# (PATCH body, mapped model). Every body applied via model_dump(exclude_unset=True)
-# belongs here — if a fourth resource gains a PATCH endpoint, add it.
 _PATCH_BODIES = [
     pytest.param(PrecinctUpdateBody, Precinct, id="precinct"),
     pytest.param(VehicleUpdateBody, Vehicle, id="vehicle"),
@@ -82,8 +80,6 @@ def test_precinct_patch_rejects_an_explicit_null_on_a_not_null_column(field: str
     with pytest.raises(ValidationError) as exc_info:
         PrecinctUpdateBody.model_validate({field: None})
 
-    # The error must name the offending field, not the model: the dispatcher client
-    # renders detail[0].msg, and a model-level error tells the user nothing actionable.
     assert exc_info.value.errors()[0]["loc"] == (field,)
 
 

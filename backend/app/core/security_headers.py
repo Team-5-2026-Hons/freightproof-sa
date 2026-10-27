@@ -8,11 +8,8 @@ from collections.abc import Awaitable, Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Docs pages need inline scripts/styles for Swagger UI; only reachable
-# outside production anyway (see main.py's docs_url guard).
 _CSP_EXEMPT_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 
-# JSON API, never HTML a browser renders — "load nothing" is safe here.
 _JSON_API_CSP = "default-src 'none'; frame-ancestors 'none'"
 
 
@@ -28,13 +25,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         response = await call_next(request)
 
-        # 2yr HSTS incl. subdomains; harmless over plain-HTTP dev (browsers
-        # only honour it on responses actually received over HTTPS).
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
-        # Stop content-type sniffing (e.g. an artifact served back as text/html).
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        # Full referrer would leak paths (trip IDs, waybill numbers) cross-origin.
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         if request.url.path not in _CSP_EXEMPT_PATHS:

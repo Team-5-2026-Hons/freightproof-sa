@@ -78,12 +78,6 @@ from app.schemas.phases import PhaseCompleteRequest
 from app.schemas.trips import TripDetailResponse
 
 
-# The single entry point the API calls. The five wrappers stay —
-# each writes genuinely different evidence — but the phase-type
-# dispatch and the body/row cross-check live exactly once, here.
-# Per-wrapper payload types differ, so the table is typed by its shared contract
-# rather than per-member: complete_phase has already proven actual == payload.phase_type
-# before dispatching, which is the check a precise signature would have given us.
 _WrapperFn = Callable[..., Awaitable[TripDetailResponse]]
 
 
@@ -115,19 +109,6 @@ async def complete_phase(
     driver-completable as of 2026-08-09 (advance_in_transit); it used to be listed here
     alongside trip_creation.
     """
-    # Ownership BEFORE the type cross-check, not after. The wrappers below all
-    # gate on it too, but PhaseTypeMismatchError returns ahead of them, and its
-    # 409 body names the row's real phase_type — so without this line a driver
-    # holding someone else's trip_id/phase_event_id could probe a foreign trip's
-    # plan by sending a deliberately wrong phase_type and reading the error.
-    # A non-owner must get the same 404 as for a trip that does not exist.
-    #
-    # Locked here as well as in _gate_and_load: the phase row is locked below, and the trip lock
-    # must always come first (see loaders._lock_trip) or this would wait on the phase row while
-    # an override holds the trip and waits on the same row.
-    #
-    # "Owns" now means "holds the trip at this moment, decided after the lock" (FP-83): a request
-    # queued behind a handover must be refused as the former driver, not written as them.
     _, custody = await authorise_driver_write(
         db, trip_id=trip_id, driver_id=driver_id,
         claim=WriteClaim(payload.custody_sequence, lambda: _find_own_completion(
@@ -137,12 +118,6 @@ async def complete_phase(
     )
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
-    # After a handover the "resolved phase returns the current state" replay would hand any
-    # key from any driver a success (and the current trip). Once custody has moved, only the
-    # driver who recorded the completion, under the same key, may be answered that way.
-    # OVERRIDDEN is left to _gate_and_load: no driver completed that row, so "completed by
-    # another submission" would be false, and its coded PHASE_OVERRIDDEN is what tells the
-    # driver app (offline queue included) to keep the capture instead of stalling on it.
     if (
         custody.sequence > 0 and _is_resolved(PhaseStatus(event.status))
         and PhaseStatus(event.status) != PhaseStatus.OVERRIDDEN
@@ -155,8 +130,6 @@ async def complete_phase(
 
     wrapper = _WRAPPER_BY_PHASE_TYPE.get(actual)
     if wrapper is None:
-        # Unreachable via the API (the union has no member for these types), but
-        # a direct service caller must get the same clear error, not a KeyError.
         raise PhaseTypeMismatchError(expected=actual.value, received=payload.phase_type.value)
 
     return await wrapper(

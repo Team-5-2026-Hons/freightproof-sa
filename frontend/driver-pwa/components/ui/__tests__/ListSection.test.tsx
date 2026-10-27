@@ -26,8 +26,6 @@ describe('ListSection', () => {
   })
 
   it('test_skips_rows_that_render_nothing', () => {
-    // A conditionally hidden row (e.g. Call Dispatch with no phone configured) must not
-    // leave a doubled rule behind.
     const hasPhone = false
     const { container } = render(
       <ListSection>
@@ -57,7 +55,6 @@ describe('ListRow', () => {
   })
 
   it('test_external_hrefs_are_plain_anchors', () => {
-    // mailto:/tel: must not go through the client router.
     render(<ListRow value="Email support" href="mailto:support@freightproof.co.za" />)
 
     const link = screen.getByRole('link', { name: /Email support/ })

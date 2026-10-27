@@ -40,7 +40,6 @@ describe('ParcelOverview header', () => {
 
     expect(screen.getByText('Trip cancelled after departure')).toHaveClass('!whitespace-normal')
   })
-  // Cancellation is red everywhere else in the app (TRIP_STATUS_META.cancelled), so the badge keeps its own wording but takes that colour.
   it('colours a cancelled badge with the shared cancelled chip type, and other states with their own', () => {
     renderOverview()
     expect(screen.getByText('Trip cancelled after departure')).toHaveClass('bg-err-c')
@@ -228,8 +227,6 @@ describe('ParcelOverview parcel record popover', () => {
 
     expect(screen.getByRole('region', { name: LABEL })).toBeInTheDocument()
   })
-  // InfoPopover anchors its panel to the button's left edge and caps it at 280px. In a 320px card that runs off the screen, so
-  // the panel is re-anchored to the header row's right edge and capped to the viewport (the popover itself is not edited).
   it('anchors the panel to the header row’s right edge and caps its width to the viewport', () => {
     renderOverview()
 

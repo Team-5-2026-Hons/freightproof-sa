@@ -83,8 +83,6 @@ def test_in_transit_anchors_to_departure_stop():
 
     in_transit_rows = [p for p in plan if p.phase_type == PhaseType.IN_TRANSIT]
 
-    # Departs stop 1 -> anchored to 1 (not 2, the stop it arrives at).
-    # Departs stop 2 -> anchored to 2 (not 3, the stop it arrives at).
     assert [row.stop_sequence for row in in_transit_rows] == [1, 2]
 
 
@@ -96,8 +94,6 @@ def test_sequence_number_is_row_index():
     plan = build_phase_plan([stop1, stop2, stop3])
 
     assert [p.sequence_number for p in plan] == list(range(len(plan)))
-    # The plan is longer than the enum's cardinality -- sequence_number
-    # is a row index, not bounded by the number of distinct PhaseType values.
     assert len(plan) > len(PhaseType)
 
 
@@ -142,7 +138,6 @@ def test_every_in_transit_is_followed_by_arrival_at_the_next_stop():
         if row.phase_type == PhaseType.IN_TRANSIT:
             following = plan[i + 1]
             assert following.phase_type == PhaseType.ARRIVAL
-            # Arrival belongs to the stop being arrived at, not the one departed from.
             assert following.stop_sequence == row.stop_sequence + 1
 
 

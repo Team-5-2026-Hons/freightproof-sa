@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 
-/** How far one arrow-key press moves the bottom edge. */
 export const RESIZE_KEY_STEP_PX = 40
 
 /** The height after a drag of `delta` px (positive = pointer moved down), clamped to [min, max]. */
@@ -14,7 +13,6 @@ interface ResizableHeightProps {
   initialHeight: number
   minHeight: number
   maxHeight: number
-  /** Accessible name for the drag handle, e.g. "Resize map". */
   label: string
   className?: string
   children: ReactNode
@@ -27,7 +25,6 @@ interface ResizableHeightProps {
  */
 export function ResizableHeight({ initialHeight, minHeight, maxHeight, label, className, children }: ResizableHeightProps) {
   const [height, setHeight] = useState(initialHeight)
-  // Detaches the window listeners of a drag in progress; also run on unmount mid-drag.
   const stopDragRef = useRef<(() => void) | null>(null)
 
   useEffect(() => () => stopDragRef.current?.(), [])
@@ -37,13 +34,9 @@ export function ResizableHeight({ initialHeight, minHeight, maxHeight, label, cl
     const startY = event.clientY
     const startHeight = height
 
-    // Window listeners, not the handle's own: the pointer leaves the thin handle as soon as
-    // the drag gets going.
     function onMove(move: globalThis.PointerEvent): void {
       setHeight(nextHeight(startHeight, move.clientY - startY, minHeight, maxHeight))
     }
-    // pointercancel as well as pointerup: a drag the browser takes over (a touch scroll, a
-    // system gesture) never sends pointerup, and would otherwise keep resizing on every move.
     function stop(): void {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', stop)

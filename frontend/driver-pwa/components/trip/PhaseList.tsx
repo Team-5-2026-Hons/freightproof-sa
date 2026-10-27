@@ -15,7 +15,6 @@ function stateOf(phase: PhaseDescriptor, current: PhaseDescriptor | null): RowSt
   return phase.phase_event_id === current?.phase_event_id ? 'current' : 'upcoming'
 }
 
-// Spoken state, so nothing on the row depends on its colour or marker alone.
 const SPOKEN: Record<RowState, string> = {
   done: 'Done',
   current: 'Now',
@@ -32,14 +31,11 @@ function Marker({ state, number }: { state: RowState; number: number }) {
     return <span aria-hidden className={cn(base, 'bg-error-tint text-error')}><TriangleAlert className="size-3.5" strokeWidth={2.5} /></span>
   }
   if (state === 'current') {
-    // Blue means progress, and this is where progress is.
     return <span aria-hidden className={cn(base, 'bg-secondary text-secondary-on ring-4 ring-secondary-container')}>{number}</span>
   }
   return <span aria-hidden className={cn(base, 'border-2 border-surface-container-high text-surface-on-variant')}>{number}</span>
 }
 
-// A phase can complete while its Hedera anchor failed (fail-open, see phase-meta
-// ANCHORED_PHASES) — so the row never shows a plain success for that pairing.
 function AnchorMark({ phase }: { phase: PhaseDescriptor }) {
   if (phase.anchor_status === 'anchored') {
     return <ShieldCheck role="img" aria-label="Anchored on Hedera" className="size-4 shrink-0 text-chain" strokeWidth={2.25} />
@@ -53,7 +49,6 @@ interface PhaseListProps {
   phases: readonly PhaseDescriptor[]
   /** Makes the current phase's row open its first step. Omit (e.g. on hold) for a static list. */
   onSelectCurrent?: (phase: PhaseDescriptor) => void
-  /** Record mode: show when each completed phase was recorded. */
   showTimes?: boolean
 }
 

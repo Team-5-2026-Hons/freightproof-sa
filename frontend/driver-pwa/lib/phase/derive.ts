@@ -8,17 +8,12 @@
 import type { PhaseDescriptor, PhaseEventId, PhaseStatus, PhaseStep } from '@shared/lib/types/phase'
 import { ANCHORED_PHASES, STEP_NAMES, STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 
-// Mirrors backend `_is_resolved` exactly. Differs from the dispatcher's own
-// `isResolved`, which excludes `exception` so it keeps rendering as an active warning
-// there — this module only cares where the driver goes next.
 const RESOLVED_STATUSES: readonly PhaseStatus[] = ['completed', 'exception', 'overridden']
 
 function isResolved(phase: PhaseDescriptor): boolean {
   return RESOLVED_STATUSES.includes(phase.status)
 }
 
-// Plan order is never trusted off the wire — always re-sort by sequence_number
-// before walking it.
 function bySequence(phases: readonly PhaseDescriptor[]): PhaseDescriptor[] {
   return [...phases].sort((a, b) => a.sequence_number - b.sequence_number)
 }

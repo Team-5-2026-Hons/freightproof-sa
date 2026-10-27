@@ -16,8 +16,6 @@ PORT_METHODS = ("get_manifest", "get_single_waybill")
 
 
 def test_clients_satisfy_port_under_type_checking() -> None:
-    # These assignments are the real assertion: mypy rejects either line if a client's
-    # signature drifts from the port. At runtime they only prove construction works.
     mock: ParcelPerfectPort = MockParcelPerfectClient()
     real: ParcelPerfectPort = ParcelPerfectClient()
 

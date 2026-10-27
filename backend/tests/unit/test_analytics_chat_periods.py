@@ -11,11 +11,8 @@ import pytest
 
 from app.orchestration.analytics_chat.periods import PeriodPreset, add_months, resolve_preset
 
-# Monday 19 Oct 2026, the day the spec was written.
 _MONDAY = date(2026, 10, 19)
-# Sunday 25 Oct 2026: its week still starts on Monday the 19th.
 _SUNDAY = date(2026, 10, 25)
-# Friday 1 Jan 2027: the year and month have just started, the week began in 2026.
 _NEW_YEAR = date(2027, 1, 1)
 
 

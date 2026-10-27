@@ -6,11 +6,8 @@ import { StaticGeofenceThumbnail } from '@/components/map/StaticGeofenceThumbnai
 import { describeGeofence } from '@/lib/map/polygon'
 import type { Precinct } from '@shared/lib/types/precinct'
 
-// GPS coordinates render to a fixed 5 decimal places (~1.1m precision at the equator)
-// so cards don't jitter between differing source precisions across precincts.
 const COORDINATE_DECIMAL_PLACES = 5
 
-// The list's grid, shared with its loading skeleton so the two always lay out the same.
 export const PRECINCT_GRID_CLASSES = 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4'
 
 interface PrecinctCardProps {
@@ -22,10 +19,6 @@ interface PrecinctCardProps {
 export function PrecinctCard({ precinct, isOwned, onClick }: PrecinctCardProps) {
   return (
     <Card onClick={onClick} className="flex flex-col gap-3 p-0 overflow-hidden">
-      {/* Thumbnail bleeds to the card's own edges — Card's default p-5 is dropped on
-          this instance (via p-0 above) and reapplied below the map band so the
-          thumbnail's square corners get clipped by the card's rounded-xl, matching
-          how VehicleCard's content otherwise reads. */}
       <StaticGeofenceThumbnail
         latitude={precinct.latitude}
         longitude={precinct.longitude}
@@ -42,8 +35,6 @@ export function PrecinctCard({ precinct, isOwned, onClick }: PrecinctCardProps) 
               {precinct.name}
             </span>
           </div>
-          {/* Ownership is the normal case and gets no chip at all — colour marks
-              only the exceptional "not yours" state, never the default. */}
           {!isOwned && <Chip type="pending" label="Shared" />}
         </div>
 

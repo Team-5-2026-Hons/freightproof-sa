@@ -9,7 +9,6 @@ import {
   type RoadSample,
 } from '../roadPath'
 
-// A straight vertical road sampled every 10px: length and y advance together.
 const straight: RoadSample[] = Array.from({ length: 11 }, (_, i) => ({ length: i * 10, x: 50, y: 100 + i * 10 }))
 
 describe('buildRoadPath', () => {
@@ -24,7 +23,6 @@ describe('buildRoadPath', () => {
   it('build_segments_leave_and_enter_vertically', () => {
     const d = buildRoadPath([{ x: 0, y: 0 }, { x: 100, y: 200 }], 0.5)
 
-    // Handles share x with their endpoint, so the tangent at each checkpoint is vertical.
     expect(d).toBe('M 0 0 C 0 100, 100 100, 100 200')
   })
 })
@@ -115,7 +113,6 @@ describe('stepCriticalSpring', () => {
     const moving = stepCriticalSpring({ value: 0, velocity: 0 }, 100, 0.05, 0.2)
     const reversed = stepCriticalSpring(moving, 0, 1 / 60, 0.2)
 
-    // One frame after the target flips, the truck is still near where it was, not snapped back.
     expect(Math.abs(reversed.value - moving.value)).toBeLessThan(10)
   })
 })

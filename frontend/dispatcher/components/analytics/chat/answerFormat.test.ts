@@ -11,7 +11,6 @@ describe('answerBlocks', () => {
   })
 
   it('reads "- " lines as a bulleted list, even straight after a sentence', () => {
-    // 21 Oct: "- There are 4 live trips" showed as a plain hyphen in the panel.
     expect(answerBlocks('From the headline figures:\n- There are 4 live trips.\n- 1 critical problem is waiting.')).toEqual([
       { kind: 'paragraph', lines: ['From the headline figures:'] },
       { kind: 'bullets', items: ['There are 4 live trips.', '1 critical problem is waiting.'] },

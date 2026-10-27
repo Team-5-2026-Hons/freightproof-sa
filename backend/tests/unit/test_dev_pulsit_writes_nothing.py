@@ -56,10 +56,6 @@ class WriteForbiddenSession:
         self.executed = 0
 
     async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
-        # Reads are legitimate — the endpoint resolves the trip, horse and precinct so
-        # the response can report real state. Never reached here because
-        # _load_trip_context is stubbed, but counted so a future refactor that adds a
-        # query is visible rather than silent.
         self.executed += 1
         raise AssertionError("unexpected query — _load_trip_context should be stubbed")
 
@@ -96,7 +92,6 @@ class _FakePrecinct:
         self.latitude = _DEPOT_LAT
         self.longitude = _DEPOT_LNG
         self.geofence_radius_metres = 200
-        # A circle precinct: the geofence and scenario code read this to choose the shape.
         self.geofence_polygon = None
 
 
@@ -199,14 +194,6 @@ async def test_unknown_waypoint_raises_before_anything_is_staged(wired) -> None:
     assert wired.data == {}
 
 
-# ── FP-197: scenario mode, still with no DB reachable ─────────────────────────
-#
-# `resolve_target_stop` is the endpoint's only real query for scenario mode, and it
-# is stubbed out here exactly like `_load_trip_context` is above — so this suite
-# proves the endpoint's OWN logic (mode branching, geometry validation, staging,
-# response shape) writes nothing and needs nothing beyond that one stubbed read,
-# independent of whether a database is reachable at all.
-
 
 class _FakeTargetStop:
     def __init__(self) -> None:
@@ -227,7 +214,6 @@ class _FakeTargetPrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
-        # A circle precinct: build_scenario_target reads this to choose the shape.
         self.geofence_polygon = None
 
 
@@ -280,8 +266,6 @@ async def test_scenario_mode_three_km_computes_the_target_distance(wired_scenari
     )
 
     assert result.target_distance_metres == pytest.approx(3_000.0, abs=0.5)
-    # The EXPECTED-stop verdict (Cape Town depot, from _FakePrecinct) must not
-    # silently inherit the target's number — the tracker is nowhere near it now.
     assert result.geofence_confirmed is False
 
 

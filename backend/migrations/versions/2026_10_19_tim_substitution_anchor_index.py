@@ -13,7 +13,6 @@ Create Date: 2026-10-19
 """
 from alembic import op
 
-# Keep revision ids under 32 characters - alembic_version.version_num is varchar(32).
 revision = "tim_dsub_anchor_index"
 down_revision = "tim_dsub_uploads"
 branch_labels = None

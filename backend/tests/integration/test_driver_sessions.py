@@ -56,7 +56,6 @@ async def test_the_same_session_keeps_working(db_session) -> None:
     now = datetime.now(UTC)
     await enforce_single_device(db_session, driver_id=driver.id, payload=_token("session-a", now))
 
-    # No exception on the second, third, hundredth request from the same handset.
     await enforce_single_device(db_session, driver_id=driver.id, payload=_token("session-a", now))
 
 

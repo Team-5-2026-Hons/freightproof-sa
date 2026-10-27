@@ -13,11 +13,7 @@ export function useScrolledPastTop(): boolean {
 
   useEffect(() => {
     const update = () => setScrolled(window.scrollY > 0)
-    // The first read waits a frame: reading scrollY while the screen mounts forces a
-    // synchronous layout of the half-built page (57 ms measured). A
-    // screen opens at the top anyway, so the hairline is right until the frame arrives.
     const firstRead = window.requestAnimationFrame(update)
-    // Passive: a listener that can't call preventDefault never delays the scroll itself.
     window.addEventListener('scroll', update, { passive: true })
     return () => {
       window.cancelAnimationFrame(firstRead)

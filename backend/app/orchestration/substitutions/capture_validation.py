@@ -9,8 +9,6 @@ from app.db.models.trips import Trip
 from app.orchestration.substitutions.request_read import trip_vehicle_ids
 from app.schemas.driver_substitutions import ConfirmSubstitutionRequest, ConfirmSubstitutionObservationRequest, SubstitutionRole
 
-# Phases before the doors are sealed for the road. A takeover here has no seal to read even on a
-# loaded trip; the driver app pre-fills "not applicable" from the same current_phase (reads.py).
 PRE_DEPARTURE_PHASES = frozenset({PhaseType.TRIP_CREATION.value, PhaseType.ACTIVATION.value, PhaseType.LOADING.value})
 
 

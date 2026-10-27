@@ -23,9 +23,6 @@ const PRESET_WEEK_DAYS = 7
 const PRESET_MONTH_DAYS = 30
 const NO_PRESETS: Preset[] = []
 
-// Built when the picker opens, not at module load: a tab left open overnight would otherwise
-// keep offering yesterday as "Today". Days are the SAST calendar day, and the offsets are
-// arithmetic on that date string, so no browser time zone can shift them.
 function defaultPresets(): Preset[] {
   const today = sastToday()
   return [

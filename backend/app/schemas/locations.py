@@ -11,10 +11,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Endpoint takes a batch (offline queue flush); bounded so one driver can't DoS the table.
 MAX_PINGS_PER_REQUEST = 200
 
-MAX_CONTEXT_LENGTH = 80  # matches TripLocationPing.context's String(80)
+MAX_CONTEXT_LENGTH = 80
 
 
 class LocationPingCreate(BaseModel):
@@ -22,19 +21,15 @@ class LocationPingCreate(BaseModel):
 
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
-    accuracy_m: Optional[float] = Field(default=None, ge=0)  # metres; negative is a client bug
+    accuracy_m: Optional[float] = Field(default=None, ge=0)
     context: str = Field(min_length=1, max_length=MAX_CONTEXT_LENGTH)
-    recorded_at: datetime  # device capture time, not receipt time — offline pings replay late
+    recorded_at: datetime
 
 
 class LocationPingBatch(BaseModel):
     """The request body — one or more fixes for a single trip."""
 
     pings: list[LocationPingCreate] = Field(min_length=1, max_length=MAX_PINGS_PER_REQUEST)
-    # The custody period this capture belongs to (0 = the trip's original driver; each
-    # completed handover adds one), taken when the evidence was captured. Optional only so
-    # clients that predate substitutions keep working: the server accepts it omitted while the
-    # trip has never changed driver and refuses it afterwards (FP-83 contract).
     custody_sequence: Optional[int] = Field(default=None, ge=0)
 
 

@@ -27,7 +27,6 @@ describe('VehicleSheet', () => {
     expect(within(dialog).getByText('GP 12-34 ZX')).toBeInTheDocument()
     expect(within(dialog).getByText('Volvo FH 520 · 2022')).toBeInTheDocument()
     expect(within(dialog).getByText('12 Mar 2027')).toBeInTheDocument()
-    // No mass or length on record: no empty "—" rows.
     expect(within(dialog).queryByText(/Gross mass/)).toBeNull()
   })
 

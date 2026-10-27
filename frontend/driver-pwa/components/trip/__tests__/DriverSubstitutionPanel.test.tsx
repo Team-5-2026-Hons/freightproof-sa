@@ -89,7 +89,6 @@ describe('DriverSubstitutionPanel', () => {
 
     renderPanel({ trip: null })
 
-    // First time this session: the sheet opens itself with the arrangement inside.
     expectSheetOpen(true)
     expect(screen.getByRole('dialog', { name: 'Driver handover' })).toBeInTheDocument()
     expect(screen.getByText('Collect this trip')).toBeInTheDocument()

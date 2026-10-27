@@ -18,30 +18,14 @@ export interface StepRequirement {
 interface StepLayoutProps {
   phase: PhaseDescriptor
   stepIndex: number
-  /** One or two sentences on what this step is for. */
   intro?: ReactNode
-  /**
-   * What must be done before the action unlocks, shown as a live checklist above it. The
-   * step still owns the real gate (its `disabled` on the action); this is the explanation.
-   */
   requirements?: readonly StepRequirement[]
-  /** The step's confirm control. Omit to render no footer (blocked or waiting states). */
   action?: ReactNode
-  /** Centre the body — for completion and confirmation screens with a single message. */
   centered?: boolean
-  /**
-   * False when the body brings its own h1 — the warehouse waiting screen, where the step's
-   * task ("Check the linehaul sheet") is not what is happening yet.
-   */
   showTitle?: boolean
   children?: ReactNode
 }
 
-// The one frame every evidence step is built in. Before this, ten
-// step components each hand-built the same header / intro / content / swipe stack, and the
-// swipe simply sat greyed out when something was missing — a driver had to work out for
-// themselves which of three fields was still empty. Now the step declares its
-// requirements and the footer says, live, what is done and what is not.
 export function StepLayout({
   phase, stepIndex, intro, requirements = [], action, centered = false, showTitle = true, children,
 }: StepLayoutProps) {
@@ -53,8 +37,6 @@ export function StepLayout({
     <main className="flex min-h-dvh flex-col bg-surface">
       <StepHeader phase={phase} stepIndex={stepIndex} />
 
-      {/* Title, then one or two sentences on why, then the step: the driver
-          reads what to do before anything asks for a tap. */}
       <div className={cn('flex flex-1 flex-col gap-6 px-5 pb-6 pt-6', centered && 'items-center justify-center text-center')}>
         {showTitle && (
           <div className="flex flex-col gap-2">
@@ -66,8 +48,6 @@ export function StepLayout({
       </div>
 
       {action !== undefined && (
-        // Pinned at normal sizes; at accessibility text sizes it flows after the step
-        // instead, because pinned it would cover more than half the screen.
         <footer className={cn('glass-nav border-t border-hairline px-4 pt-3 pb-[max(env(safe-area-inset-bottom),1.5rem)]', !largeText && 'sticky bottom-0 z-sticky')}>
           {requirements.length > 0 && <RequirementChecklist requirements={requirements} />}
           <div className="flex justify-center">{action}</div>

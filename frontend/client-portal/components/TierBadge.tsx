@@ -1,7 +1,5 @@
 import type { EvidenceTier } from '@/lib/types'
 
-// DESIGN_SYSTEM.md: chain palette is reserved for anchored facts; declared is dashed so
-// it can never be mistaken for something the system captured itself.
 const STYLE: Record<EvidenceTier, { label: string; className: string; meaning: string }> = {
   anchored: {
     label: 'Anchored', className: 'bg-chain-c text-chain-on',

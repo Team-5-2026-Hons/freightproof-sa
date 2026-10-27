@@ -88,13 +88,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trips/{trip_id}/phases/{phase_event_id}/handover", tags=["handover"])
 public_router = APIRouter(prefix="/handover", tags=["handover"])
 
-# One constant so the routes can't drift into distinguishable failure messages (rule 1).
 _GENERIC_NOT_FOUND = "This delivery confirmation link is not valid."
 
-HANDOVER_SESSION_COOKIE = "fp_handover_session"  # scoped to the handover path only
+HANDOVER_SESSION_COOKIE = "fp_handover_session"
 _COOKIE_PATH = "/api/v1/handover"
 
-# Shared by _load_confirmation_event and the token endpoint's stop check.
 _CONFIRMATION_NOT_FOUND = "Confirmation phase not found."
 
 
@@ -102,9 +100,6 @@ def _not_found() -> HTTPException:
     return HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=_GENERIC_NOT_FOUND)
 
 
-# Didit sends three signature variants; this is the raw-body one, correct here because
-# `await request.body()` reads bytes before any parser re-encodes them. X-Signature-V2
-# signs a canonicalised form we'd have to guess — prefer it once a real delivery is captured.
 _DIDIT_SIGNATURE_HEADER = "x-signature"
 _DIDIT_TIMESTAMP_HEADER = "x-timestamp"
 
@@ -158,7 +153,7 @@ async def issue_handover_token_endpoint(
         rotation = await rotate_next_token(db, target=target, force=query.force)
         await db.commit()
     except DatabaseUnavailableError:
-        raise  # get_db cleans up; the shared handler returns 503.
+        raise
     except SQLAlchemyError:
         await rollback_after_error(db)
         logger.exception("Failed to issue a handover token for phase_event=%s", phase_event_id)
@@ -167,7 +162,6 @@ async def issue_handover_token_endpoint(
         ) from None
 
     return HandoverTokenResponse(
-        # None while paused: the receiver holds a live code, not an error.
         scan_url=build_scan_url(rotation.raw_token) if rotation.raw_token else None,
         expires_at=rotation.token.expires_at,
         rotate_after_seconds=settings.HANDOVER_ROTATION_SECONDS,
@@ -229,11 +223,10 @@ async def scan_handover_endpoint(
         response.set_cookie(
             key=HANDOVER_SESSION_COOKIE,
             value=page.session_secret,
-            httponly=True,  # no script on the page can exfiltrate it (XSS)
-            samesite="strict",  # confirm POST is same-site from the page we just served
-            secure=settings.ENVIRONMENT != "development",  # plain HTTP locally would silently drop it
+            httponly=True,
+            samesite="strict",
+            secure=settings.ENVIRONMENT != "development",
             path=_COOKIE_PATH,
-            # Cover the verification extension too: an expired cookie fails the binding check.
             max_age=(
                 settings.HANDOVER_TOKEN_EXPIRY_MINUTES + settings.IDVS_TOKEN_EXTENSION_MINUTES
             ) * 60,
@@ -266,7 +259,6 @@ async def confirm_handover_endpoint(
 ) -> HandoverConfirmResponse:
     token = await _live_token(db, raw_token)
 
-    # Check both halves before redemption so a wrong browser cannot burn the receiver's token.
     if not session_secret_matches(token, fp_handover_session):
         logger.warning(
             "Handover confirm rejected: session secret mismatch for token=%s", token.id,
@@ -276,7 +268,6 @@ async def confirm_handover_endpoint(
     try:
         result = await redeem_token(db, token=token, raw_token=raw_token)
     except HandoverLinkInvalidError:
-        # The service logged the reason; commit the attempt row because it IS evidence.
         await db.commit()
         raise _not_found() from None
 
@@ -292,17 +283,14 @@ async def confirm_handover_endpoint(
                 receiver_lat=payload.receiver_lat,
                 receiver_lng=payload.receiver_lng,
                 receiver_accuracy_m=payload.receiver_accuracy_m,
-                # resolve_client_ip, not request.client.host: behind Fly's edge the socket
-                # peer is fly-proxy, not the receiver.
                 receiver_ip=resolve_client_ip(request),
                 receiver_user_agent=request.headers.get("user-agent"),
-                # FP-240: a camera scan opens a clean context with no Authorization header.
                 bearer_token_present=bool(request.headers.get("authorization")),
             ),
         )
         await db.commit()
     except DatabaseUnavailableError:
-        raise  # get_db cleans up; the shared handler returns 503.
+        raise
     except SQLAlchemyError:
         await rollback_after_error(db)
         logger.exception("Failed to record a handover confirmation for token=%s", result.token_id)
@@ -335,13 +323,12 @@ async def handover_consent_endpoint(
         consented=payload.consented, has_document=payload.has_document,
     )
     if not outcome.created:
-        # Idempotent: a reload mid-flow must not create a second row.
         return _verification_state(outcome.verification)
 
     try:
         await db.commit()
     except DatabaseUnavailableError:
-        raise  # get_db cleans up; the shared handler returns 503.
+        raise
     except SQLAlchemyError:
         await rollback_after_error(db)
         logger.exception("Failed to record handover consent for token")
@@ -377,7 +364,7 @@ async def handover_verify_endpoint(
 
     return HandoverVerifyResponse(
         session_url=started.session_url,
-        tier=ReceiverVerificationTier(verification.tier).value,  # see _verification_state
+        tier=ReceiverVerificationTier(verification.tier).value,
         unverified_reason=(
             ReceiverVerificationUnverifiedReason(verification.unverified_reason).value
             if verification.unverified_reason else None
@@ -441,9 +428,6 @@ async def handover_webhook_endpoint(
             status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Invalid signature.",
         )
 
-    # Checked AFTER the signature so an unsigned caller learns nothing about our clock.
-    # Stops replay of a genuine, validly-signed but stale delivery (HMAC alone can't).
-    # 401, not 200, so a merely-delayed delivery gets retried rather than dropped.
     if not webhook_timestamp_is_fresh(request.headers.get(_DIDIT_TIMESTAMP_HEADER)):
         logger.warning("Rejected an IDVS webhook with a stale or missing timestamp")
         raise HTTPException(
@@ -454,7 +438,7 @@ async def handover_webhook_endpoint(
         payload = json.loads(raw_body)
     except ValueError:
         logger.warning("IDVS webhook body was not valid JSON")
-        return {"status": "ignored"}  # 200, not 400: retrying won't help a signed-but-bad body
+        return {"status": "ignored"}
 
     await ingest_webhook_decision(db, payload=payload)
     await db.commit()

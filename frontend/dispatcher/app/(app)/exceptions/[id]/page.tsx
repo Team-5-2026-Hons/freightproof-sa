@@ -38,23 +38,13 @@ import { TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
 import { buildTripPanelQuery } from '@/lib/trips/panel-query'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 
-// The one exception type that records which vehicle it happened to (trailer analytics).
-// Any other type showing a Vehicle row would read "Not recorded" for no reason.
 const BREAKDOWN_TYPE: ExceptionType = 'mechanical'
 
-// A 409 can now mean either a colleague's claim or a colleague's review, so one title
-// serves the claim, take-over and review handlers alike.
 const CONFLICT_TOAST_TITLE = 'A colleague got there first'
 const TAKE_OVER_LABEL = 'Take over'
 const TAKE_OVER_AND_REVIEW_LABEL = 'Take over and review'
 const ASSESSMENT_SCROLL_GUTTER_PX = 32
 
-// Explanatory, non-blocking copy for a trip whose lifecycle has already moved past
-// "active", reviewing is evidence handling, never trip lifecycle control (see
-// review_exception's own backend docstring), so this never gates the form below; it
-// only exists so a dispatcher reviewing a critical exception on an ended trip is never
-// confused into thinking their review reopens or changes that trip. null for the
-// statuses that need no such reassurance.
 function tripLifecycleNotice(status: TripStatus): string | null {
   switch (status) {
     case 'closed':         return 'Trip closed. Reviewing this exception does not reopen the trip.'
@@ -64,9 +54,6 @@ function tripLifecycleNotice(status: TripStatus): string | null {
   }
 }
 
-// The left rule is Trip Detail's header-fact treatment, so a fact reads as a labelled
-// value on the page itself rather than as one more bordered card.
-// A record with no phase is a fact worth stating: it is trip-wide, not missing data.
 const NO_PHASE_LABEL = 'Trip-level record, no phase'
 
 function ContextItem({ label, value, className = '' }: { label: string; value: string; className?: string }) {
@@ -76,9 +63,6 @@ function ContextItem({ label, value, className = '' }: { label: string; value: s
   </div>
 }
 
-// One neutral chip for where the record sits in the review workflow. Ownership is part of
-// it for an unreviewed record, so a dispatcher sees who holds it without scrolling to the
-// assessment; once reviewed, the reviewer is named in the assessment itself.
 function reviewChipLabel(reviewStatus: ExceptionReviewStatus, ownership: ReviewState): string {
   if (reviewStatus === 'reviewed') return 'Reviewed'
   if (reviewStatus === 'recorded') return 'Recorded'
@@ -90,9 +74,6 @@ export default function ExceptionDetailPage() {
   const params = useParams()
   const router = useRouter()
   const search = useSearchParams()
-  // An exception is opened from its own list or from the trip whose timeline records it.
-  // ExceptionSummary has always appended this parameter; nothing read it until now, so
-  // reviewing an exception reached from a trip still ejected the reader to the list.
   const backTo = safeReturnTo(search.get(RETURN_TO_PARAM), ROUTES.exceptions)
   const { notify } = useToast()
 
@@ -102,9 +83,6 @@ export default function ExceptionDetailPage() {
   const exceptionId = params.id as string
   const { exception, isLoading, error, refetch, refetchSilent } = useExceptionDetail(exceptionId)
 
-  // Only meaningful for a legacy 'recorded' row, the FP-280 backfill moved every such
-  // row to needs_review, but the status still exists, so the page keeps handling it. A
-  // 'needs_review' exception shows the form regardless of this flag (see the JSX below).
   const [showReviewForm, setShowReviewForm] = useState(false)
 
   const [reviewNote, setReviewNote]         = useState('')
@@ -115,9 +93,6 @@ export default function ExceptionDetailPage() {
   const [reviewing, setReviewing]           = useState(false)
   const [claimBusy, setClaimBusy]            = useState(false)
 
-  // Built once and passed to TopBar's `left` slot in every state (loading, error,
-  // success), matching the precinct/driver/vehicle detail pages: back navigation always
-  // sits top-left, and a header that only gains Back once data resolves reads as broken.
   const assessmentHeading = useRef<HTMLHeadingElement>(null)
   const assessmentPanel = useRef<HTMLElement>(null)
   const detailScroller = useRef<HTMLDivElement>(null)
@@ -144,7 +119,6 @@ export default function ExceptionDetailPage() {
   }
   const backButton = <BackButton onClick={() => navigate(backTo)} />
 
-  // ── Loading ──────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -154,16 +128,6 @@ export default function ExceptionDetailPage() {
     )
   }
 
-  // ── Could not load ───────────────────────────────────────────────────────────
-  // useExceptionDetail fetches this one record directly by id, there is no client-side
-  // list search left to distinguish "genuinely not found" from "some other fetch
-  // failure", so `!exception` is the one honest condition covering both. A BACKGROUND
-  // refresh failure (the hook refetches on exception_raised/exception_reviewed events
-  // for this trip) must never reach this branch while a record is already on screen -
-  // without the `!exception` gate, one failed background refresh would tear down this
-  // page mid-use, taking a half-typed review with it and destroying a half-typed
-  // account of a live incident. If the exception is already in hand, the page stays up
-  // and a stale read is strictly better than a lost note.
   if (!exception) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -185,11 +149,8 @@ export default function ExceptionDetailPage() {
   const srcMeta    = EXCEPTION_SOURCE_META[exception.source]
   const tripMeta   = TRIP_STATUS_META[exception.trip_status]
   const phaseStop  = fmtExceptionPhaseStop(exception.phase_label, exception.stop_label)
-  // Opens the trip's exceptions panel on this record's phase (or its trip-level list), with the record selected.
-  // undefined means the payload did not say which phase, so no phase scope is guessed; null is a genuine trip-level record.
   const phaseScope = exception.phase_event_id === undefined ? undefined : exception.phase_event_id ?? TRIP_LEVEL_SCOPE
   const tripQuery  = buildTripPanelQuery('', { panel: 'exceptions', filter: 'all', phaseId: phaseScope, exceptionId: exception.id })
-  // A stop with no phase is still a trip-level record; keep the stop so it is not lost.
   const phaseValue = exception.phase_label ? phaseStop ?? NO_PHASE_LABEL : [NO_PHASE_LABEL, phaseStop].filter(Boolean).join(' · ')
   const lifecycleNotice = tripLifecycleNotice(exception.trip_status)
 
@@ -198,26 +159,16 @@ export default function ExceptionDetailPage() {
   const showForm     = needsReview || showReviewForm
   const rState       = reviewState(exception, meId)
   const claimedByOther = rState.kind === 'claimed_by_other'
-  // Reviewing over a colleague's claim is an explicit act, stated on the button itself
-  // (D5), so the server can tell it from a stale page and never silently overrides.
   const submitLabel  = claimedByOther ? TAKE_OVER_AND_REVIEW_LABEL : COPY.actions.submitReview
-  // Same date format as the raised time in the header, so one screen never shows a
-  // record's times in two styles.
   const claimedLine  = exception.claimed_by_user_id !== null
     ? `${rState.kind === 'claimed_by_me' ? 'Claimed by you' : `Claimed by ${exception.claimed_by_name ?? 'a colleague'}`}${
         exception.claimed_at ? ` · ${fmtExceptionRaised(exception.claimed_at)}` : ''}`
     : null
-  // One reassurance, not two: the lifecycle-specific copy already says reviewing does not
-  // reopen the trip, so the generic notice only shows when there is no such copy.
   const reviewNotice = lifecycleNotice ?? (showForm ? COPY.confirm.reviewNotice : null)
-  // Shown on a reviewed row only when the claimer and reviewer are different people, so
-  // the record says who was working it as well as who closed it.
   const showClaimerOnReviewed =
     exception.claimed_by_user_id !== null
     && exception.claimed_by_user_id !== exception.reviewed_by_user_id
 
-  // One handler for claim, take-over and release. The mutation responses carry no
-  // reviewer names, so the page always refetches (which does) instead of trusting them.
   const runClaimAction = async (
     action: () => Promise<unknown>,
     successTitle: string,
@@ -235,7 +186,6 @@ export default function ExceptionDetailPage() {
         title: lostTheRace ? CONFLICT_TOAST_TITLE : failureTitle,
         body: err instanceof Error ? err.message : 'Please try again.',
       })
-      // Our copy of the claim is stale; show the colleague's now-visible claim.
       if (lostTheRace) refetchSilent()
     } finally {
       setClaimBusy(false)
@@ -248,41 +198,24 @@ export default function ExceptionDetailPage() {
   const handleReview = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const trimmedNote = reviewNote.trim()
-    // Both gates, not just the disabled attribute, a form can still be submitted by
-    // keyboard, and neither field may reach the API unset. Contact method is exempt: it
-    // is optional by design, so it never belongs in this gate.
     if (!trimmedNote || reviewOutcome === NO_OUTCOME_CHOSEN || reviewing) return
     setReviewing(true)
     try {
       await reviewException(exceptionId, {
         review_note: trimmedNote,
         review_outcome: reviewOutcome,
-        // Explicit null, not an omitted key, the backend requires the key present so
-        // it can tell "no contact happened" apart from a client that forgot the field.
         contact_method: contactMethod || null,
-        // Omitted (not false) unless taking over, so an ordinary review body is unchanged.
         ...(claimedByOther ? { take_over: true } : {}),
       })
       notify({ kind: 'success', title: COPY.toast.exceptionReviewed })
-      // No refetch before navigating: this hook instance dies with the page, and
-      // useAsyncData's mountedRef discards a result that lands after unmount. Whichever
-      // screen receives us mounts its own hook and fetches on mount, the trip detail
-      // page may paint a cached copy first, but it always revalidates, so a review made
-      // here cannot leave a stale review status on screen.
       router.push(backTo)
     } catch (err) {
-      // Surfaced, never swallowed, the old resolve flow's bug was a fake unconditional
-      // success toast that reported reviews which had never been recorded.
       const lostTheRace = err instanceof ApiError && err.status === 409
       notify({
         kind: 'error',
         title: lostTheRace ? CONFLICT_TOAST_TITLE : 'Could not review this exception',
         body: err instanceof Error ? err.message : 'Please try again.',
       })
-      // Deliberately stay on the page and refetch rather than navigating away. Their
-      // note is still in the form; the silent refetch shows the colleague's claim (the
-      // submit then reads "Take over and review") or their completed review, so they can
-      // read what was established instead of being bounced to a list.
       if (lostTheRace) refetchSilent()
       setReviewing(false)
     }
@@ -290,8 +223,6 @@ export default function ExceptionDetailPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* The one h1 lives in the header with just the exception's reference under it. The trip,
-          source and raise time are facts a reviewer reads, so they sit in Trip context below. */}
       <TopBar title={exceptionTitle} left={backButton} identity={
         <div className="min-w-0">
           <h1 className="text-[18px] font-[800] leading-tight tracking-[-0.02em] text-on-surf">{exceptionTitle}</h1>
@@ -308,15 +239,9 @@ export default function ExceptionDetailPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Chip type={sevMeta.chipType} label={sevMeta.label} />
             <span data-testid="review-state-chip"><Chip type="pending" label={reviewChipLabel(exception.review_status, rState)} /></span>
-            {/* Below xl the assessment sits under the incident, so the task is one press away. */}
             <Button variant="ghost" size="sm" className="ml-auto xl:hidden" onClick={() => assessmentHeading.current?.focus()}>Jump to assessment</Button>
           </div>
-          {/* One grid so the assessment can span the full height of the left column. Stacked
-              (narrow) the DOM order is context, incident, investigation, assessment, evidence, so the task
-              always comes before the long evidence; from xl it sits top-right beside all three. */}
           <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-[auto_auto_auto_1fr] xl:gap-x-6">
-          {/* Context facts sit on the page rather than in another bordered card, so the
-              incident and the assessment are the two blocks that read as containers. */}
           <section aria-label="Trip context" className="xl:col-start-1 min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="min-w-0 text-sm font-medium text-on-surf-v">{tripMeta.label}</p>
@@ -338,13 +263,10 @@ export default function ExceptionDetailPage() {
             <p className="text-sm leading-relaxed text-on-surf break-words">{exceptionDescriptionText(exception)}</p>
             {exception.exception_type === BREAKDOWN_TYPE && <div className="mt-4 flex flex-wrap gap-3 text-sm"><span className="text-xs text-on-surf-v">Vehicle</span><span>{fmtBreakdownVehicle(exception)}</span></div>}
           </section>
-          {/* Below the observation, before the assessment in narrow layouts: where its follow-up lives. */}
           <div className="xl:col-start-1 min-w-0">
             <ExceptionIncidentPanel exceptionId={exception.id} tripId={exception.trip_id} exceptionType={exception.exception_type}
               description={exception.description} onNavigate={navigate} />
           </div>
-            {/* The one panel with a header strip, a firmer outline and a shadow: it is the task
-                the page exists for. The strip reuses SecHead's label treatment. */}
             <section ref={assessmentPanel} className={`min-w-0 overflow-hidden rounded-md xl:col-start-2 xl:row-start-1 xl:row-span-4 border border-outline-v/60 bg-surf-lowest shadow-level-1 ${assessmentFits ? 'xl:sticky xl:top-4' : ''}`} aria-label="Assessment">
               <div className="border-b border-outline-v/30 bg-surf-low px-4 py-[10px] sm:px-6">
                 <h2 ref={assessmentHeading} tabIndex={-1} className="scroll-mt-4 text-[11px] font-[700] uppercase tracking-[0.1em] text-on-surf-v focus-visible:outline-sec">Assessment</h2>

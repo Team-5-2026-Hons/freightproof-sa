@@ -5,10 +5,7 @@
 export interface DriverPosition {
   lat: number
   lng: number
-  // Metres of horizontal uncertainty, when the platform reports one.
   accuracyM: number | null
-  // Device time at which this exact fix was read. Optional for legacy callers that
-  // only render a map; phase preview/submission carries it unchanged as evidence.
   capturedAt?: string
 }
 

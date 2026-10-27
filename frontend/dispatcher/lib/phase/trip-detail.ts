@@ -13,7 +13,6 @@ export function isTerminalTrip(trip: Trip): boolean {
 }
 
 export function tripArrival(trip: Trip): string | null {
-  // The arrival act is evidence; confirmation and overrides cannot stand in for it.
   const lastTransit = sortedPlan(trip.phases).filter(p => p.phase_type === 'in_transit').at(-1)
   return lastTransit?.status === 'completed' ? lastTransit.completed_at : null
 }
@@ -64,7 +63,6 @@ export function bookedParcels(trip: Trip): number | null {
 export interface HeaderFact {
   label: string
   value: string
-  /** Secondary line: lateness — context, never a second headline fact. */
   note?: string
 }
 
@@ -84,8 +82,6 @@ export interface VehicleRef {
 
 export interface TripVehicles {
   horse: VehicleRef
-  /** Null means the source did not carry trailers, which is NOT the same as a trip having
-   *  none — rigid trucks legitimately run without them. Callers render null as pending. */
   trailers: readonly VehicleRef[] | null
 }
 
@@ -100,7 +96,6 @@ export interface TripVehicles {
  */
 export interface TripHeaderFacts {
   reference: string
-  /** The PP manifest display, "Empty leg", or "No manifest" (lib/format/manifest.ts). */
   manifestLabel: string
   originPrecinctId: string | null
   destinationPrecinctId: string | null
@@ -111,7 +106,6 @@ export interface TripHeaderFacts {
   schedule: HeaderFact | null
   cargo: HeaderFact | null
   needsReviewCount: number
-  /** Null when only a list row is known: it carries the review count but no total. */
   exceptionsTotal: number | null
 }
 
@@ -134,9 +128,6 @@ function scheduleFact(
     const delay = delayMinutes(plannedArrival ?? null, actualArrival)
     return { label: 'Recorded arrival', value: fmtFull(actualArrival), note: delay === null ? undefined : fmtDelay(delay) }
   }
-  // A cancelled trip has no next milestone. Naming one promises an arrival that is not
-  // coming, and on a page whose whole claim is "this is what happened" a forward-looking
-  // timestamp is the one thing the record cannot support. Report the last act instead.
   if (status === 'cancelled') {
     if (plannedDeparture === undefined) return null
     return actualDeparture
@@ -243,11 +234,7 @@ export function tripHeaderFacts(trip: Trip | null, seed: TripSeed | null): TripH
     currentPhase: seed.current_phase,
     driverName: seed.driver.full_name,
     vehicle: vehicles(seed.horse, seed.trailers),
-    // The history list carries no schedule at all, so this stays unread rather than being
-    // invented from closed_at — closing a trip is not arriving.
     schedule: scheduleFact(seed.status, seed.planned_departure_at, seed.actual_departure_at, seed.planned_arrival_at, seed.actual_arrival_at ?? null),
-    // Booked and scanned counts live in consignments and the phase ledger; a list row
-    // has neither, so cargo is genuinely unknown until the record lands.
     cargo: null,
     needsReviewCount: seed.needs_review_count,
     exceptionsTotal: null,

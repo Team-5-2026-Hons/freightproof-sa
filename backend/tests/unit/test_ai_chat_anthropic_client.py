@@ -68,7 +68,6 @@ async def test_reply_builds_the_request_the_spec_describes() -> None:
     assert "fallbacks" not in kwargs and "thinking" not in kwargs
     assert [tool["name"] for tool in kwargs["tools"]] == ["on_time", "right_now"]
     assert all(tool["strict"] is True for tool in kwargs["tools"])
-    # Cached fixed prompt first, then the uncached date: the cached prefix never changes.
     assert kwargs["system"] == [
         {"type": "text", "text": "FIXED", "cache_control": {"type": "ephemeral"}},
         {"type": "text", "text": "Today is Monday 2026-10-19."},
@@ -120,7 +119,6 @@ async def test_reply_sends_history_tool_turns_and_results_in_the_api_shape() -> 
     assert sent[:3] == [
         {"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"}, {"role": "user", "content": "q2"},
     ]
-    # The assistant's own blocks go back unchanged.
     assert sent[3] == {"role": "assistant", "content": earlier.content}
     assert sent[4] == {"role": "user", "content": [
         {"type": "tool_result", "tool_use_id": "tu_1", "content": '{"figure": 42}', "is_error": False},

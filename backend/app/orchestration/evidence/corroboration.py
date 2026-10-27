@@ -113,16 +113,6 @@ from app.orchestration.evidence.geofence import (
 
 logger = logging.getLogger(__name__)
 
-# Phases whose geofence verdict is deliberately left NULL even when a fix is in
-# hand. IN_TRANSIT is anchored to the stop it DEPARTS FROM (see the
-# uq_phase_events_trip_stop_type comment in db/models/phases.py), so its
-# trip_stop_id names the precinct the truck has just spent hours driving away
-# from. Checking an arrival attestation against the origin would stamp
-# confirmed=False on every healthy trip in the fleet — a fabricated accusation,
-# which is precisely the failure mode the NULL semantics above exist to prevent.
-# The position and the trailer snapshots are still recorded: where the truck was
-# when the driver said "I have arrived" is real evidence, it just cannot be
-# judged against this row's stop.
 _PHASES_WITHOUT_A_GEOFENCE_VERDICT: frozenset[PhaseType] = frozenset({PhaseType.IN_TRANSIT})
 
 
@@ -202,9 +192,6 @@ def _geofence_verdict_to_column(
         )
         return None
 
-    # The distance has no column by design (see module docstring). Logged so a
-    # dispatcher query about a specific mismatch is traceable, and so FP-145 has a
-    # worked example of the arithmetic it will recompute at read time.
     logger.info(
         "Geofence measured for %s: distance=%.1fm radius=%sm tolerance=%sm "
         "confirmed=%s in_tolerance_band=%s",
@@ -267,9 +254,6 @@ def _snapshot_for_trailer(
         pulsit_device_id=fix.device_id,
         lat=fix.lat,
         lng=fix.lng,
-        # The TRACKER's reading time, never now(). See the module docstring on
-        # offline handshakes: this is the only place the staleness of a replayed
-        # corroboration is visible at all.
         captured_at=fix.fixed_at,
     )
 
@@ -345,17 +329,11 @@ async def record_phase_corroboration(
         trailers = await _load_trailer_devices(db, trip_id=trip.id)
 
         if horse_device_id is None:
-            # Trip.horse_id is NOT NULL and FK-constrained, so this is a fleet-data
-            # fault, not an ordinary absence. Loud, but still not fatal.
             logger.error(
                 "No vehicle row for horse_id=%s on trip_id=%s — cannot corroborate %s",
                 trip.horse_id, trip.id, context,
             )
 
-        # ONE batched call for the horse and every trailer. get_positions preserves
-        # request order and returns a fix per requested id, so the response is split
-        # back apart positionally below. A four-trailer trip costs one round trip,
-        # not five — the reason FP-87's contract is batch-shaped at all.
         requested: list[str] = ([horse_device_id] if horse_device_id is not None else [])
         requested.extend(device_id for _, device_id in trailers)
 
@@ -370,10 +348,6 @@ async def record_phase_corroboration(
         else:
             trailer_fixes = fixes
 
-        # ── Is this fix even close enough in time to trust? ─────────────────────
-        # Checked once, up front, and used to gate BOTH the position write below and
-        # the verdict computation after it — a timing miss must null out both, not
-        # just one of the two things this fix would otherwise support.
         horse_fix_is_timely = horse_fix is not None and _within_corroboration_skew(
             fixed_at=horse_fix.fixed_at, driver_captured_at=driver_captured_at,
         )
@@ -386,10 +360,7 @@ async def record_phase_corroboration(
                 horse_fix.fixed_at, driver_captured_at,
             )
 
-        # ── FP-193: the horse position ──────────────────────────────────────────
         if horse_fix is not None and horse_fix.has_position and horse_fix_is_timely:
-            # Already Decimal from FP-87 — no float round trip on the way into
-            # Numeric(10, 7), which is the whole reason PulsitFix parses to Decimal.
             event.horse_gps_lat = horse_fix.lat
             event.horse_gps_lng = horse_fix.lng
         elif horse_fix is not None and not horse_fix.has_position:
@@ -398,9 +369,6 @@ async def record_phase_corroboration(
                 context, horse_fix.status.value,
             )
 
-        # ── FP-194: the geofence verdict ────────────────────────────────────────
-        # Loaded once and shared with the trailer verdicts below. None for a phase
-        # that gets no verdict at all, which the trailer loop reads as "do not judge".
         judges_geofence = PhaseType(event.phase_type) not in _PHASES_WITHOUT_A_GEOFENCE_VERDICT
         precinct = await _load_precinct_for_phase(db, event=event) if judges_geofence else None
         if not judges_geofence:
@@ -410,17 +378,11 @@ async def record_phase_corroboration(
                 context,
             )
         else:
-            # An untimely fix is passed as None rather than the real fix: to
-            # evaluate_geofence, "the fix cannot be trusted for this moment" and "there
-            # was no fix at all" both mean the same thing — could not check — and the
-            # existing NO_FIX branch in _geofence_verdict_to_column already produces the
-            # correct NULL for it without any new reason code.
             verdict_fix = horse_fix if horse_fix_is_timely else None
             confirmed = _geofence_verdict_to_column(verdict_fix, precinct, context=context)
             if confirmed is not None:
                 event.pulsit_geofence_confirmed = confirmed
 
-        # ── FP-195: one snapshot row per trailer that actually reported ─────────
         snapshots: list[TrailerGpsSnapshot] = []
         for (trailer_id, _device_id), trailer_fix in zip(trailers, trailer_fixes, strict=False):
             snapshot = _snapshot_for_trailer(
@@ -432,9 +394,6 @@ async def record_phase_corroboration(
                     trailer_id, context, trailer_fix.status.value,
                 )
                 continue
-            # Each trailer gets its own verdict under the same rules as the horse: only a
-            # timely fix is judged, and anything short of a measurement stays NULL. The
-            # position is stored either way; only the judgement is withheld.
             if judges_geofence and _within_corroboration_skew(
                 fixed_at=trailer_fix.fixed_at, driver_captured_at=driver_captured_at,
             ):
@@ -449,10 +408,6 @@ async def record_phase_corroboration(
     except DatabaseUnavailableError:
         raise
     except Exception:
-        # Fail-open, mirroring _anchor_or_fail_open's stance on Hedera: the
-        # handshake is evidence that already physically happened, and no external
-        # system's outage may erase it. The corroboration columns stay NULL, which
-        # the semantics above define as "we could not check" — exactly true.
         logger.exception(
             "Pulsit corroboration failed for %s — handshake continues, corroboration "
             "recorded as unavailable", context,

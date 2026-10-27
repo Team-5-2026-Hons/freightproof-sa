@@ -22,10 +22,6 @@ export interface UseTripsResult {
 
 const EMPTY: TripSummary[] = []
 
-// Publishing is best-effort (core/realtime.py logs and drops a failed publish), so a connected
-// browser can miss an event and never learn of it. A slow periodic refetch bounds how stale the
-// list can get. It runs whatever the stream's state: "API up, stream down" is exactly when it is
-// the only thing keeping the list current. A minute keeps the load trivial for one list call.
 export const RECONCILE_INTERVAL_MS = 60_000
 
 export function useTrips(filter?: TripsFilter): UseTripsResult {
@@ -33,13 +29,8 @@ export function useTrips(filter?: TripsFilter): UseTripsResult {
     () => api.get<TripSummary[]>('/api/v1/trips'),
     EMPTY,
   )
-  // Live: any trip changing (new trip, phase, exception, close) refreshes the list in
-  // place so status chips and needs-review counts stay current without a reload.
-  // Evidence uploads change no list row, so they are filtered out; a reconnect still
-  // refetches because useLiveResource does not apply the filter to that path.
   useLiveResource('trip', 'any', refetchSilent, { kinds: TRIP_RECORD_KINDS })
 
-  // Skipped while the tab is hidden; on return the stream reconnects and that refetches anyway.
   useEffect(() => {
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') refetchSilent()

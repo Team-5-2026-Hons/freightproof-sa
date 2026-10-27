@@ -199,7 +199,7 @@ async def test_batch_review_leaves_unlisted_rows_unreviewed(client, db_session, 
 async def test_batch_with_a_critical_row_is_422_and_changes_nothing(client, db_session, two_orgs):
     mine = two_orgs["mine"]
     [warning] = await _warnings(db_session, mine["trip"], 1)
-    ids = [warning.id, mine["exception"].id]  # the seeded row is CRITICAL
+    ids = [warning.id, mine["exception"].id]
 
     res = await client.post(_URL, json=_batch(mine["trip"].id, ids), headers=_headers(mine))
 

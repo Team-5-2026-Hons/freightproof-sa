@@ -36,8 +36,6 @@ SUBSTITUTION_EVENT_TYPE = "driver_substitution"
 CORRECTION_PAYLOAD_VERSION = 1
 CORRECTION_EVENT_TYPE = "driver_substitution_corrected"
 
-# The stored scale of each coordinate column (Numeric(10, 7) and Numeric(10, 2)). Quantising to
-# it makes an in-memory Decimal('-32.35') and the database's Decimal('-32.3500000') hash alike.
 _COORDINATE_PLACES = Decimal("0.0000001")
 _ACCURACY_PLACES = Decimal("0.01")
 
@@ -203,7 +201,6 @@ def compute_substitution_payload(*, record: CompletedSubstitutionRecord, payload
             "expiry": None if record.licence_expiry is None else record.licence_expiry.isoformat(),
             "observed_at": _iso(record.eligibility_observed_at),
         },
-        # Both roles always present, None where the capture is missing (dispatcher-attested).
         "captures": {
             role: (None if role not in by_role else _capture_payload(by_role[role]))
             for role in ("outgoing", "incoming")
@@ -265,8 +262,6 @@ def validate_substitution_payload(payload: object) -> dict[str, Any]:
             raise UnsupportedPayload("inconsistent immediate driver substitution payload")
     return payload
 
-
-# ── corrections ──────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)

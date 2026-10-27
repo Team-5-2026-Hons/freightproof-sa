@@ -133,8 +133,6 @@ async def _arrival_row(db_session, trip_id) -> PhaseEvent:
     )).scalar_one()
 
 
-# ── happy path ───────────────────────────────────────────────────────────────
-
 async def test_arrival_intact_matching_seal_completes_with_no_exceptions(
     client: AsyncClient, db_session,
 ):
@@ -158,15 +156,13 @@ async def test_arrival_intact_matching_seal_completes_with_no_exceptions(
     assert arrival["seal_condition"] == "intact"
     assert arrival["seal_photo_artifact_id"] == seal_photo_id
 
-    trip_id = trip.id  # captured before expire_all() — see MissingGreenlet note elsewhere
+    trip_id = trip.id
     db_session.expire_all()
     row = await _arrival_row(db_session, trip_id)
     assert row.seal_number == "AB-1234"
     assert row.seal_condition == "intact"
     assert str(row.seal_photo_artifact_id) == seal_photo_id
 
-
-# ── seal outcomes ────────────────────────────────────────────────────────────
 
 async def test_arrival_seal_number_mismatch_raises_one_critical_exception(
     client: AsyncClient, db_session,
@@ -264,7 +260,7 @@ async def test_arrival_with_no_departure_seal_raises_seal_unverified(
     writes seal_number unconditionally), not a mismatch — the finding is narrower
     and stays loud (CRITICAL) precisely because nothing legitimate produces it."""
     trip, driver = await _seed_trip(db_session)
-    trip_id = trip.id  # captured before expire_all() — see MissingGreenlet note elsewhere
+    trip_id = trip.id
     token = make_token(sub=str(driver.id), role="driver")
     await _walk_to_arrival(client, db_session, trip, token)
 
@@ -290,8 +286,6 @@ async def test_arrival_with_no_departure_seal_raises_seal_unverified(
     assert body["exceptions"][0]["exception_type"] == "seal_unverified"
     assert body["exceptions"][0]["severity"] == "critical"
 
-
-# ── combined seal findings ───────────────────────────────────────────────────
 
 async def test_arrival_damaged_seal_with_wrong_number_raises_compromised_and_mismatch(
     client: AsyncClient, db_session,
@@ -327,7 +321,7 @@ async def test_arrival_damaged_seal_with_no_departure_seal_raises_compromised_an
     damaged-seal finding and the unverified-continuity finding both still fire,
     independently of each other, and neither is a mismatch."""
     trip, driver = await _seed_trip(db_session)
-    trip_id = trip.id  # captured before expire_all() — see MissingGreenlet note elsewhere
+    trip_id = trip.id
     token = make_token(sub=str(driver.id), role="driver")
     await _walk_to_arrival(client, db_session, trip, token)
 
@@ -383,8 +377,6 @@ async def test_arrival_missing_seal_with_departure_seal_present_raises_only_comp
     }
 
 
-# ── sequencing: arrival gates unloading ─────────────────────────────────────
-
 async def test_unloading_before_arrival_is_rejected(client: AsyncClient, db_session):
     trip, driver = await _seed_trip(db_session)
     token = make_token(sub=str(driver.id), role="driver")
@@ -428,8 +420,6 @@ async def test_unloading_after_arrival_completes_with_only_base_fields(
     assert unloading["status"] == "completed"
 
 
-# ── dispatcher override ─────────────────────────────────────────────────────
-
 async def test_dispatcher_override_of_arrival_writes_warning_seal_unverified_and_dispatcher_note(
     client: AsyncClient, db_session,
 ):
@@ -463,8 +453,6 @@ async def test_dispatcher_override_of_arrival_writes_warning_seal_unverified_and
         "driver's phone was wiped; the seal could not be inspected"
     )
 
-
-# ── auth / not-found / validation ───────────────────────────────────────────
 
 async def test_arrival_complete_unknown_driver_token_returns_401(
     client: AsyncClient, db_session,

@@ -24,14 +24,10 @@ from app.db.models.enums import (
     ParcelFinding,
 )
 
-# The one status move a dispatcher makes by hand. Closing and reopening are separate actions
-# because each must carry a reason (and closing an outcome); a bare status flip could not.
 _MANUAL_STATUS_MOVES: frozenset[tuple[IncidentStatus, IncidentStatus]] = frozenset({
     (IncidentStatus.OPEN, IncidentStatus.INVESTIGATING),
 })
 
-# Close warning: the outcome says a police report exists but none is recorded. A warning, not
-# a refusal (Tim, 20 Oct 2026) — the audit pack states the gap instead.
 THEFT_REPORTED_WITHOUT_CAS = "theft_reported_without_cas"
 
 
@@ -44,7 +40,6 @@ class UpdateFact:
     note: str | None = None
     parcel_id: uuid.UUID | None = None
     exception_id: uuid.UUID | None = None
-    # When the entry was recorded; CLOSED uses it as closed_at.
     at: datetime | None = None
 
 
@@ -78,7 +73,6 @@ def apply(state: IncidentState, fact: UpdateFact) -> IncidentState:
         case IncidentUpdateKind.STATUS_CHANGED:
             return replace(state, status=IncidentStatus(_to_value(fact)))
         case IncidentUpdateKind.ASSIGNED:
-            # A null value is an unassignment, not a malformed entry.
             return replace(state, assigned_to=uuid.UUID(fact.to_value) if fact.to_value else None)
         case IncidentUpdateKind.CONFIDENCE_CHANGED:
             return replace(state, confidence=IncidentConfidence(_to_value(fact)))

@@ -48,8 +48,6 @@ def test_envelope_embeds_the_evidence_payload_verbatim() -> None:
 
     envelope = _envelope()
 
-    # The inner payload keeps its own version, so verification can rebuild it with the exact
-    # v1/v2/v3 rules it always used and add only the actor check on top.
     assert envelope["evidence"] == evidence
     assert envelope["evidence"]["payload_version"] == 2
     assert envelope["phase_event_id"] == str(_PHASE_EVENT_ID)

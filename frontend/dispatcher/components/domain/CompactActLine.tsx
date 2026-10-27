@@ -7,22 +7,13 @@ interface Props {
   times: readonly RecordedTime[]
   icon: IconName
   iconClassName?: string
-  /** Draws the rail from this row's icon down to the next row's icon. */
   connectToNext?: boolean
   children: ReactNode
 }
 
-// The card's compact list owns the three columns; every row (and a row's button) joins them
-// through subgrid, so the time column is as wide as the widest time in that card and the icons
-// still line up (R3).
 export const COMPACT_COLUMNS = 'grid grid-cols-[max-content_1rem_minmax(0,1fr)] gap-x-2'
 export const COMPACT_SUBGRID = 'col-span-full grid grid-cols-subgrid'
-// Records and exceptions are one line tall to the eye. A button keeps a 44 px target by
-// reaching 6 px into the rows either side, rather than making its own row taller (L1).
 export const COMPACT_HIT_AREA = "before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-['']"
-// The connector runs from 2 px under this icon, through the row's bottom padding, to 2 px above
-// the next icon (which sits after the next row's top padding). It lives in the icon's own cell, so
-// it follows the icon whatever the row height or the time column width.
 const ROW = `${COMPACT_SUBGRID} min-h-8 items-start py-2 text-meta`
 
 export function CompactActLine({ times, icon, iconClassName = 'text-on-surf-v', connectToNext = false, children }: Props) {

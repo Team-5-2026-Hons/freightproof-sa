@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, type RefObject } from 'react'
 
-/** Marks the button that opens a form, so focus can be handed back to it: `data-opener={key}`. */
 export const OPENER_ATTR = 'data-opener'
 
 /**

@@ -15,7 +15,6 @@ Create Date: 2026-09-30
 from alembic import op
 import sqlalchemy as sa
 
-# Keep revision ids under 32 characters — alembic_version.version_num is varchar(32).
 revision = "ciaran_exception_claims"
 down_revision = "ciaran_trailer_geofence"
 branch_labels = None
@@ -29,23 +28,16 @@ def upgrade() -> None:
     op.add_column(_TABLE, sa.Column("claimed_by_user_id", sa.UUID(), nullable=True))
     op.add_column(_TABLE, sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True))
     op.create_foreign_key(_CLAIMED_BY_FK, _TABLE, "users", ["claimed_by_user_id"], ["id"])
-    # A future write site or seed script that omits review_status must still land in
-    # the inbox: the default is the last line of defence for "nothing is silently recorded".
     op.alter_column(_TABLE, "review_status", server_default="needs_review")
     op.execute("UPDATE exceptions SET review_status = 'needs_review' WHERE review_status = 'recorded'")
 
 
 def downgrade() -> None:
-    # Author-reviewed notes did not exist before this revision; return them to the
-    # pre-FP-280 shape (a recorded dispatcher note with no review).
     op.execute(
         "UPDATE exceptions SET review_status = 'recorded', review_outcome = NULL, "
         "reviewed_by_user_id = NULL, reviewed_at = NULL "
         "WHERE review_outcome = 'dispatcher_authored'"
     )
-    # Lossy by necessity: the backfill cannot tell a warning that was already
-    # needs_review from one this revision moved, so every unreviewed non-critical row
-    # returns to 'recorded' — which is exactly the pre-FP-280 policy.
     op.execute(
         "UPDATE exceptions SET review_status = 'recorded' "
         "WHERE review_status = 'needs_review' AND severity <> 'critical'"

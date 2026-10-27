@@ -13,10 +13,6 @@ export interface LocationCoords {
 
 export type LocationStatus = 'idle' | 'capturing' | 'captured' | 'error'
 
-// Distinguishes *why* a capture failed so the UI can give the driver actionable
-// remediation instead of a single generic "Retry GPS" — retrying is useless for
-// permission_denied (the driver must leave the app to fix it) but is exactly the
-// right move for timeout/position_unavailable (move to open sky, try again).
 export type LocationErrorReason =
   | 'permission_denied'
   | 'timeout'
@@ -31,20 +27,10 @@ export interface LocationState {
   captureResult: () => Promise<{ coords: LocationCoords | null; errorReason: LocationErrorReason | null }>
 }
 
-// Dev-only convenience fallback — Linbro Park, JHB (FedEx origin depot). This exists
-// solely so a developer on a laptop browser (no GPS hardware, or geolocation blocked
-// by a corp policy) can exercise the phase flow without a real device. It must
-// NEVER stand in for a real reading in production: FreightProof is an evidence
-// platform, and a fabricated coordinate that looks like a genuine capture is the
-// single worst defect this app can ship. The NODE_ENV === 'development' gate at the
-// call site is load-bearing for that guarantee — Next.js inlines NODE_ENV at build
-// time, so a production bundle can never take this branch, even if geolocation is
-// unavailable or every attempt fails.
 const LINBRO_PARK: LocationCoords = {
   latitude: -26.0942, longitude: 28.1342, accuracy: 5, capturedAt: '',
 }
 
-// W3C GeolocationPositionError codes (https://w3c.github.io/geolocation/#position-error).
 const GEOLOCATION_PERMISSION_DENIED = 1
 const GEOLOCATION_POSITION_UNAVAILABLE = 2
 const GEOLOCATION_TIMEOUT = 3
@@ -56,13 +42,6 @@ function sampleTime(timestamp: number): string {
   return new Date(timestamp).toISOString()
 }
 
-// Browser rejections are a real GeolocationPositionError with a numeric `code`. Native
-// (Capacitor Android) rejections are plain Errors carrying only a message — the plugin's
-// Android implementation (Geolocation.java) calls call.reject(message) with strings like
-// "Location permission was denied", "location disabled", "location unavailable" and never
-// attaches a code — so the message match below is what actually classifies the native
-// path. An unrecognised shape must never throw here; it just loses the specific
-// remediation copy and falls back to 'unknown'.
 function mapErrorReason(err: unknown): LocationErrorReason {
   if (err && typeof err === 'object' && 'code' in err) {
     const code = (err as { code: unknown }).code
@@ -84,9 +63,6 @@ function mapErrorReason(err: unknown): LocationErrorReason {
   return 'unknown'
 }
 
-// Wraps the callback-based browser Geolocation API in a Promise, mirroring the native
-// branch's semantics (high accuracy, 10s timeout) so both paths behave identically from
-// the caller's perspective and produce the same LocationCoords shape.
 function getBrowserPosition(): Promise<LocationCoords> {
   return new Promise<LocationCoords>((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -95,8 +71,6 @@ function getBrowserPosition(): Promise<LocationCoords> {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        // Browser callbacks run after the Promise executor; malformed samples must
-        // reject the capture rather than throw globally and leave it pending forever.
         try {
           resolve({
             latitude: pos.coords.latitude,
@@ -139,10 +113,6 @@ export function useLocation(): LocationState {
         try {
           result = await getBrowserPosition()
         } catch (browserErr) {
-          // Real devices always take the native branch above, so the only place a
-          // laptop browser with no/blocked GPS needs to keep working is local dev.
-          // Gated to development so this can never substitute for a real reading in
-          // a shipped build — see the LINBRO_PARK comment above.
           if (process.env.NODE_ENV === 'development') {
             console.warn('[useLocation] browser geolocation unavailable, using dev fallback:', browserErr)
             result = { ...LINBRO_PARK, capturedAt: new Date().toISOString() }

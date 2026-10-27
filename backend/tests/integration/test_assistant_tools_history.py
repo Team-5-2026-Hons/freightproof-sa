@@ -47,7 +47,7 @@ async def test_driver_history_counts_by_status_as_their_page_lists_them(seed: di
         await seed_trip(db_session, operator, stops=stops, start=days_ago(days), driver=tim)
     await seed_trip(db_session, operator, stops=stops, start=days_ago(5), driver=tim, status=TripStatus.CANCELLED)
     await seed_trip(db_session, operator, stops=stops, start=days_ago(0), driver=tim, status=TripStatus.ACTIVE, steps=not_started())
-    await seed_trip(db_session, operator, stops=stops, start=days_ago(2))  # someone else's trip
+    await seed_trip(db_session, operator, stops=stops, start=days_ago(2))
 
     outcome = await _run(db_session, operator.org.id, _args(driver_name="Tim Giltig"))
 

@@ -41,18 +41,15 @@ describe('back stack', () => {
   })
 
   it('test_returning_to_a_screen_cuts_the_stack_back_to_it', () => {
-    // Home → In Transit → Log Exception → (submit pushes) In Transit
     visit('/', 'none')
     visit('/trip/in-transit')
     visit('/trip/in-transit/exception')
     visit('/trip/in-transit')
 
-    // Back from In Transit is Home, not the submitted form.
     expect(backTarget(FALLBACK)).toBe('/')
   })
 
   it('test_back_skips_finished_phase_steps_and_panic', () => {
-    // Home → Start Departure → steps → departure pushes In Transit
     visit('/', 'none')
     visit('/trip/phase/departure/step/2-capture-seal')
     visit('/trip/phase/departure/step/4-departure')
@@ -63,12 +60,9 @@ describe('back stack', () => {
   })
 
   it('test_backing_out_of_a_cold_start_never_loops', () => {
-    // Relaunch onto In Transit → back (fallback Trip) → back (fallback Trips).
     visit('/trip/in-transit')
     visit('/trips/active', 'back')
 
-    // Trip was reached by going back, so nothing known sits behind it: its own fallback,
-    // not the In Transit screen the driver just left.
     expect(backTarget('/trips')).toBe('/trips')
   })
 
@@ -80,8 +74,6 @@ describe('back stack', () => {
     expect(backTarget(FALLBACK)).toBe('/trips/detail?id=abc')
   })
 
-  // The hardware back button needs to tell "nowhere earlier" apart from a real screen,
-  // which backTarget's fallback hides.
   it('test_previous_screen_is_null_on_a_root_and_the_earlier_screen_otherwise', () => {
     visit('/', 'none')
     expect(previousScreen()).toBeNull()

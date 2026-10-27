@@ -29,7 +29,6 @@ def upgrade() -> None:
         sa.Column("id", UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("trip_id", UUID(as_uuid=True), sa.ForeignKey("trips.id"), nullable=False),
         sa.Column("driver_id", UUID(as_uuid=True), sa.ForeignKey("drivers.id"), nullable=False),
-        # Numeric(10, 7) matches every other coordinate column in the schema.
         sa.Column("lat", sa.Numeric(10, 7), nullable=False),
         sa.Column("lng", sa.Numeric(10, 7), nullable=False),
         sa.Column("accuracy_m", sa.Numeric(8, 2), nullable=True),
@@ -38,7 +37,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
-    # Serves the only read this table has: one trip's trail, in the order it was walked.
     op.create_index(
         "ix_trip_location_pings_trip_recorded",
         "trip_location_pings",

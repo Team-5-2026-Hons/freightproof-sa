@@ -26,8 +26,6 @@ import pytest
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 APP_DIR = BACKEND_DIR / "app"
 
-# One cold import is normally 1-3s (FastAPI, SQLAlchemy, Pydantic, Celery). The ceiling only
-# has to be safely above a loaded CI runner: a hung import is a bug, not a slow machine.
 IMPORT_TIMEOUT_SECONDS = 120
 MAX_PARALLEL_IMPORTS = 8
 

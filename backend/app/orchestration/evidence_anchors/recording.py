@@ -81,8 +81,6 @@ def build_review_record(exception: TripException) -> canonical.ReviewRecord:
         outcome=outcome,
         contact_method=None if exception.contact_method is None else _text(exception.contact_method),
         review_note=exception.review_note,
-        # A dispatcher-authored note's description IS the author's statement (override
-        # reason, cancellation cause); for anyone else's report it is not theirs to commit.
         authored_description=(
             exception.description if outcome == ExceptionReviewOutcome.DISPATCHER_AUTHORED.value else None
         ),

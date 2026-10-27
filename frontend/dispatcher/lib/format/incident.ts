@@ -104,7 +104,6 @@ export const RESPONSE_STEP_LABELS: Record<ResponseStepKey, string> = {
   audit_pack_issued: 'Issue the insurer audit pack',
 }
 
-/** The external action a guide step records, for the steps a dispatcher ticks off by recording one. */
 export const RESPONSE_STEP_ACTION: Partial<Record<ResponseStepKey, IncidentExternalAction>> = {
   tracking_company_alerted: 'tracking_company_alerted',
   insurer_notified: 'insurer_notified',
@@ -112,8 +111,6 @@ export const RESPONSE_STEP_ACTION: Partial<Record<ResponseStepKey, IncidentExter
   driver_welfare_check: 'driver_welfare_check',
 }
 
-/** Steps whose "done" the system established itself (the trip it stopped, the pack it issued).
- *  Every other done step rests on what a dispatcher recorded. Mirrors response_guide.py. */
 export const SYSTEM_WITNESSED_STEPS: readonly ResponseStepKey[] = ['trip_stopped', 'audit_pack_issued']
 
 const FINISHED_TRIP: readonly TripStatus[] = ['closed', 'cancelled']

@@ -9,25 +9,21 @@ export type EditableRate = keyof Required<CostProfileUpdate>
 
 interface RateLimits {
   min: number
-  /** true: the value must be above min, not equal to it. */
   minExclusive: boolean
   max: number
   decimals: number
 }
 
-// No real rand rate comes near R1,000,000; the cap catches a typo (an extra few zeros).
 const MAX_RAND = 1_000_000
 const RAND: RateLimits = { min: 0, minExclusive: false, max: MAX_RAND, decimals: 2 }
 
 export const RATE_LIMITS: Record<EditableRate, RateLimits> = {
   diesel_price_per_litre: RAND,
-  // A loaded heavy truck burns roughly 30-60 L/100 km; above 200 is a typo, not a truck.
   litres_per_100km: { min: 0, minExclusive: true, max: 200, decimals: 1 },
   running_cost_per_km: RAND,
   driver_cost_per_hour: RAND,
   delay_cost_per_hour: RAND,
   fixed_cost_per_trip: RAND,
-  // Road distance is never shorter than the straight line, and never more than twice it.
   road_factor: { min: 1, minExclusive: false, max: 2, decimals: 2 },
 }
 

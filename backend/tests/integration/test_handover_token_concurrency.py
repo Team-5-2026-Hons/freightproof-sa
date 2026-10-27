@@ -153,4 +153,4 @@ async def test_two_simultaneous_redemptions_of_the_same_token_produce_exactly_on
         await session.commit()
 
     assert len(attempts) == 2
-    assert attempts.count(None) == 1  # exactly one success logged
+    assert attempts.count(None) == 1

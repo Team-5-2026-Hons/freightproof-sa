@@ -74,8 +74,6 @@ def stub_signed_urls(monkeypatch):
     monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", _fake)
 
 
-# ── seeding helpers ─────────────────────────────────────────────────────────────
-
 
 async def _seed_org(db_session, *, tag: str) -> dict:
     org = Organization(id=uuid.uuid4(), name=f"Op-{tag}", org_type=OrganizationType.OPERATOR)
@@ -184,8 +182,6 @@ def _headers(seed: dict, *, role: str = "dispatcher") -> dict:
     ))
 
 
-# ── review-queue ──────────────────────────────────────────────────────────────
-
 
 async def test_review_queue_returns_only_needs_review(client: AsyncClient, db_session):
     seed = await _seed_org(db_session, tag="rq")
@@ -243,15 +239,10 @@ async def test_exception_reads_return_the_persisted_location_assessment(
     assert queue.status_code == 200
     assert detail.status_code == 200
     queue_row = next(row for row in queue.json() if row["id"] == str(exc.id))
-    # Read back through the current schema, so a field added since (the outline snapshot,
-    # policy 2026-10-14.1) appears with its default: None = no outline, which is true of
-    # every assessment stored before outlines existed.
     expected = {**assessment, "precinct_geofence_polygon": None}
     assert queue_row["action_location_assessment"] == expected
     assert detail.json()["action_location_assessment"] == expected
 
-
-# ── history ───────────────────────────────────────────────────────────────────
 
 
 async def test_history_returns_only_recorded_and_reviewed(client: AsyncClient, db_session):
@@ -410,10 +401,10 @@ async def test_history_date_bounds_are_inclusive_sa_calendar_dates(client: Async
     trip = await _make_trip(db_session, seed, tag="date")
     boundary_date = date(2026, 3, 10)
 
-    inside_start = datetime(2026, 3, 9, 22, 0, tzinfo=UTC)     # SA 2026-03-10 00:00 — inclusive lower bound
-    outside_start = datetime(2026, 3, 9, 21, 59, tzinfo=UTC)   # SA 2026-03-09 23:59 — just before
-    inside_end = datetime(2026, 3, 10, 21, 59, tzinfo=UTC)     # SA 2026-03-10 23:59 — inclusive upper bound
-    outside_end = datetime(2026, 3, 10, 22, 0, tzinfo=UTC)     # SA 2026-03-11 00:00 — just after
+    inside_start = datetime(2026, 3, 9, 22, 0, tzinfo=UTC)
+    outside_start = datetime(2026, 3, 9, 21, 59, tzinfo=UTC)
+    inside_end = datetime(2026, 3, 10, 21, 59, tzinfo=UTC)
+    outside_end = datetime(2026, 3, 10, 22, 0, tzinfo=UTC)
 
     row_inside_start = await _make_exception(db_session, trip, tag="in-start")
     row_outside_start = await _make_exception(db_session, trip, tag="out-start")
@@ -496,8 +487,6 @@ async def test_history_malformed_cursor_is_422(client: AsyncClient, db_session):
 
     assert res.status_code == 422
 
-
-# ── detail ────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("trip_status", [TripStatus.CLOSED, TripStatus.CANCELLED])
@@ -753,8 +742,6 @@ async def test_detail_vehicle_fields_are_null_when_unattributed(client: AsyncCli
     assert body["vehicle_type"] is None
 
 
-# ── route ordering + old route removal ───────────────────────────────────────
-
 
 async def test_static_routes_do_not_get_parsed_as_uuid(client: AsyncClient, db_session):
     seed = await _seed_org(db_session, tag="routing")
@@ -773,8 +760,6 @@ async def test_old_undifferentiated_list_route_is_gone(client: AsyncClient, db_s
 
     assert res.status_code == 404
 
-
-# ── trip route / crew context ────────────────────────────────────────────────
 
 
 async def _attach_trailer(db_session, seed: dict, trip: Trip, *, registration: str) -> None:
@@ -849,8 +834,6 @@ async def test_trip_contexts_are_loaded_in_four_queries(db_session, test_engine)
     assert contexts[trips[0].id].horse_registration == seed["horse"].registration
     assert contexts[trips[0].id].trailer_registrations == ["TRL-Q"]
 
-
-# ── FP-290 Task 5: photos and anchor events on reads ───────────────────────────
 
 
 async def _attach_photos(db_session, exc: TripException, count: int) -> list[EvidenceArtifact]:

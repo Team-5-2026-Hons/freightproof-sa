@@ -22,13 +22,10 @@ export type TripPanel = (typeof TRIP_PANELS)[keyof typeof TRIP_PANELS]
 interface Props {
   facts: TripHeaderFacts
   precincts: Precinct[]
-  /** Absent until the record loads: a list row knows the name and nothing else. */
   driver: Driver | null
-  /** This trip's own URL, handed to the fleet pages so their Back returns here. */
   returnTo: string
   onBack: () => void
   onPanel: (panel: TripPanel) => void
-  /** Collapses the header to its title row; the facts below it stay mounted. */
   compact?: boolean
   /** Makes the "N need review" chip a control that lands on the first unreviewed row in the
    *  timeline. Absent before the record loads, when there is no row to land on. */
@@ -38,23 +35,17 @@ interface Props {
 
 export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false, onShowFirstUnreviewed, transferAction }: Props): React.JSX.Element {
   const [driverOpen, setDriverOpen] = useState(false)
-  // One shared modal instance for the horse and however many trailers there are, holding
-  // which one is currently open rather than a boolean per vehicle.
   const [openVehicle, setOpenVehicle] = useState<{ vehicle: VehicleRef; role: string } | null>(null)
   const status = tripChipMeta(facts.status, facts.currentPhase)
   const route = `${precinctLabel(precincts.find(p => p.id === facts.originPrecinctId))} → ${precinctLabel(precincts.find(p => p.id === facts.destinationPrecinctId))}`
 
   return (
     <header className="shrink-0 border-b border-outline-v/30 bg-surf-lowest px-4 py-4 md:px-6">
-      {/* `relative`: the help panel opens from this row's right edge (see TripHelp). */}
       <div className="relative flex flex-wrap items-start gap-3">
         <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
           <p className="mt-1 text-xs tabular-nums tracking-[0.03em] text-on-surf-v">{facts.manifestLabel}</p>
-          {/* Not blue: the design system reserves --sec for links, actions and
-              identifiers (trip ids, timestamps). A route is a description of two places,
-              so colouring it like a link invited clicks it never answered. */}
           <p className="mt-1 text-sm font-semibold text-on-surf">{route}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -64,10 +55,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           <TripHelp topic="header" />
         </div>
       </div>
-      {/* `display: none` through the class, not the `hidden` attribute: the grid utility would override the attribute. */}
       <div className={compact ? 'hidden' : 'mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4'}>
-        {/* The action rides the label row, aligned right: it acts on the driver in this cell, and
-            a button under the name only wrapped awkwardly in a narrow column. */}
         <SummaryCell label="Driver" action={!compact && transferAction ? <TransferLink action={transferAction} /> : undefined}>
           {driver
             ? <>
@@ -76,8 +64,6 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
                     {facts.driverName}<Ic n="chev" s={12} aria-hidden />
                   </button>
                 </div>
-                {/* Always visible: reaching the driver is the most common reason to open
-                    this modal, so the number should not need a click of its own. */}
                 <a href={`tel:${driver.phone_number}`} className="block text-xs tabular-nums text-on-surf-v hover:text-on-surf">{driver.phone_number}</a>
               </>
             : <p className="mt-1 min-w-0 max-w-full break-words font-semibold text-on-surf">{facts.driverName}</p>}
@@ -90,11 +76,6 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         <SummaryFact fact={facts.schedule} pendingLabel="Schedule" />
         <SummaryFact fact={facts.cargo} pendingLabel="Cargo" />
       </div>
-      {/* Panel triggers only exist below the dock width. Once the panel is permanent it
-          owns its own switcher, and duplicating it here would give the same three views
-          two competing controls. `xl:hidden` sits on the nav itself, not just its
-          buttons, so the docked header does not keep this row's own `mt-4` as dead
-          space above the panel column once the buttons it was spacing are gone. */}
       <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2 xl:hidden">
         <Button variant="secondary" size="sm" onClick={() => onPanel(TRIP_PANELS.information)}>Info</Button>
         <Button variant="secondary" size="sm" onClick={() => onPanel(TRIP_PANELS.manifest)}>Cargo</Button>
@@ -156,8 +137,6 @@ function VehicleLine(
   { role, vehicle, onOpen, strong = false }: { role: string; vehicle: VehicleRef; onOpen: (vehicle: VehicleRef, role: string) => void; strong?: boolean },
 ) {
   const size = strong ? 'text-sm' : 'text-xs'
-  // Openable only once the trip record has loaded: a list row carries the registration
-  // but not the fleet id, and a preview that cannot resolve is worse than plain text.
   return <p className="flex flex-wrap items-center gap-x-1 break-words">
     <span className={`${size} text-on-surf-v`}>{role}</span>
     {vehicle.id

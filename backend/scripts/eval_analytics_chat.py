@@ -57,9 +57,7 @@ from app.schemas.analytics_chat import Basis, ChatAnswer, ChatRequest, PageView
 from app.schemas.people import UserRead
 
 DEFAULT_QUESTIONS = Path(__file__).resolve().parents[1] / "tests" / "eval" / "analytics_chat_questions.json"
-# Spaces the questions out so a burst never trips a per-minute limit; a question makes two or three calls.
 DEFAULT_PAUSE_SECONDS = 15.0
-# For the estimate only: a typical question is two model calls of ~6k prompt and ~400 output tokens.
 _ESTIMATE_CALLS, _ESTIMATE_PROMPT, _ESTIMATE_OUTPUT = 2, 6_000, 400
 MICRO_USD_PER_USD = 1_000_000
 
@@ -71,8 +69,6 @@ class Grade:
     unmatched_numbers: list[str] = field(default_factory=list)
     extra_calls: list[str] = field(default_factory=list)
 
-
-# ── Expected periods ─────────────────────────────────────────────────────────
 
 
 def _date_token(token: str, today: date) -> date:
@@ -101,17 +97,13 @@ def tool_matches(basis: Basis, expected: dict[str, Any], today: date) -> bool:
             start=_date_token(expected["start"], today) if custom else None,
             end=_date_token(expected["end"], today) if custom else None,
         )
-        # All time starts at the organisation's first trip, which only the server knows.
         if basis.end != end or (start is not None and basis.start != start):
             return False
     grain = expected.get("grain", "any")
     return grain == "any" or basis.grain == grain
 
 
-# ── Grading ──────────────────────────────────────────────────────────────────
 
-
-# What a vague question may get: a follow-up, or a snapshot that rests on the "right now" tiles only.
 _RIGHT_NOW_TOOL = "right_now"
 
 
@@ -123,9 +115,7 @@ def _kind_reason(expected_kind: str, answer: ChatAnswer) -> str | None:
         "answer": {"answer"},
         "follow_up": {"follow_up"},
         "explanation": {"explanation"},
-        # "What do these figures tell us?": explained, or explained with the figures for the period on screen.
         "explains": {"explanation", "answer"},
-        # A refusal may explain its reason from the page guide (audit §5), which makes it an explanation.
         "not_answer": {"follow_up", "declined", "explanation"},
         "no_forecast": {"answer", "follow_up", "declined"},
     }[expected_kind]
@@ -176,7 +166,6 @@ def grade(
     reasons += _tools_reasons(expect["tools"], answer.basis, today)
     reasons += explain_reasons(expect.get("explain", []), calls)
     text = _normalise(answer.answer)
-    # Each entry is a figure or fact the page shows: a string, or a list of ways to write it (any one will do).
     for figure in item["must_mention"]:
         spellings = [figure] if isinstance(figure, str) else figure
         if not any(_normalise(spelling) in text for spelling in spellings):
@@ -192,8 +181,6 @@ def grade(
     )
 
 
-# ── Running ──────────────────────────────────────────────────────────────────
-
 
 class RecordingProvider:
     """Wraps the real provider to keep what the tools returned and what each call cost."""
@@ -202,7 +189,6 @@ class RecordingProvider:
         self._inner = inner
         self._price = price
         self.tool_texts: list[str] = []
-        # Every tool call the model made, so an explanation's page-guide topic can be checked.
         self.calls: list[ToolCall] = []
         self.cost_micro_usd = 0
 
@@ -245,7 +231,7 @@ async def _ask_one(item: dict[str, Any], user: UserRead, today: date) -> tuple[s
         except (ChatCreditError, ChatQuotaError, ChatProviderFailedError, AiProviderError) as exc:
             return f"(provider failed: {exc})", Grade(status="ERROR", reasons=[str(exc)]), recorder.cost_micro_usd
         finally:
-            await db.rollback()  # the eval only reads; never leave anything behind
+            await db.rollback()
     basis = "; ".join(f"{b.label} {b.start}–{b.end} {b.grain} ({b.closed_trip_count} trips)" for b in answer.basis)
     body = f"{answer.answer}\n\n*{answer.kind} · Based on: {basis or 'no figures used'}*"
     return body, grade(item, answer, recorder.tool_texts, today, recorder.calls), recorder.cost_micro_usd
@@ -278,7 +264,6 @@ def _report(rows: list[tuple[dict[str, Any], str, Grade]], total_micro: int, tod
 
 async def run(args: argparse.Namespace) -> None:
     if args.model:
-        # For this run only; .env is untouched. price_for raises (and so the run stops) for an unpriced model.
         price_for(args.model)
         settings.AI_CHAT_MODEL = args.model
     items = json.loads(Path(args.questions).read_text())["questions"]

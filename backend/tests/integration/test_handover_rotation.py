@@ -31,9 +31,6 @@ from app.orchestration.handover.capability import (
 )
 from tests.integration.test_handover_capability import _seed
 
-# _seed returns plain ids, not ORM objects:
-# {"trip_id", "stop_id", "other_stop_id", "other_trip_id", "phase_event_id"}.
-
 
 async def _rotate(db_session, seeded, *, force: bool = False):
     return await rotate_capability_token(
@@ -98,9 +95,6 @@ async def test_rotation_pauses_once_the_receiver_opens_the_code(db_session):
 
 
 async def test_an_opened_code_survives_a_rotation_and_still_redeems(db_session):
-    # The regression this whole mechanism exists for: a receiver scans, then takes
-    # longer than one rotation interval to type their name, and must still be able to
-    # confirm the delivery at the end of it.
     seeded = await _seed(db_session, tag="rot5")
     held = await _rotate(db_session, seeded)
     await mark_token_opened(db_session, token_id=held.token.id)
@@ -142,8 +136,6 @@ async def test_opening_twice_does_not_move_the_claim_forward(db_session):
 
 
 async def test_only_the_first_browser_to_open_gets_a_session_secret(db_session):
-    # The anti-forwarding property. The receiver screenshots the URL and sends it on;
-    # the second browser opens the same link and must come away with nothing.
     seeded = await _seed(db_session, tag="rot10")
     held = await _rotate(db_session, seeded)
 
@@ -173,8 +165,6 @@ async def test_an_unopened_token_matches_no_secret_at_all(db_session):
 
 
 async def test_force_retires_a_stranded_open_token_and_starts_over(db_session):
-    # The escape hatch: the receiver opened the link and then lost the browser session
-    # holding their cookie. The driver shows a new code rather than waiting out the grant.
     seeded = await _seed(db_session, tag="rot13")
     stranded = await _rotate(db_session, seeded)
     await mark_token_opened(db_session, token_id=stranded.token.id)
@@ -193,8 +183,6 @@ async def test_force_retires_a_stranded_open_token_and_starts_over(db_session):
 
 
 async def test_an_expired_open_token_does_not_pause_the_series_forever(db_session):
-    # A receiver who opens the page and then walks away must not wedge the handover:
-    # the open token dies at its own expiry and the rotation resumes.
     seeded = await _seed(db_session, tag="rot7")
     held = await _rotate(db_session, seeded)
     await mark_token_opened(db_session, token_id=held.token.id)

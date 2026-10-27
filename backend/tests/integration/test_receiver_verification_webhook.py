@@ -143,10 +143,6 @@ async def test_ingest_moves_a_pending_row_to_terminal(db_session, pending_verifi
     )
 
     await db_session.refresh(pending_verification)
-    # `==`, not `is`: status is a String(20) column, so a refresh from the DB returns a
-    # plain str from the driver rather than the ReceiverVerificationStatus instance that
-    # was in memory before the reload. `str, Enum` compares equal by value either way —
-    # this is a round-trip identity quirk of the column type, not a status mismatch.
     assert pending_verification.status == ReceiverVerificationStatus.FAILED
 
 
@@ -178,7 +174,6 @@ async def test_a_late_webhook_annotates_but_does_not_change_a_terminal_status(
     )
 
     await db_session.refresh(terminal_verification)
-    # `==`, not `is` — see the comment in test_ingest_moves_a_pending_row_to_terminal.
     assert terminal_verification.status == ReceiverVerificationStatus.VERIFIED, "terminal status must stand"
     assert terminal_verification.late_decision_status == "declined"
     assert terminal_verification.late_decision_at is not None
@@ -262,11 +257,6 @@ async def test_sweep_leaves_a_fresh_pending_row_alone(db_session, pending_verifi
     assert pending_verification.status == ReceiverVerificationStatus.PENDING
 
 
-# --- Replay protection --------------------------------------------------------
-#
-# A valid HMAC proves a body was written by the secret holder. It says nothing about WHEN,
-# so a single captured delivery is otherwise replayable against this public route forever.
-
 
 def test_a_current_timestamp_is_fresh():
     now = str(int(datetime.now(UTC).timestamp()))
@@ -294,11 +284,6 @@ def test_a_missing_timestamp_fails_closed():
 def test_an_unparseable_timestamp_fails_closed():
     assert webhook_timestamp_is_fresh("not-a-number") is False
 
-
-# ── The route itself (stage 3a characterisation) ─────────────────────────────
-#
-# Added before endpoints/handover.py was thinned: the helpers above are tested directly,
-# but the route's own decisions (which 401, which 200, what is written) were not.
 
 _WEBHOOK_URL = "/api/v1/handover/webhooks/didit"
 _INVALID_SIGNATURE = {"detail": "Invalid signature."}

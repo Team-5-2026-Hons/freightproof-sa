@@ -16,8 +16,6 @@ _INDEX_NAME = "ix_trips_org_status_closed_id"
 
 
 def upgrade() -> None:
-    # Legacy terminal rows predate closed_at. updated_at is the only defensible
-    # terminal-time proxy available; leave non-terminal rows untouched.
     op.execute("""
     UPDATE trips SET closed_at = updated_at
     WHERE status IN ('closed', 'cancelled') AND closed_at IS NULL
@@ -31,6 +29,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # The timestamp backfill is historical data, not schema, and remains defensible
-    # after downgrade. Only the supporting index is removed.
     op.drop_index(_INDEX_NAME, table_name="trips")

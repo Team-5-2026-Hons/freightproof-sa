@@ -28,7 +28,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/components/dashboard/DashboardTripsPanel', () => ({ DashboardTripsPanel: () => <section aria-label="Active trips" /> }))
-// The summary panels have their own tests; stubbed here so this file's row queries stay about trips.
 vi.mock('@/components/dashboard/DashboardExceptionsPanel', () => ({ DashboardExceptionsPanel: () => <section aria-label="Exceptions" /> }))
 vi.mock('@/components/dashboard/DashboardIncidentsPanel', () => ({ DashboardIncidentsPanel: () => <section aria-label="Incidents" /> }))
 
@@ -64,7 +63,6 @@ describe('Dashboard subtitle', () => {
 
   it('moves to the next SAST day while the page stays open, without waiting for new data', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
-    // 21:59:30Z is 23:59:30 SAST on 6 Oct.
     vi.setSystemTime(new Date('2026-10-06T21:59:30Z'))
     try {
       renderPage()

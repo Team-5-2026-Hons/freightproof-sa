@@ -16,8 +16,6 @@ const RECEIPT_LABELS: Partial<Record<BlockchainReceiptType, string>> = {
   transit_arrival:   'Arrival attestation anchored',
   arrival_inspection: 'Seal inspection anchored',
   unloading:         'Unloading receipt anchored',
-  // Never worded like a phase receipt: this anchors the dispatcher's override record,
-  // not evidence the driver captured.
   phase_override:    'Override record anchored',
   checkpoint_batch:  'Checkpoint receipt anchored',
   exception_batch:   'Exception receipt anchored',

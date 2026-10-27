@@ -8,7 +8,6 @@ import { isRecord } from '@/lib/api/json'
 import type { BusyEntry } from '@shared/lib/types/availability'
 import type { PPManifestPreview } from '@shared/lib/types/pp-manifest'
 
-// ApiError status 0: the client gave up and no HTTP response arrived (client.ts).
 const NO_RESPONSE = 0
 const HTTP_NOT_FOUND = 404
 const HTTP_CONFLICT = 409
@@ -18,7 +17,6 @@ const HTTP_GATEWAY_TIMEOUT = 504
 
 const CODE_MANIFEST_CHANGED = 'MANIFEST_CHANGED'
 const CODE_MANIFEST_ALREADY_ON_TRIP = 'MANIFEST_ALREADY_ON_TRIP'
-// The driver, horse or a trailer is busy in the new trip's window (FP-139).
 const CODE_CREW_UNAVAILABLE = 'CREW_UNAVAILABLE'
 
 const UNEXPECTED = 'Something went wrong. Please try again.'
@@ -26,8 +24,8 @@ const LOOKUP_NO_RESPONSE = 'The manifest system did not answer in time. Try agai
 
 export type LookupFailure =
   | { kind: 'not_found'; message: string }
-  | { kind: 'unsupported'; message: string }   // live PP has no manifest lookup (501)
-  | { kind: 'retryable'; message: string }     // PP unreachable, or no response
+  | { kind: 'unsupported'; message: string }
+  | { kind: 'retryable'; message: string }
   | { kind: 'rejected'; message: string }
 
 export function classifyLookupError(err: unknown, manifestNumber: number): LookupFailure {

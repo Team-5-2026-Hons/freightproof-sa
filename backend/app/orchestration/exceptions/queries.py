@@ -35,9 +35,6 @@ from app.schemas.transit import ExceptionPhotoWithUrl, TripExceptionDetail, Trip
 
 logger = logging.getLogger(__name__)
 
-# System findings raised FROM the phase's own location assessment. The finding row stores no
-# copy of it, so the detail reads it back off the phase; any other type on the same phase is
-# not a location question and must not borrow it.
 _PHASE_ASSESSED_TYPES = frozenset({
     ExceptionType.GPS_MISMATCH,
     ExceptionType.DRIVER_VEHICLE_SEPARATION,
@@ -45,10 +42,6 @@ _PHASE_ASSESSED_TYPES = frozenset({
 })
 
 
-# Recorded/reviewed only — never needs_review. Named once rather than inlined into
-# list_exception_history so get_exception_detail's own note about the queue/history
-# split can point at one place, and so the two review states forming "history" cannot
-# quietly drift apart from the review-queue's own filter below.
 _HISTORY_REVIEW_STATUSES = (ExceptionReviewStatus.RECORDED, ExceptionReviewStatus.REVIEWED)
 
 
@@ -61,9 +54,6 @@ class _TripContext:
     driver_name: str | None = None
     horse_registration: str | None = None
     trailer_registrations: list[str] = field(default_factory=list)
-    # FP-83: every driver who held the trip, by id, and whether it ever changed driver. An
-    # exception row names the driver who raised it; on a shared trip an unattributed row names
-    # no one rather than blaming whoever happened to be the original or current driver.
     participant_names: dict[uuid.UUID, str] = field(default_factory=dict)
     is_shared: bool = False
 
@@ -99,8 +89,6 @@ async def _load_trip_contexts(
             select(Precinct.id, Precinct.name).where(Precinct.id.in_(precinct_ids))
         )).tuples().all())
 
-    # Outer joins: a driver or horse that cannot be resolved leaves its label None rather than
-    # dropping the trip's row, as the separate lookups this replaced did.
     crew_rows = (await db.execute(
         select(Trip.id, Driver.full_name, Vehicle.registration)
         .select_from(Trip)
@@ -179,9 +167,6 @@ def _to_list_item(
         phase_label=phase_type,
         stop_label=stop_sequence,
         phase_event_id=exc.phase_event_id,
-        # This is the capture-time verdict stored with the driver report, not a
-        # present-day recomputation. Dispatcher list and detail responses share this
-        # projection so either surface can explain what evidence was available then.
         action_location_assessment=exc.action_location_assessment,
         claimed_by_user_id=exc.claimed_by_user_id,
         claimed_at=exc.claimed_at,
@@ -207,8 +192,6 @@ def _exception_read_query():
     )
 
 
-# The inbox is worked top to bottom, so the most urgent row must be on top. Ordered in
-# SQL, not by the client, so every dispatcher sees the same order.
 _SEVERITY_RANK = case(
     (TripException.severity == ExceptionSeverity.CRITICAL, 0),
     (TripException.severity == ExceptionSeverity.WARNING, 1),
@@ -283,9 +266,6 @@ async def list_exception_history(
             TripException.description.icontains(q, autoescape=True),
         ))
     if review_status is not None:
-        # ANDed with the base recorded/reviewed filter above rather than replacing it —
-        # a caller passing needs_review legitimately gets zero rows, which is correct
-        # and must not be special-cased or rejected.
         filters.append(TripException.review_status == review_status)
     if severity is not None:
         filters.append(TripException.severity == severity)
@@ -293,17 +273,11 @@ async def list_exception_history(
         sa_tz = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
         if from_date is not None:
             filters.append(TripException.created_at >= datetime.combine(from_date, time.min, tzinfo=sa_tz))
-        # date.max has no representable day-after boundary. Omitting the upper
-        # predicate in that one case preserves inclusive semantics because no
-        # Python/driver timestamp can fall beyond the maximum calendar date.
         if to_date is not None and to_date < date.max:
             filters.append(
                 TripException.created_at < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=sa_tz)
             )
 
-    # Same filter set as the page query below, applied independently rather than
-    # derived from it — total_items must reflect every matching row regardless of
-    # limit/cursor, which a query already sliced by LIMIT/keyset cannot answer.
     count_stmt = (
         select(func.count())
         .select_from(TripException)
@@ -319,11 +293,6 @@ async def list_exception_history(
         .limit(limit + 1)
     )
     if cursor_position is not None:
-        # A tuple comparison, not two ANDed column comparisons: the latter cannot
-        # correctly express "strictly below this point in a (created_at, id) ordering"
-        # and would duplicate or skip rows across a page boundary whenever two rows
-        # share a created_at value (see _HISTORY_REVIEW_STATUSES's neighbour
-        # test_history_pagination_has_no_duplicates_or_omissions_with_tied_timestamps).
         page_stmt = page_stmt.where(
             tuple_(TripException.created_at, TripException.id)
             < tuple_(literal(cursor_position.created_at), literal(cursor_position.id))
@@ -395,20 +364,12 @@ async def get_exception_detail(
         raise ResourceNotFoundError("TripException", str(exception_id))
     exc, trip, phase_type, stop_sequence = row
 
-    # Never trust supporting_artifact_id on its own — get_trip_scoped_artifact
-    # re-checks ownership at read time exactly as raise_exception's own comment on
-    # this same invariant explains: the FK alone only proves the artifact exists
-    # SOMEWHERE, not that it belongs to THIS trip.
     supporting_artifact = None
     if exc.supporting_artifact_id is not None:
         supporting_artifact = await get_trip_scoped_artifact(
             db, artifact_id=exc.supporting_artifact_id, trip_id=exc.trip_id,
         )
 
-    # Looked up only for a breakdown that recorded its vehicle. Scoped to the
-    # organisation, the same as the analytics vehicle names. The id always comes from
-    # this trip's own horse or trailers, so a miss means the vehicle row is gone. The
-    # id is still returned, with no registration, rather than hidden.
     vehicle_registration: str | None = None
     vehicle_type: VehicleType | None = None
     if exc.vehicle_id is not None:
@@ -429,8 +390,6 @@ async def get_exception_detail(
     list_item = _to_list_item(exc, trip, phase_type, stop_sequence, names, context)
     if list_item.action_location_assessment is None:
         list_item.action_location_assessment = await _phase_assessment_for(db, exc)
-    # Every photo of the report, in order, each signed here. Ownership is checked in the
-    # loader (a photo re-pointed at another trip is dropped), so signing needs no second check.
     photos = (await load_photos_by_exception(db, [exc]))[exc.id]
     signed = [await sign_artifact_url(a) for a in photos]
     anchor_events = (await load_anchor_events_by_exception(db, [exc.id]))[exc.id]

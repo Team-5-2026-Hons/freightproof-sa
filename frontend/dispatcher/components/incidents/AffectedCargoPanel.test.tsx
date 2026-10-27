@@ -12,36 +12,29 @@ const PARCEL: IncidentParcel = {
 
 describe('AffectedCargoPanel', () => {
   it('states the missing scan as a scan fact and the finding as not established', () => {
-    // Arrange / Act
     render(<AffectedCargoPanel parcels={[PARCEL]} closed={false} onRecordFinding={vi.fn()} />)
 
-    // Assert
     expect(screen.getByText('No scan-in recorded')).toBeInTheDocument()
     expect(screen.getByText('Not established')).toBeInTheDocument()
     expect(screen.queryByText(/stolen/i)).not.toBeInTheDocument()
   })
 
   it('needs a reason before a finding is saved', async () => {
-    // Arrange
     const onRecordFinding = vi.fn().mockResolvedValue(true)
     render(<AffectedCargoPanel parcels={[PARCEL]} closed={false} onRecordFinding={onRecordFinding} />)
     await userEvent.click(screen.getByRole('button', { name: 'Record finding' }))
     expect(screen.getByRole('button', { name: 'Save finding' })).toBeDisabled()
 
-    // Act
     await userEvent.selectOptions(screen.getByLabelText('Finding for PP-0001'), 'confirmed_missing')
     await userEvent.type(screen.getByLabelText('How this was established'), 'Depot and receiver both searched')
     await userEvent.click(screen.getByRole('button', { name: 'Save finding' }))
 
-    // Assert
     expect(onRecordFinding).toHaveBeenCalledWith('p1', 'confirmed_missing', 'Depot and receiver both searched')
   })
 
   it('offers no finding control on a closed incident', () => {
-    // Arrange / Act
     render(<AffectedCargoPanel parcels={[PARCEL]} closed onRecordFinding={vi.fn()} />)
 
-    // Assert
     expect(screen.queryByRole('button', { name: 'Record finding' })).not.toBeInTheDocument()
   })
 })

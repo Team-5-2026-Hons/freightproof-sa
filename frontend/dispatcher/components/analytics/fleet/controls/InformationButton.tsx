@@ -11,7 +11,6 @@ const COPY = FLEET_COPY.controls
 const ICON_SIZE = 16
 
 interface InformationButtonProps {
-  /** The notes to show, one paragraph each, in order. */
   notes: readonly string[]
 }
 
@@ -23,7 +22,6 @@ export function InformationButton({ notes }: InformationButtonProps) {
 
   return (
     <>
-      {/* Same height, radius and fill as the Period select beside it, so the row reads as one set of controls. */}
       <button
         type="button"
         onClick={() => setOpen(true)}

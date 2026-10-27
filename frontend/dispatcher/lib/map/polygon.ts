@@ -16,12 +16,9 @@ const METRES_PER_DEGREE = (Math.PI * EARTH_RADIUS_METRES) / 180
 export const MIN_OUTLINE_CORNERS = 3
 export const MAX_OUTLINE_CORNERS = 500
 export const MIN_OUTLINE_AREA_M2 = 400
-// The largest circle the radius field allows: an outline is never laxer than that.
 export const MAX_OUTLINE_AREA_M2 = Math.PI * GEOFENCE_RADIUS_MAX ** 2
 export const PIN_MAX_OUTSIDE_OUTLINE_METRES = 100
 
-// Half the side of the starter square offered when OSM has nothing: ~100 m across, about
-// one warehouse with its yard.
 export const STARTER_RECTANGLE_HALF_METRES = 50
 
 const SQUARE_METRES_PER_HECTARE = 10_000

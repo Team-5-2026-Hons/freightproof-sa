@@ -10,7 +10,6 @@ from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 from app.core.constants import PG_INTEGER_MAX
 
-# "CGY Logistics · JNB 69" — client, then the manifest as PP staff would say it.
 _DISPLAY_SEPARATOR = " · "
 
 
@@ -62,7 +61,6 @@ class PPManifestWarningCode(str, Enum):
     MANIFEST_NOT_CLOSED = "MANIFEST_NOT_CLOSED"
 
 
-# Spec §10.1: these refuse creation; the rest prompt for a value or inform.
 BLOCKING_WARNING_CODES: frozenset[PPManifestWarningCode] = frozenset({
     PPManifestWarningCode.MANIFEST_ALREADY_ON_TRIP,
     PPManifestWarningCode.CLIENT_NOT_LINKED,
@@ -77,7 +75,7 @@ class PPManifestErrorCode(str, Enum):
 
     MANIFEST_CHANGED = "MANIFEST_CHANGED"
     PRECINCT_REQUIRED = "PRECINCT_REQUIRED"
-    PRECINCT_NOT_AVAILABLE = "PRECINCT_NOT_AVAILABLE"   # not the client's, or not visible to you
+    PRECINCT_NOT_AVAILABLE = "PRECINCT_NOT_AVAILABLE"
     SAME_PRECINCT = "SAME_PRECINCT"
     NO_PLANNED_DEPARTURE = "NO_PLANNED_DEPARTURE"
     NO_PLANNED_ARRIVAL = "NO_PLANNED_ARRIVAL"
@@ -88,14 +86,14 @@ class PPManifestWarning(BaseModel):
     code: PPManifestWarningCode
     message: str
     blocking: bool
-    trip_id: Optional[UUID] = None          # the trip holding the manifest or waybills
+    trip_id: Optional[UUID] = None
     trip_reference: Optional[str] = None
-    waybills: list[str] = []                # WAYBILL_CLIENT_MISMATCH, WAYBILL_ON_OTHER_TRIP
+    waybills: list[str] = []
 
 
 class PPManifestHub(BaseModel):
     hub_code: str
-    precinct_id: Optional[UUID] = None      # null when the hub is linked to no precinct
+    precinct_id: Optional[UUID] = None
     precinct_name: Optional[str] = None
 
 
@@ -145,7 +143,7 @@ class PPManifestPreviewResponse(BaseModel):
     pp_manifest: PPManifestRef
     snapshot_sha256: str
     client_organization_id: Optional[UUID] = None
-    client_name: str                        # the linked org's name, else PP's issuer name
+    client_name: str
     origin: PPManifestHub
     destination: PPManifestHub
     planned_departure_at: Optional[datetime] = None
@@ -170,7 +168,6 @@ class TripFromPPManifestRequest(BaseModel):
     Times must carry a zone (AwareDatetime): the lock normalises to UTC, and a zone-less
     value could not be normalised honestly."""
 
-    # Stored in a Postgres integer column (trips.pp_manifest_number).
     manifest_number: int = Field(..., gt=0, le=PG_INTEGER_MAX)
     expected_snapshot_sha256: str = Field(..., pattern=_SHA256_HEX)
     driver_id: UUID

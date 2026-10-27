@@ -30,9 +30,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ------------------------------------------------------------------ #
-    # Private schema + helper functions                                    #
-    # ------------------------------------------------------------------ #
     op.execute("CREATE SCHEMA IF NOT EXISTS private;")
 
     op.execute("""
@@ -47,9 +44,6 @@ def upgrade() -> None:
         AS $$ SELECT (auth.jwt() -> 'app_metadata' ->> 'org_id')::uuid $$;
     """)
 
-    # ------------------------------------------------------------------ #
-    # Enable RLS on every table                                            #
-    # ------------------------------------------------------------------ #
     for table in [
         "organizations",
         "precincts",
@@ -74,29 +68,18 @@ def upgrade() -> None:
     ]:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;")
 
-    # No SELECT policies for anon/authenticated means PostgREST gets zero
-    # rows from every table. service_role bypasses this — FastAPI unaffected.
-
-    # ------------------------------------------------------------------ #
-    # Reference / configuration tables — SELECT by authenticated role      #
-    # ------------------------------------------------------------------ #
-
-    # Each role sees only their own organisation.
     op.execute("""
         CREATE POLICY organizations_select ON organizations
         FOR SELECT TO authenticated
         USING (id = private.my_org_id());
     """)
 
-    # Precincts belong to a principal org; dispatchers and drivers see those
-    # precincts when their org matches.
     op.execute("""
         CREATE POLICY precincts_select ON precincts
         FOR SELECT TO authenticated
         USING (principal_organization_id = private.my_org_id());
     """)
 
-    # Dispatchers see all colleagues in their org; every user sees their own row.
     op.execute("""
         CREATE POLICY users_select ON users
         FOR SELECT TO authenticated
@@ -106,7 +89,6 @@ def upgrade() -> None:
         );
     """)
 
-    # Dispatchers see all drivers in their org; a driver sees their own row.
     op.execute("""
         CREATE POLICY drivers_select ON drivers
         FOR SELECT TO authenticated
@@ -116,14 +98,12 @@ def upgrade() -> None:
         );
     """)
 
-    # Vehicles are fleet assets scoped to an org.
     op.execute("""
         CREATE POLICY vehicles_select ON vehicles
         FOR SELECT TO authenticated
         USING (organization_id = private.my_org_id());
     """)
 
-    # SLA configs: dispatchers only, visible if their org is operator or client.
     op.execute("""
         CREATE POLICY sla_configs_select ON sla_configs
         FOR SELECT TO authenticated
@@ -136,7 +116,6 @@ def upgrade() -> None:
         );
     """)
 
-    # Trip templates: dispatchers only.
     op.execute("""
         CREATE POLICY trip_templates_select ON trip_templates
         FOR SELECT TO authenticated
@@ -148,10 +127,6 @@ def upgrade() -> None:
             )
         );
     """)
-
-    # ------------------------------------------------------------------ #
-    # Trips — three roles, different scopes                                #
-    # ------------------------------------------------------------------ #
 
     op.execute("""
         CREATE POLICY trips_dispatcher_select ON trips
@@ -183,11 +158,6 @@ def upgrade() -> None:
         );
     """)
 
-    # ------------------------------------------------------------------ #
-    # Trip child tables — access scoped via trip_id JOIN                   #
-    # ------------------------------------------------------------------ #
-
-    # consignments
     op.execute("""
         CREATE POLICY consignments_dispatcher_select ON consignments
         FOR SELECT TO authenticated
@@ -222,7 +192,6 @@ def upgrade() -> None:
         );
     """)
 
-    # parcels (via consignment → trip)
     op.execute("""
         CREATE POLICY parcels_dispatcher_select ON parcels
         FOR SELECT TO authenticated
@@ -263,7 +232,6 @@ def upgrade() -> None:
         );
     """)
 
-    # handshake_events
     op.execute("""
         CREATE POLICY handshake_events_dispatcher_select ON handshake_events
         FOR SELECT TO authenticated
@@ -298,7 +266,6 @@ def upgrade() -> None:
         );
     """)
 
-    # evidence_artifacts
     op.execute("""
         CREATE POLICY evidence_artifacts_dispatcher_select ON evidence_artifacts
         FOR SELECT TO authenticated
@@ -333,7 +300,6 @@ def upgrade() -> None:
         );
     """)
 
-    # checkpoints — dispatcher + driver (client portal doesn't need GPS logs)
     op.execute("""
         CREATE POLICY checkpoints_dispatcher_select ON checkpoints
         FOR SELECT TO authenticated
@@ -357,7 +323,6 @@ def upgrade() -> None:
         );
     """)
 
-    # exceptions — dispatcher + client_viewer (clients need disputed delivery evidence)
     op.execute("""
         CREATE POLICY exceptions_dispatcher_select ON exceptions
         FOR SELECT TO authenticated
@@ -382,7 +347,6 @@ def upgrade() -> None:
         );
     """)
 
-    # blockchain_receipts + merkle_batches — dispatcher + client_viewer (audit trail)
     op.execute("""
         CREATE POLICY blockchain_receipts_select ON blockchain_receipts
         FOR SELECT TO authenticated
@@ -408,7 +372,6 @@ def upgrade() -> None:
         );
     """)
 
-    # merkle_batch_leaves — dispatcher only (forensic depth, not needed by clients)
     op.execute("""
         CREATE POLICY merkle_batch_leaves_dispatcher_select ON merkle_batch_leaves
         FOR SELECT TO authenticated
@@ -424,7 +387,6 @@ def upgrade() -> None:
         );
     """)
 
-    # trip_trailers — dispatcher + driver
     op.execute("""
         CREATE POLICY trip_trailers_dispatcher_select ON trip_trailers
         FOR SELECT TO authenticated
@@ -448,7 +410,6 @@ def upgrade() -> None:
         );
     """)
 
-    # trailer_gps_snapshots — dispatcher only (forensic GPS data)
     op.execute("""
         CREATE POLICY trailer_gps_snapshots_dispatcher_select ON trailer_gps_snapshots
         FOR SELECT TO authenticated
@@ -464,7 +425,6 @@ def upgrade() -> None:
         );
     """)
 
-    # driver_substitutions — dispatcher only (audit log)
     op.execute("""
         CREATE POLICY driver_substitutions_dispatcher_select ON driver_substitutions
         FOR SELECT TO authenticated
@@ -477,12 +437,6 @@ def upgrade() -> None:
             )
         );
     """)
-
-    # ------------------------------------------------------------------ #
-    # Immutability guards — evidence chain tables                          #
-    # USING (false) blocks UPDATE + DELETE for all non-service_role callers.
-    # service_role bypasses RLS — FastAPI writes are unaffected.
-    # ------------------------------------------------------------------ #
 
     for table in [
         "evidence_artifacts",
@@ -503,7 +457,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop all policies — order mirrors upgrade in reverse.
 
     for table in [
         "evidence_artifacts",
@@ -565,4 +518,3 @@ def downgrade() -> None:
 
     op.execute("DROP FUNCTION IF EXISTS private.my_org_id();")
     op.execute("DROP FUNCTION IF EXISTS private.my_role();")
-    # Leave private schema — other future functions may live there.

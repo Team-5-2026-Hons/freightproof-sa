@@ -41,8 +41,6 @@ from app.main import app
 from app.storage.supabase_storage import UploadResult
 from tests.conftest import auth_header, make_token
 
-# A minimal but genuine PNG payload: the magic number the schema validates, plus filler.
-# Not a real image — nothing in this path decodes pixels, only the signature bytes.
 _PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64).decode()
 
 _CONFIRM_BODY = {
@@ -146,12 +144,8 @@ def _token_from(issued) -> str:
     return issued.json()["scan_url"].rsplit("/", 1)[1]
 
 
-# ── Driver-authenticated routes ────────────────────────────────────────────────
-
 
 async def test_issue_requires_a_driver_token(client: AsyncClient, handover_trip):
-    # 403, not 401: get_current_driver returns FORBIDDEN when the Authorization header is
-    # absent entirely, and reserves 401 for a token that is present but unusable.
     trip, event = handover_trip["trip"], handover_trip["event"]
 
     res = await client.post(f"/api/v1/trips/{trip.id}/phases/{event.id}/handover/tokens")
@@ -170,8 +164,6 @@ async def test_issue_returns_a_scan_url_and_rotation_interval(client, handover_t
 
 
 async def test_another_drivers_trip_is_a_404_not_a_403(client, handover_trip, other_driver_auth):
-    # A trip id read off dispatch chatter must be indistinguishable from one that does not
-    # exist. A 403 here would confirm the trip is real, which is exactly what must not leak.
     trip, event = handover_trip["trip"], handover_trip["event"]
 
     res = await client.post(
@@ -195,8 +187,6 @@ async def test_status_is_unconfirmed_before_any_scan(client, handover_trip, driv
     }
 
 
-# ── Public routes ──────────────────────────────────────────────────────────────
-
 
 async def test_scan_shows_the_delivery_without_redeeming_it(client, handover_trip, driver_auth):
     token = _token_from(await _issue(client, handover_trip, driver_auth))
@@ -211,17 +201,10 @@ async def test_scan_shows_the_delivery_without_redeeming_it(client, handover_tri
 
 
 async def test_scan_reveals_nothing_about_the_driver(client, handover_trip, driver_auth):
-    # POPIA and blast radius: a stranger holding a token learns which delivery they are
-    # confirming and nothing else.
     token = _token_from(await _issue(client, handover_trip, driver_auth))
 
     body = (await client.get(f"/api/v1/handover/{token}")).json()
 
-    # `verification` was added by the receiver identity-verification feature. It widens
-    # this set but NOT the blast radius: it carries only the receiver's own check state
-    # (status, tier, reason, whether their typed identity matched their document) and
-    # nothing about the driver, the cargo, or any other stop. Kept exhaustive on purpose —
-    # a new field here must be an argued decision, not something that appears by accident.
     assert set(body) == {
         "trip_reference", "destination_name", "waybill_references", "expires_at",
         "verification",
@@ -278,8 +261,6 @@ async def test_confirm_creates_an_artifact_the_driver_can_submit(
 async def test_confirming_without_the_binding_cookie_is_refused(
     client, handover_trip, driver_auth,
 ):
-    # The anti-forwarding property. Someone who was sent the URL but never opened it in
-    # this browser holds no cookie, and must not be able to confirm the delivery.
     token = _token_from(await _issue(client, handover_trip, driver_auth))
     await client.get(f"/api/v1/handover/{token}")
     client.cookies.clear()
@@ -292,8 +273,6 @@ async def test_confirming_without_the_binding_cookie_is_refused(
 async def test_a_refused_binding_does_not_burn_the_real_receivers_token(
     client, handover_trip, driver_auth,
 ):
-    # A forwarded link must fail WITHOUT destroying the legitimate handover it was copied
-    # from — which is why the binding is checked before the redemption gate.
     token = _token_from(await _issue(client, handover_trip, driver_auth))
     scanned = await client.get(f"/api/v1/handover/{token}")
     real_cookie = scanned.cookies["fp_handover_session"]
@@ -339,8 +318,6 @@ async def test_a_non_png_signature_is_a_422(client, handover_trip, driver_auth):
     assert res.status_code == 422
 
 
-# ── The rotation, through HTTP ─────────────────────────────────────────────────
-
 
 async def test_issuing_again_retires_the_previous_code(client, handover_trip, driver_auth):
     stale = _token_from(await _issue(client, handover_trip, driver_auth))
@@ -360,7 +337,6 @@ async def test_the_rotation_pauses_once_the_receiver_opens_the_link(
 
     assert paused.json()["receiver_opened"] is True
     assert paused.json()["scan_url"] is None
-    # And the receiver's code is still alive, which is the whole point of pausing.
     assert (await client.get(f"/api/v1/handover/{token}")).status_code == 200
 
 
@@ -400,13 +376,6 @@ async def test_the_status_route_reports_an_opened_but_unconfirmed_link(
     assert res.json()["receiver_opened"] is True
     assert res.json()["confirmed"] is False
 
-
-# ── Route characterisation (stage 3a) ──────────────────────────────────────────
-#
-# Added before endpoints/handover.py was thinned, to pin the behaviour the move must not
-# change: error details, cookie attributes, the commit-before-404 on a lost redemption race,
-# and the three 500 paths. They patch the SESSION (commit/rollback) and the capability
-# module's clock, never a name in the route module, so they hold on both sides of the move.
 
 
 class _TransactionSpy:
@@ -548,9 +517,6 @@ async def test_confirm_returns_the_confirmation_time_and_trip_reference(
 async def test_a_lost_redemption_race_commits_the_attempt_before_the_generic_404(
     client, handover_trip, driver_auth, db_session, monkeypatch,
 ):
-    # The route's live-token check passes, then the conditional UPDATE loses (here: expiry
-    # between the two). The attempt row IS the evidence, so the route must commit it before
-    # raising — a rollback would erase the only record of the failed attempt.
     token = _token_from(await _issue(client, handover_trip, driver_auth))
     await client.get(f"/api/v1/handover/{token}")
 

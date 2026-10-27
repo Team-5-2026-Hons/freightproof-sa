@@ -24,11 +24,9 @@ from tests.integration.test_phase_corroboration import (  # noqa: F401
     _corroboration_trip_fixture, _pulsit_store_fixture,
 )
 
-# ~92 m × 111 m around the origin pin (Cape Town).
 _LAT, _LNG = float(_ORIGIN_LAT), float(_ORIGIN_LNG)
 _BOX = [[_LAT + 0.0005, _LNG - 0.0005], [_LAT + 0.0005, _LNG + 0.0005],
         [_LAT - 0.0005, _LNG + 0.0005], [_LAT - 0.0005, _LNG - 0.0005]]
-# ~150 m east of the pin: ~105 m outside the outline, well inside the old 200 m radius.
 _EAST_LNG = Decimal(str(round(_LNG + 0.00163, 7)))
 
 

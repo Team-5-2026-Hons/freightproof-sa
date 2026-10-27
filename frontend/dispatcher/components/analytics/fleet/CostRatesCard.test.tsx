@@ -78,7 +78,6 @@ describe('CostRatesCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit rates' }))
     fireEvent.change(field('New diesel price'), { target: { value: '40' } })
 
-    // R40/L × 50 L/100 km would be R20; at 53 L/100 km it is R21,20.
     expect(screen.getByText(/R\s21,20 \/ km/)).toBeInTheDocument()
   })
 

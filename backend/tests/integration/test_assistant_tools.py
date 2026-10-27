@@ -151,7 +151,6 @@ async def test_trips_closed_list_points_to_trip_history(seed: dict, db_session: 
 
 async def test_trips_closed_last_week_counts_by_closed_date_like_trip_history(seed: dict, db_session: AsyncSession) -> None:
     operator = operator_from_seed(seed)
-    # Departed long ago, closed in the window: counted. Departed in the window, closed after it: not.
     closed_in = await _trip(db_session, operator, seed, status=TripStatus.CLOSED, arrival=NOW - timedelta(days=30))
     closed_in.closed_at = NOW - timedelta(days=2)
     closed_out = await _trip(db_session, operator, seed, status=TripStatus.CLOSED, arrival=NOW - timedelta(days=2))
@@ -164,7 +163,6 @@ async def test_trips_closed_last_week_counts_by_closed_date_like_trip_history(se
     ))
 
     assert _refs(result) == {closed_in.trip_reference}
-    # Not "Active = …" on a closed list, and each line says when it closed.
     assert "definition" not in result
     [line] = result["trips"]
     assert line["closed"]
@@ -250,7 +248,6 @@ async def test_trip_status_has_the_trip_pages_info_and_stored_integrity(seed: di
 
     result = _result(outcome)
     assert result["delivery_confirmed"] is not None and result["closed"] is not None
-    # The seeded single leg arrives at its planned minute (ARRIVAL_MINUTE == PLANNED_ARRIVAL_MINUTE).
     assert ARRIVAL_MINUTE == PLANNED_ARRIVAL_MINUTE and result["arrival_delay"] == "on time"
     integrity = result["record_integrity"]
     assert (integrity["phase_receipts_owed"], integrity["phase_receipts_anchored"], integrity["phase_receipts_failed"]) == (3, 3, 0)

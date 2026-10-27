@@ -8,21 +8,12 @@ import { FLEET_COPY } from './copy'
 const ICON_SIZE = 14
 
 interface InfoPopoverProps {
-  /** The chart's title, for the button's accessible name. */
   title: string
-  /** Replaces the "About this chart: {title}" label on both the button and the panel, for a use that is not a chart. */
   ariaLabel?: string
-  /** The question the chart answers, e.g. "Are we getting busier?". */
   question: string
-  /** What the chart rests on, e.g. "Closed trips, by the day they first departed · 16 trips". */
   basis?: string
-  /** How to read the chart, e.g. "Top-right = busy and risky". A description; a warning
-   *  belongs on the card face instead. */
   note?: string
-  /** Where the figure comes from, e.g. "Closed trips only, from our trip records…". Shown
-   *  last before the footnote, so a presenter is one click from any figure's provenance. */
   source?: string
-  /** The popover's last line, e.g. what faded buckets mean. */
   footnote?: string
 }
 
@@ -36,7 +27,6 @@ export function InfoPopover({ title, ariaLabel, question, basis, note, source, f
   const label = ariaLabel ?? FLEET_COPY.chart.aboutChart(title)
 
   useEffect(() => {
-    // Listen only while open, so a page of closed popovers (one per chart) adds no listeners.
     if (!open) return
 
     function onPointerDown(event: MouseEvent): void {

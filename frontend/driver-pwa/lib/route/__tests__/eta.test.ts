@@ -10,7 +10,6 @@ import {
 import type { TripRoute, TripRouteLeg, RouteCoordinate } from '@/lib/types/route'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// A straight north–south leg along 28°E, -26° to -27° (~111 km), one point per 0.1°.
 const LINE: RouteCoordinate[] = Array.from({ length: 11 }, (_, i) => [-26 - i / 10, 28])
 const LEG_SECONDS = 6000
 const LEG: TripRouteLeg = {
@@ -65,7 +64,6 @@ describe('progressAlongLeg', () => {
   })
 
   it('test_measures_distance_off_the_line_in_metres', () => {
-    // 0.01° of longitude at -26.5° latitude ≈ 995 m.
     const progress = progressAlongLeg(LEG, { lat: -26.5, lng: 28.01 })!
 
     expect(progress.offRouteMetres).toBeGreaterThan(980)
@@ -90,7 +88,6 @@ describe('estimateArrival', () => {
   })
 
   it('test_stretches_the_remaining_time_by_observed_pace', () => {
-    // Plan says halfway takes 3000 s; the truck took 4500 s — 1.5× slower.
     const estimate = estimateArrival({ leg: LEG, position: HALFWAY, departedAt: secondsBefore(NOW, 4500), now: NOW })
 
     if (estimate?.kind !== 'on_route') throw new Error('expected on_route')
@@ -113,7 +110,6 @@ describe('estimateArrival', () => {
   })
 
   it('test_ignores_pace_before_enough_of_the_leg_is_driven', () => {
-    // 10% of a 6000 s leg = 600 s planned, under the 15-minute sample floor.
     expect(LEG_SECONDS * 0.1).toBeLessThan(MIN_PACE_SAMPLE_SECONDS)
     const early = { lat: -26.1, lng: 28, accuracyM: 10 }
 
@@ -132,7 +128,6 @@ describe('estimateArrival', () => {
   })
 
   it('test_widens_the_tolerance_by_the_fix_accuracy', () => {
-    // ~995 m off the line, but the fix itself is only good to 600 m.
     const estimate = estimateArrival({
       leg: LEG, position: { lat: -26.5, lng: 28.01, accuracyM: 600 }, departedAt: null, now: NOW,
     })

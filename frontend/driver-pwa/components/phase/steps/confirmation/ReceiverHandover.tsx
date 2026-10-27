@@ -34,18 +34,12 @@ export function ReceiverHandover({
     scanUrl, receiverOpened, signatureArtifactId, confirmedAt, error, isIssuing, forceNewCode,
   } = useRotatingHandover(tripId, phase.phase_event_id)
 
-  // The draft, not component state, is what survives the driver backgrounding the app
-  // mid-handover — usePhaseDraft persists it. Written in an effect rather than during
-  // render because it is a side effect on a parent-owned store.
   useEffect(() => {
     if (signatureArtifactId === null) return
     if (draft.podSignatureArtifactId === signatureArtifactId) return
     onUpdate({ podSignatureArtifactId: signatureArtifactId, receiverConfirmedAt: confirmedAt })
   }, [signatureArtifactId, confirmedAt, draft.podSignatureArtifactId, onUpdate])
 
-  // The draft is the source of truth for "has this happened", not the hook: a driver who
-  // backgrounds the app and returns gets a freshly mounted hook with no confirmation yet,
-  // and must not be sent back to a QR for a delivery that is already confirmed.
   const isConfirmed = draft.podSignatureArtifactId !== null
 
   if (isConfirmed) {
@@ -56,8 +50,6 @@ export function ReceiverHandover({
         showTitle={false}
         action={<SwipeToConfirm label="Swipe to Continue" onConfirm={onComplete} />}
       >
-        {/* No signature image: the signature is the receiver's evidence,
-            held server-side. The driver's screen says only that it happened, and when. */}
         <div className="flex flex-col items-center pt-10 text-center">
           <span className="flex size-28 items-center justify-center rounded-full bg-success-tint">
             <span className="flex size-20 items-center justify-center rounded-full bg-success text-success-on">
@@ -76,7 +68,6 @@ export function ReceiverHandover({
     )
   }
 
-  // No action while waiting: the receiver's own device completes this step, not a swipe.
   return (
     <StepLayout
       phase={phase}
@@ -84,17 +75,12 @@ export function ReceiverHandover({
       intro="Ask them to scan this with their phone camera. They sign on their own device."
     >
       <div className="flex w-full flex-col items-center gap-6 overflow-x-hidden">
-        {/* White plate, always — the QR must not inherit a dark theme (QrCode.tsx). An
-            explicit width (the QR's 260px ceiling + 2 × 18px padding), not shrink-to-fit:
-            QrCode is w-full, so in a content-sized plate its placeholder — shown while the
-            code is issued, or when issuing fails — collapsed to nothing. */}
         <div className="w-full max-w-[296px] rounded-[28px] bg-white p-[18px] shadow-ambient ring-1 ring-hairline">
           <QrCode value={scanUrl} />
         </div>
 
         <div role="status" className="flex max-w-sm flex-col items-center gap-1.5 text-center">
           <p className="inline-flex items-center gap-2 text-headline text-surface-on">
-            {/* Blue: progress, the one thing blue means in this app. */}
             <span aria-hidden className="size-2 rounded-full bg-secondary ring-4 ring-secondary/20" />
             {receiverOpened ? 'The receiver has opened the link' : 'Waiting for the receiver'}
           </p>
@@ -114,11 +100,6 @@ export function ReceiverHandover({
           </div>
         )}
 
-        {/* The stranding escape hatch. A receiver who opens the link and then loses the
-            browser session holding their binding cookie can neither confirm nor be given
-            a new code, because the rotation has paused for them. The driver is standing
-            right there, so let them retire it and start again. Shown only once the link
-            has actually been opened — before that, the rotation is already doing this. */}
         {receiverOpened && error === null && (
           <Button variant="fill" size="pill-sm" onClick={forceNewCode} disabled={isIssuing}>
             Receiver Having Trouble? Show a New Code

@@ -15,8 +15,6 @@ import type { ResolvedTheme } from '@/lib/theme'
 let themeSurface: ResolvedTheme = 'light'
 let overrideSurface: ResolvedTheme | null = null
 
-// One warning per session: before `npx cap sync` installs the native side, every call
-// rejects with "not implemented". Expected, harmless, but worth seeing once in the console.
 let warned = false
 function warnOnce(err: unknown): void {
   if (warned) return
@@ -27,7 +25,6 @@ function warnOnce(err: unknown): void {
 function apply(): void {
   if (!Capacitor.isNativePlatform()) return
   const surface = overrideSurface ?? themeSurface
-  // Capacitor names the style after the BACKGROUND: Style.Dark = light text for a dark screen.
   StatusBar.setStyle({ style: surface === 'dark' ? Style.Dark : Style.Light }).catch(warnOnce)
 }
 

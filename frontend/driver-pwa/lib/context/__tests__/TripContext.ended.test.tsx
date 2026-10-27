@@ -67,15 +67,12 @@ beforeEach(() => {
 
 describe('TripContext ended-by-dispatch handling', () => {
   it('ends_by_dispatch_pinned_trip_is_said_not_silently_dropped', async () => {
-    // Arrange
     window.sessionStorage.setItem(SELECTED_TRIP_KEY, String(workingTrip.id))
     mockFetchMyTrip.mockResolvedValue(cancelled)
     mockFetchMyActiveTrip.mockResolvedValue(null)
 
-    // Act
     renderProvider()
 
-    // Assert
     await waitFor(() => expect(screen.getByTestId('ended')).toHaveTextContent(String(workingTrip.id)))
     expect(screen.getByTestId('trip')).toHaveTextContent('none')
     expect(ctx?.endedByDispatch).toEqual({ tripId: String(workingTrip.id), tripReference: workingTrip.trip_reference, endedAt: ENDED_AT })
@@ -83,62 +80,50 @@ describe('TripContext ended-by-dispatch handling', () => {
   })
 
   it('ends_by_dispatch_when_the_server_pick_stops_returning_the_working_trip', async () => {
-    // Arrange
     mockFetchMyActiveTrip.mockResolvedValueOnce(workingTrip).mockResolvedValue(null)
     mockFetchMyTrip.mockResolvedValue(cancelled)
     renderProvider()
     await waitFor(() => expect(screen.getByTestId('trip')).toHaveTextContent(String(workingTrip.id)))
 
-    // Act
     await act(async () => { await ctx?.refreshQuietly() })
 
-    // Assert
     expect(mockFetchMyTrip).toHaveBeenCalledWith(String(workingTrip.id))
     expect(screen.getByTestId('ended')).toHaveTextContent(String(workingTrip.id))
   })
 
   it('a_trip_that_completed_normally_is_not_ended_by_dispatch', async () => {
-    // Arrange
     mockFetchMyActiveTrip.mockResolvedValueOnce(workingTrip).mockResolvedValue(null)
     mockFetchMyTrip.mockResolvedValue(completed)
     renderProvider()
     await waitFor(() => expect(screen.getByTestId('trip')).toHaveTextContent(String(workingTrip.id)))
 
-    // Act
     await act(async () => { await ctx?.refreshQuietly() })
 
-    // Assert
     expect(screen.getByTestId('ended')).toHaveTextContent('none')
   })
 
   it('a_failed_check_says_nothing_and_does_not_ask_again', async () => {
-    // Arrange
     mockFetchMyActiveTrip.mockResolvedValueOnce(workingTrip).mockResolvedValue(null)
     mockFetchMyTrip.mockRejectedValue(new Error('offline'))
     renderProvider()
     await waitFor(() => expect(screen.getByTestId('trip')).toHaveTextContent(String(workingTrip.id)))
 
-    // Act
     await act(async () => { await ctx?.refreshQuietly() })
     await act(async () => { await ctx?.refreshQuietly() })
 
-    // Assert
     expect(screen.getByTestId('ended')).toHaveTextContent('none')
     expect(mockFetchMyTrip).toHaveBeenCalledTimes(1)
   })
 
   it('dismissing clears the notice', async () => {
-    // Arrange
     window.sessionStorage.setItem(SELECTED_TRIP_KEY, String(workingTrip.id))
     mockFetchMyTrip.mockResolvedValue(cancelled)
     mockFetchMyActiveTrip.mockResolvedValue(null)
     renderProvider()
     await waitFor(() => expect(screen.getByTestId('ended')).toHaveTextContent(String(workingTrip.id)))
 
-    // Act
     act(() => ctx?.dismissEndedByDispatch())
 
-    // Assert
     expect(screen.getByTestId('ended')).toHaveTextContent('none')
   })
 })

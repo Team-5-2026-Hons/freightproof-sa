@@ -28,7 +28,6 @@ describe('rateProblem', () => {
     expect(rateProblem('litres_per_100km', '200.1')).toBe('Must be at most 200.')
     expect(rateProblem('litres_per_100km', '0')).toBe('Must be more than 0.')
     expect(rateProblem('fixed_cost_per_trip', '0')).toBeNull()
-    // The thousands separator is whatever space Intl uses for en-ZA on this machine.
     expect(rateProblem('driver_cost_per_hour', '1000001')).toMatch(/^Must be at most 1\s000\s000\.$/)
   })
 

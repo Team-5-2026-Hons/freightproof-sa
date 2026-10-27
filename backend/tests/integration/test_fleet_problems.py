@@ -108,15 +108,12 @@ async def _seed_fortnight(db: AsyncSession, operator: Operator, stops: list[Prec
         (trip_b, ExceptionType.PARCEL_COUNT_MISMATCH, warning, system, at_sast(_day(9), 6), None),
     ):
         await _problem(db, seeded, exception_type, severity, source, created_at, step)
-    # Never counted: another operator's closed trip, and an open trip.
     other = await other_operator(db)
     stranger = await seed_trip(db, other, stops=stops, start=at_sast(_day(2), 6))
     await _problem(db, stranger, ExceptionType.SEAL_MISMATCH, critical, system, at_sast(_day(2), 8), PhaseType.IN_TRANSIT)
     open_trip = await seed_trip(db, operator, stops=stops, start=at_sast(_day(3), 6), status=TripStatus.ACTIVE)
     await _problem(db, open_trip, ExceptionType.PANIC_BUTTON, critical, driver, at_sast(_day(3), 9), PhaseType.IN_TRANSIT)
 
-
-# ── Auth and 422 ─────────────────────────────────────────────────────────────
 
 
 async def test_fleet_problems_without_token_returns_403(client: AsyncClient) -> None:
@@ -146,8 +143,6 @@ async def test_fleet_problems_rejects_a_missing_grain(client: AsyncClient, opera
 
     assert response.status_code == 422
 
-
-# ── 200 ──────────────────────────────────────────────────────────────────────
 
 
 async def test_fleet_problems_for_an_org_without_trips_are_empty_but_complete(
@@ -192,7 +187,6 @@ async def test_fleet_problems_theft_signs_are_exactly_the_d12_types(
     week0, week1 = response.json()["theft_signals"]
     assert list(week0["by_type"]) == [signal.value for signal in THEFT_SIGNAL_TYPES]
     assert "seal_unverified" not in week0["by_type"]
-    # A receiver ID that was checked and didn't match is a theft sign; one never checked is not.
     assert "receiver_id_mismatch" in week0["by_type"]
     assert "receiver_id_unverified" not in week0["by_type"]
     assert (week0["total_count"], week0["by_type"]["seal_mismatch"]) == (1, 1)
@@ -207,7 +201,6 @@ async def test_fleet_problems_by_type_lists_only_what_happened(
     response = await client.get(_PROBLEMS, params=_params(), headers=headers(operator))
 
     assert response.status_code == 200
-    # Every type has one problem: ties go by type name.
     assert [(row["exception_type"], row["source"], row["count"]) for row in response.json()["by_type"]] == [
         ("mechanical", "driver", 1),
         ("panic_button", "driver", 1),

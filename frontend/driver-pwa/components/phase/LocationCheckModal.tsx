@@ -9,26 +9,17 @@ import { cn } from '@/lib/utils'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 
 interface LocationCheckModalProps {
-  /** Controls the popup's visibility — the caller decides when a check is in flight
-   *  or has landed on an outcome that needs a driver decision. A clean pass never
-   *  sets this true for long enough to require a tap (see the call sites). */
   open: boolean
   assessment: ActionLocationAssessment | null
   loading: boolean
   error: string | null
-  /** True while the check ran without a network connection — surfaced inline rather
-   *  than left orphaned on the page behind it. */
   offline: boolean
   onRetry: () => void
   onContinue: (reason: string | null) => void
 }
 
-// en-ZA groups thousands with a space ("1 240 m"), the way a South African driver reads it.
 const METRES = new Intl.NumberFormat('en-ZA', { maximumFractionDigits: 0 })
 
-// Modal requires an onClose even when dismissible=false (never invoked in that
-// mode — see Modal.tsx), so every branch below shares one no-op rather than each
-// allocating its own.
 function noOpClose(): void {}
 
 const DISC = 'flex size-12 items-center justify-center rounded-full'
@@ -58,9 +49,6 @@ export function LocationCheckModal({
   const [reason, setReason] = useState('')
   const [reasonError, setReasonError] = useState<string | null>(null)
 
-  // A reason typed against one assessment must never silently ride along with the
-  // next one — reset whenever the popup closes (a fresh check, a retry that has not
-  // yet resolved, or a hand-off away from this screen).
   useEffect(() => {
     if (!open) {
       setReason('')
@@ -83,7 +71,6 @@ export function LocationCheckModal({
     onContinue(requiresReason ? trimmedReason : null)
   }
 
-  // Continue is the primary (ink) action; Retry is the quiet fill under it.
   const retry = <Button variant="fill" size="pill" onClick={onRetry}>Retry Location</Button>
 
   if (loading) {
@@ -160,9 +147,6 @@ export function LocationCheckModal({
       icon={<span className={cn(DISC, 'bg-attention-tint text-attention-ink')}><MapPin className="size-6" strokeWidth={2} aria-hidden /></span>}
       footer={<><Button size="pill" onClick={continueAction}>Continue with Exception</Button>{retry}</>}
     >
-      {/* Each active fact is stated on its own — a driver outside the precinct and a
-          truck outside the precinct are two different claims, and when both are true the
-          driver needs to see both, not whichever one a priority order happened to pick. */}
       <div className="divide-y divide-hairline rounded-2xl bg-fill px-4">
         {measuredMismatch && (
           <>

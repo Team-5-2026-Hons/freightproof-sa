@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { SPLIT_MIN_PX } from '@/lib/phase/layout'
 import { VIEWPORT_PRESETS, cardContentPx, frameWidthPx, presetDocksPanel } from './frame'
 
-// The card widths measured in the real trip page (lib/phase/layout.ts): the frame must hand the
-// real TripTimeline exactly this much room, or the preview shows a layout nobody gets.
 const MEASURED_CARD_PX: Record<number, number> = { 1440: 772, 1280: 676, 1024: 772, 768: 564 }
 
 describe('timeline scenario frame', () => {
@@ -16,7 +14,6 @@ describe('timeline scenario frame', () => {
   })
 
   it('sizes the frame so the timeline inside it is as wide as the real page gives it', () => {
-    // 1440: 1440 - 80 rail - 400 panel = 960, past the 896 px cap, so the cap decides; plus the frame's border.
     const desktop = VIEWPORT_PRESETS.find(preset => preset.width === 1440)!
     const laptop = VIEWPORT_PRESETS.find(preset => preset.width === 1280)!
 
